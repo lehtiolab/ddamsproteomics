@@ -23,7 +23,7 @@ The pipeline is built using [Nextflow](https://www.nextflow.io), a workflow tool
 - install [Docker](https://docs.docker.com/engine/installation/), [Singularity](https://www.sylabs.io/guides/3.0/user-guide/), or [Conda](https://conda.io/miniconda.html)
 - run pipeline:
 
-```nextflow run lehtiolab/ddamsproteomics --mzmls '/path/to/*.mzML' --tdb /path/to/proteins.fa```
+```nextflow run lehtiolab/ddamsproteomics --mzmls '/path/to/*.mzML' --tdb /path/to/proteins.fa --mods /path/to/mods.txt```
 
 The lehtiolab/ddamsproteomics pipeline comes with documentation about the pipeline, found in the `docs/` directory:
 
@@ -35,14 +35,4 @@ The pipeline takes multiple mzML files as input and performs identification and 
 
 
 ## Credits
-lehtiolab/nf-labelcheck was originally written by Jorrit Boekel and tries to follow the [nf-core](https://nf-co.re) best practices and templates.
-### Documentation
-The lehtiolab/ddamsproteomics pipeline comes with documentation about the pipeline, found in the `docs/` directory:
-
-1. [Installation](docs/installation.md)
-2. Pipeline configuration
-    * [Local installation](docs/configuration/local.md)
-    * [Adding your own system](docs/configuration/adding_your_own.md)
-3. [Running the pipeline](docs/usage.md)
-4. [Output and how to interpret the results](docs/output.md)
-5. [Troubleshooting](docs/troubleshooting.md)
+lehtiolab/ddamsproteomics was originally written by Jorrit Boekel and tries to follow the [nf-core](https://nf-co.re) best practices and templates.

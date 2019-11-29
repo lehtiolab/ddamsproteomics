@@ -29,8 +29,23 @@
 <div class="container">
   <h2 class="title is-2">Full QC for {{ searchname }}</h2>
   <hr>
-  <h3 class="title is-3">Software</h3>
-  {{ software}}
+  <div class="columns">
+    <div class="column">
+      <h3 class="title is-3">Software</h3>
+      {{ software}}
+    </div>
+    <div class="column">
+      <h3 class="title is-3">Warnings</h3>
+      <div class="notification is-danger">
+        <ul>
+          {% for warn in warnings %}
+          <li>&bull; {{ warn }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+  </div>
+
   <hr>
   <h3 class="title is-3">Protein/peptide level QC</h3>
   <h4 class="title is-4">Summary</h4>

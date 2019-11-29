@@ -1,5 +1,13 @@
 # lehtiolab/ddamsproteomics: Changelog
 
+## Version 1.3 [2019-11-29]
+- Do not crash when PSM data for some but not all sets is not good enough
+- miscleav/set/fr/plate not by python script but in pipeline or by msstitch
+- clearer code
+- percolator do not use -y (mixmax)
+- Do not filter decoy DB of target sequences until certainty about how filter should behave
+- Warnings in QC output
+
 
 ## Version 1.2 [2019-11-20]
 - Updated to MSGF version 2019.07.03
@@ -7,9 +15,9 @@
 - Moved release repo to lehtiolab/ddamsproteomics
 - Removed decoy/trypsinization script to use msstitch tool instead
 - QC bugfix: dont crash when there are no peptides with 1missed cleavage
+- Got a Zenodo DOI
 
 ## Version 1.1
-
 - More QC for DEqMS, added  PCA and Volcano plots
 - Added support for non-linear pI strips for HiRIEF (e.g. 3.4-4.8), defined as multiple fraction intervals
 - Fixed bug that did not filter out features with <1 median PSM count before running DEqMS (rare case)
