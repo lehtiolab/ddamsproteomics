@@ -320,6 +320,9 @@ else if (!params.mzmldef) {
 }
 
 
+def or_na(it, length){
+    return it.size() > length ? it[length] : 'NA'
+}
 // Parse mzML input to get files and sample names etc
 // get setname, sample name (baseName), input mzML file. 
 // Set platename to samplename if not specified. 
@@ -660,12 +663,14 @@ process createPSMTable {
 
   output:
   set val(td), file("${outpsms}") into psm_result
-  set val(td), file({setnames.collect() { it + '.tsv' }}) optional true into setpsmtables
+  set val(td), file({setnames.collect() { "${it}.tsv" }}) optional true into setpsmtables
   set val(td), file("${psmlookup}") into psmlookup
+  file('warnings') optional true into psmwarnings
 
   script:
   psmlookup = "${td}_psmlookup.sql"
   outpsms = "${td}_psmtable.txt"
+
   """
   msspsmtable merge -i psms* -o psms.txt
   msspsmtable conffilt -i psms.txt -o filtpsm --confidence-better lower --confidence-lvl $params.psmconflvl --confcolpattern 'PSM q-value'
@@ -682,6 +687,7 @@ process createPSMTable {
   ${!params.onlypeptides ? "msspsmtable proteingroup -i gpsms -o ${params.hirief ? "pgpsms" : "$outpsms"} --dbfile $psmlookup" : "mv qpsms.txt ${params.hirief ? "pgpsms" : "$outpsms"}" }
   ${params.hirief ? "echo \'${groovy.json.JsonOutput.toJson(params.strips)}\' >> strip.json && peptide_pi_annotator.py -i $trainingpep -p pgpsms --o $outpsms --stripcolpattern Strip --pepcolpattern Peptide --fraccolpattern Fraction --stripdef strip.json --ignoremods \'*\'": ''} 
   msspsmtable split -i ${outpsms} --bioset
+  ${setnames.collect() { "test -f '${it}.tsv' || echo 'No ${td} PSMs found for set ${it}' >> warnings" }.join(' && ') }
   """
 }
 
@@ -710,6 +716,7 @@ process psm2Peptides {
   set val(setname), val(td), file(psms), file('proteins'), val('proteins') into proteins
   set val(setname), val(td), file(psms), file('genes'), val('genes') into genes
   set val(setname), val(td), file(psms), file('symbols'), val('assoc') into symbols
+  file('warnings') optional true into pepwarnings
 
   script:
   col = accolmap.peptides + 1  // psm2pep adds a column
@@ -728,6 +735,7 @@ process psm2Peptides {
   ${do_raw_isoquant ? "mv pepisoquant peptide_table.txt" : ''}
   # Create linear modeled q-values of peptides (modeled svm scores vs q-values) for more protein-FDR precision.
   msspeptable modelqvals -i peptide_table.txt -o ${setname}_linmod --scorecolpattern svm --fdrcolpattern '^q-value'
+  cut -f \$(head -n1 "${setname}_linmod" | tr '\\t' '\\n' | grep -n 'linear modeled' | cut -f1 -d':') "${setname}_linmod" | grep "^[0-1]\\.[0-9]*\$" || echo 'Could not calculate linear modeled q-values for ${td} peptides of set ${setname}' >> warnings
   """
 }
 
@@ -786,6 +794,8 @@ process proteinGeneSymbolTableFDR {
 
   output:
   set val(setname), val(acctype), file("${setname}_protfdr") into protfdrout
+  file('warnings') optional true into fdrwarnings
+
   script:
   scorecolpat = acctype == 'proteins' ? '^q-value$' : 'linear model'
   """
@@ -802,7 +812,7 @@ process proteinGeneSymbolTableFDR {
     else
       scpat="svm"
       logflag=""
-      echo 'WARNING: Not enough q-values or linear-model q-values for peptides to calculate FDR for ${acctype} of set ${setname}, using svm score instead.' >> warnings
+      echo 'Not enough q-values or linear-model q-values for peptides to calculate FDR for ${acctype} of set ${setname}, using svm score instead.' >> warnings
   fi
 
   mssprottable bestpeptide -i tprotquant -o tbestpeptides --peptable tpeplinmod --scorecolpattern "\$scpat" \$logflag --protcol ${accolmap[acctype] + 1}
@@ -812,6 +822,12 @@ process proteinGeneSymbolTableFDR {
   """
 }
 
+
+psmwarnings
+  .concat(pepwarnings)
+  .concat(fdrwarnings)
+  .toList()
+  .set { warnings }
 
 // setname, acctype, outfile
 peptides_out
@@ -1067,6 +1083,7 @@ process collectQC {
   set val(acctypes), file('feat?'), file('summary?'), file('overlap?') from collected_feats_qc
   val(plates) from qcplates
   file('sw_ver') from software_versions_qc
+  file('warnings??') from warnings
 
   output:
   set file('qc_light.html'), file('qc_full.html')
@@ -1089,6 +1106,8 @@ process collectQC {
   # remove Yaml from software_versions to get HTML
   grep -A \$(wc -l sw_ver | cut -f 1 -d ' ') "data\\:" sw_ver | tail -n+2 > sw_ver_cut
   
+  # merge warnings
+  cat warnings* > warnings.txt
   # collect and generate HTML report
   qc_collect.py $baseDir/assets/qc_full.html $params.name ${fractionation ? "frac" : "nofrac"} ${plates.join(' ')}
   qc_collect.py $baseDir/assets/qc_light.html $params.name ${fractionation ? "frac" : "nofrac"} ${plates.join(' ')}

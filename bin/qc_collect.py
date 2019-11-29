@@ -20,6 +20,11 @@ with open('psms.html') as fp:
     psmsel = parse(fp).find('body').findall('div')
 with open('sw_ver_cut') as fp:
     software = parse(fp).find('body').find('dl').getchildren()
+try:
+    with open('warnings.txt') as fp:
+        warnings = fp.read().strip().split('\n')
+except FileNotFoundError:
+    warnings = []
 
 sw_ver_template = """
 <table class="table">
@@ -128,4 +133,4 @@ if templatetype == 'qc_light' and 'genes' in overlaptables:
     overlaptables.pop('proteins')
     
 with open('{}.html'.format(templatetype), 'w') as fp:
-    fp.write(main.render(sumtable=sumtable, overlap=overlaptables, tablefieldtitles=tablefieldtitles, frac=frac, searchname=searchname, titles=titles, featnames=featnames[templatetype], psms=psms, firstplate=sorted(ppsms.keys())[0], ppsms=ppsms, features=graphs, software=sw_ver_template.format('\n'.join(sw_vers))))
+    fp.write(main.render(sumtable=sumtable, overlap=overlaptables, tablefieldtitles=tablefieldtitles, frac=frac, searchname=searchname, titles=titles, featnames=featnames[templatetype], psms=psms, firstplate=sorted(ppsms.keys())[0], ppsms=ppsms, features=graphs, software=sw_ver_template.format('\n'.join(sw_vers)), warnings=warnings))
