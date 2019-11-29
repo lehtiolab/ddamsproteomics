@@ -818,7 +818,7 @@ process proteinGeneSymbolTableFDR {
   mssprottable bestpeptide -i tprotquant -o tbestpeptides --peptable tpeplinmod --scorecolpattern "\$scpat" \$logflag --protcol ${accolmap[acctype] + 1}
   mssprottable bestpeptide -i dproteins -o dbestpeptides --peptable dpeplinmod --scorecolpattern "\$scpat" \$logflag --protcol ${accolmap[acctype] + 1}
 
-  mssprottable ${acctype == 'proteins' ? 'protfdr' : 'pickedfdr'} -i tbestpeptides --decoyfn dbestpeptides -o ${setname}_protfdr ${acctype == 'genes' ? "--picktype fasta --targetfasta '$tfasta' --decoyfasta '$dfasta' ${params.fastadelim ? "--fastadelim '${params.fastadelim}' --genefield '${params.genefield}'" : '' }" : ''} ${acctype == 'symbols' ? 'pickedfdr --picktype result' : ''}
+  mssprottable ${acctype == 'proteins' ? 'protfdr' : 'pickedfdr'} -i tbestpeptides --decoyfn dbestpeptides -o ${setname}_protfdr ${acctype == 'genes' ? "--picktype fasta --targetfasta '$tfasta' --decoyfasta '$dfasta' ${params.fastadelim ? "--fastadelim '${params.fastadelim}' --genefield '${params.genefield}'" : '' }" : ''} ${acctype == 'assoc' ? '--picktype result' : ''}
   """
 }
 
@@ -1107,7 +1107,7 @@ process collectQC {
   grep -A \$(wc -l sw_ver | cut -f 1 -d ' ') "data\\:" sw_ver | tail -n+2 > sw_ver_cut
   
   # merge warnings
-  cat warnings* > warnings.txt
+  test -f warnings* && cat warnings* > warnings.txt
   # collect and generate HTML report
   qc_collect.py $baseDir/assets/qc_full.html $params.name ${fractionation ? "frac" : "nofrac"} ${plates.join(' ')}
   qc_collect.py $baseDir/assets/qc_light.html $params.name ${fractionation ? "frac" : "nofrac"} ${plates.join(' ')}
