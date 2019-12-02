@@ -28,6 +28,7 @@
 <body>
 <div class="container">
   <h2 class="title is-2">Full QC for {{ searchname }}</h2>
+  <h4 class="subtitle is-4">Completed on {{ completedate }}</h4>
   <hr>
   <div class="columns">
     <div class="column">
@@ -36,6 +37,7 @@
     </div>
     <div class="column">
       <h3 class="title is-3">Warnings</h3>
+      {% if warnings|length %}
       <div class="notification is-danger">
         <ul>
           {% for warn in warnings %}
@@ -43,6 +45,11 @@
           {% endfor %}
         </ul>
       </div>
+      {% else %}
+      <div class="notification">
+        No warnings
+      </div>
+      {% endif %}
     </div>
   </div>
 
