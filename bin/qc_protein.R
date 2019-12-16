@@ -128,7 +128,7 @@ if (feattype == 'proteins') {
 #isobaric
 # first get a fullsamplename to set lookup, if we have a sampletable
 use_sampletable = FALSE
-if (sampletable) {
+if (is.character(sampletable)) {
   use_sampletable = TRUE
   sampletable = read.table('sampletable', header=F, sep='\t', comment.char='', quote='', colClasses=c('character'))
   colnames(sampletable) = c('ch', 'set', 'sample', 'group')
