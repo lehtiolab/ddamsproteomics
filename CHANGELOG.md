@@ -1,5 +1,10 @@
 # lehtiolab/ddamsproteomics: Changelog
 
+## Version 1.4 [2019-12-16]
+- Fix bug in ENSG FDR reporting (upgrade msstitch 2.19)
+- Low impact fixes for runs with bad MS / few PSMs.
+
+
 ## Version 1.3 [2019-11-29]
 - Do not crash when PSM data for some but not all sets is not good enough
 - miscleav/set/fr/plate not by python script but in pipeline or by msstitch
