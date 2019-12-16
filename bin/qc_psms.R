@@ -7,7 +7,7 @@ has_fractions = args[2] == TRUE
 plateids = args[3:length(args)]
 
 feats = read.table("psms", header=T, sep="\t", comment.char = "", quote = "")
-ycol = 'amount'
+ycol = 'value'
 if (has_fractions) {
   width = 480
   xcol ='plateID'
@@ -22,25 +22,24 @@ if (has_fractions) {
 
 
 ##### PSM-scans
-idcols = c(xcol, ycol)
-
-amount_psms = aggregate(SpecID~get(xcol), feats, length)
 set_amount_psms = aggregate(SpecID~Biological.set, feats, length)
-names(amount_ms2) = idcols
-names(amount_psms) = idcols
-amount_ms2$count = 'MS2 scans'
-amount_psms$count = 'PSMs IDed'
 names(set_amount_psms) = c('Set', 'psmcount')
 write.table(set_amount_psms, 'summary.txt', row.names=F, quote=F, sep='\t')
-amount_id = rbind(amount_psms, amount_ms2)
-amount_id$count = as.factor(amount_id$count)
-procents = dcast(amount_id, get(xcol)~count, value.var='amount')
+
+amount_psms = aggregate(SpecID~get(xcol), feats, length)
+mscol = 'MS2 scans'
+psmcol = 'PSMs IDed'
+names(amount_ms2) = c(xcol, mscol)
+names(amount_psms) = c(xcol, psmcol)
+amount_id=merge.data.frame(amount_ms2[c(xcol, mscol)], amount_psms[c(xcol, psmcol)], by.x=xcol, by.y=xcol, all=T)
+amount_id = melt(amount_id, measure.vars=c(mscol, psmcol))
+procents = dcast(amount_id, get(xcol)~variable, value.var=ycol)
 procents$p = procents$`PSMs IDed` / procents$`MS2 scans`
 png('psm-scans', width=width, height=(3 * nrsets + 2) * 72)
 print(ggplot(amount_id) +
-  geom_bar(aes_string(x=xcol, y=ycol, fill='count'), stat='identity', position='dodge') + coord_flip() +
+  geom_bar(aes_string(x=xcol, y=ycol, fill='variable'), stat='identity', position='dodge') + coord_flip() +
     xlab('Plate') + theme_bw() + theme(axis.title=element_text(size=20), axis.text=element_text(size=15), legend.position="top", legend.text=element_text(size=15), legend.title=element_blank()) +
-  geom_text(data=subset(amount_id, count=='PSMs IDed'), aes(y=amount * 1.5, x=!!ensym(xcol), label=paste(100*round(procents$p, 2), '%')), nudge_x=.25, colour="black", size=8))
+  geom_text(data=subset(amount_id, variable==psmcol), aes(y=value * 1.5, x=!!ensym(xcol), label=paste(100*round(procents$p, 2), '%')), nudge_x=.25, colour="black", size=8))
 dev.off()
 
 if (length(grep('plex', names(feats)))) {

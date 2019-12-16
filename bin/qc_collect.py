@@ -5,6 +5,7 @@ from lxml.html import parse, tostring
 import sys
 from collections import OrderedDict
 import os
+from datetime import datetime
 
 
 ppsms = {}
@@ -133,4 +134,4 @@ if templatetype == 'qc_light' and 'genes' in overlaptables:
     overlaptables.pop('proteins')
     
 with open('{}.html'.format(templatetype), 'w') as fp:
-    fp.write(main.render(sumtable=sumtable, overlap=overlaptables, tablefieldtitles=tablefieldtitles, frac=frac, searchname=searchname, titles=titles, featnames=featnames[templatetype], psms=psms, firstplate=sorted(ppsms.keys())[0], ppsms=ppsms, features=graphs, software=sw_ver_template.format('\n'.join(sw_vers)), warnings=warnings))
+    fp.write(main.render(sumtable=sumtable, overlap=overlaptables, tablefieldtitles=tablefieldtitles, frac=frac, searchname=searchname, titles=titles, featnames=featnames[templatetype], psms=psms, firstplate=sorted(ppsms.keys())[0], ppsms=ppsms, features=graphs, software=sw_ver_template.format('\n'.join(sw_vers)), warnings=warnings, completedate=datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S')))

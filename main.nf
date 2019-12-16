@@ -336,7 +336,6 @@ mzml_in
 sets
   .map{ it -> it[0] }
   .unique()
-  .tap { setnames_psm } 
   .collect()
   .map { it -> [it] }
   .into { setnames_featqc; setnames_psmqc }
@@ -692,15 +691,13 @@ process createPSMTable {
 }
 
 // Collect setnames and merge with PSM tables for peptide table creation
-setnames_psm
-  .toList()
-  .map { it -> [it.sort()]}
-  .set { setlist_psm }
+def listify(it) {
+  return it instanceof java.util.List ? it : [it]
+}
 setpsmtables
-  .map { it -> [it[0], it[1] instanceof java.util.List ? it[1] : [it[1]] ] }
-  .map{ it -> [it[0], it[1].sort { a, b -> a.baseName.tokenize('.')[0] <=> b.baseName.tokenize('.')[0] }] } // names are setnames, sort on them then merge with sorted setnames
+  .map { it -> [it[0], listify(it[1])] }
+  .map{ it -> [it[0], it[1].collect() { it.baseName.replaceFirst(/\.tsv$/, "") }, it[1]]}
   .tap { deqms_psms }
-  .merge(setlist_psm)
   .transpose()
   .set { psm_pep }
 
@@ -708,7 +705,7 @@ setpsmtables
 process psm2Peptides {
 
   input:
-  set val(td), file('psms'), val(setname) from psm_pep
+  set val(td), val(setname), file('psms') from psm_pep
   
   output:
   set val(setname), val(td), file("${setname}_linmod") into pepslinmod
@@ -728,9 +725,9 @@ process psm2Peptides {
   paste <( cut -f ${col} peptides) <( cut -f 1-${col-1},${col+1}-500 peptides) > peptide_table.txt
   # Create empty protein/gene/gene-symbol tables with only the identified accessions, will be filled later
   echo Protein ID|tee proteins genes symbols
-  ${!params.onlypeptides ? "tail -n+2 psms|cut -f ${accolmap.proteins}|grep -v '\\;'| grep -v '^NA\$' | grep -v '^\$'|sort|uniq >> proteins" : "" }
-  ${params.genes ? "tail -n+2 psms|cut -f ${accolmap.genes}|grep -v '\\;'| grep -v '^NA\$' | grep -v '^\$'|sort|uniq >> genes" : ""}
-  ${params.symbols ? "tail -n+2 psms|cut -f ${accolmap.assoc}|grep -v '\\;'| grep -v '^NA\$' | grep -v '^\$'|sort|uniq >> symbols" : ""}
+  ${!params.onlypeptides ? "tail -n+2 psms|cut -f ${accolmap.proteins}|grep -v '\\;'| grep -v '^NA\$' | grep -v '^\$'|sort|uniq >> proteins || echo 'Could not find any ${td} proteins for set ${setname}' >> warnings" : "" }
+  ${params.genes ? "tail -n+2 psms|cut -f ${accolmap.genes}|grep -v '\\;'| grep -v '^NA\$' | grep -v '^\$'|sort|uniq >> genes || echo 'Could not find any ${td} genes for set ${setname}' >> warnings" : ""}
+  ${params.symbols ? "tail -n+2 psms|cut -f ${accolmap.assoc}|grep -v '\\;'| grep -v '^NA\$' | grep -v '^\$'|sort|uniq >> symbols || echo 'Could not find any ${td} symbols for set ${setname}' >> warnings" : ""}
   ${do_raw_isoquant ? "msspsmtable isoratio -i psms -o pepisoquant --targettable peptide_table.txt --protcol ${accolmap.peptides} --isobquantcolpattern plex --minint 0.1 --denompatterns ${setdenoms[setname].join(' ')}" : ''}
   ${do_raw_isoquant ? "mv pepisoquant peptide_table.txt" : ''}
   # Create linear modeled q-values of peptides (modeled svm scores vs q-values) for more protein-FDR precision.
@@ -838,7 +835,7 @@ peptides_out
 
 deqms_psms
   .filter { it[0] == 'target' }
-  .map { it -> [it[1].collect { x -> x.baseName.tokenize('.')[0] }, it[1]] }
+  .map { it -> [it[1], it[2]] } 
   .transpose()
   .cross(features_out)
   .map { it -> it[0] + [it[1][1], it[1][2]] }
@@ -1107,7 +1104,7 @@ process collectQC {
   grep -A \$(wc -l sw_ver | cut -f 1 -d ' ') "data\\:" sw_ver | tail -n+2 > sw_ver_cut
   
   # merge warnings
-  test -f warnings* && cat warnings* > warnings.txt
+  ls warnings* && cat warnings* > warnings.txt
   # collect and generate HTML report
   qc_collect.py $baseDir/assets/qc_full.html $params.name ${fractionation ? "frac" : "nofrac"} ${plates.join(' ')}
   qc_collect.py $baseDir/assets/qc_light.html $params.name ${fractionation ? "frac" : "nofrac"} ${plates.join(' ')}
