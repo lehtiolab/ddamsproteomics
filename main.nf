@@ -26,7 +26,9 @@ def helpMessage() {
       --mzmldef                     Alternative to --mzml: path to file containing list of mzMLs 
                                     with sample set and fractionation annotation (see docs)
       --tdb                         Path to target FASTA protein database
-      --mods                        Path to MSGF+ modification file (two examples in assets folder)
+      --mods                        Modifications specified by their UNIMOD name. e.g. --mods Oxidation;Carbamidomethyl
+                                    Note that there are a limited number of modifications available, but that
+                                    this list can easily be expanded
       -profile                      Configuration profile to use. Can use multiple (comma separated)
                                     Available: standard, conda, docker, singularity, awsbatch, test
 
@@ -95,6 +97,9 @@ params.email = false
 params.plaintext_email = false
 
 params.mzmls = false
+params.mods = false
+params.maxvarmods = 2
+params.customMods = false
 params.martmap = false
 params.isobaric = false
 params.instrument = 'qe' // Default instrument is Q-Exactive
@@ -130,8 +135,6 @@ params.deqms = false
 
 // Validate and set file inputs
 fractionation = (params.hirief || params.fractions)
-mods = file(params.mods)
-if( !mods.exists() ) exit 1, "Modification file not found: ${params.mods}"
 tdb = file(params.tdb)
 if( !tdb.exists() ) exit 1, "Target fasta DB file not found: ${params.tdb}"
 
@@ -557,13 +560,24 @@ process createTargetDecoyFasta {
 }
 
 
+process createModFile {
+
+  output:
+  file('mods.txt') into mods
+
+  script:
+  """
+  create_modfile.py ${params.maxvarmods} "${params.mods}${params.isobaric ? ";${params.isobaric}" : ''}" ${params.customMods ? "${params.customMods}" : ''}
+  """
+}
+
 process msgfPlus {
   cpus = config.poolSize < 4 ? config.poolSize : 4
 
   input:
   set val(setname), val(sample), file(x), val(platename), val(fraction) from mzml_msgf
   file(db) from concatdb
-  file mods
+  file(mods) from mods
 
   output:
   set val(setname), val(sample), file("${sample}.mzid") into mzids
