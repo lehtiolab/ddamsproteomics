@@ -19,20 +19,22 @@ def helpMessage() {
 
     The typical command for running the pipeline is as follows:
 
-    nextflow run nf-core/ddamsproteomics --mzmls '*.mzML' --tdb swissprot_20181011.fa --mods assets/tmtmods.txt -profile standard,docker
+    nextflow run nf-core/ddamsproteomics --mzmls '*.mzML' --tdb swissprot_20181011.fa --mods 'oxidation;carbamidomethyl', --ptms 'acetyl' -profile standard,docker
 
     Mandatory arguments:
       --mzmls                       Path to mzML files
       --mzmldef                     Alternative to --mzml: path to file containing list of mzMLs 
                                     with sample set and fractionation annotation (see docs)
       --tdb                         Path to target FASTA protein database
-      --mods                        Modifications specified by their UNIMOD name. e.g. --mods Oxidation;Carbamidomethyl
-                                    Note that there are a limited number of modifications available, but that
-                                    this list can easily be expanded
       -profile                      Configuration profile to use. Can use multiple (comma separated)
                                     Available: standard, conda, docker, singularity, awsbatch, test
 
     Options:
+      --mods                        Modifications specified by their UNIMOD name. e.g. --mods Oxidation;Carbamidomethyl
+                                    Note that there are a limited number of modifications available, but that
+                                    this list can easily be expanded
+      --ptms                        As for --mods, but pipeline will output false localization rate e.g. --ptms 'Methyl;Dimethyl' 
+      --phospho                     Flag to pass in case of using phospho-enriched samples
       --isobaric VALUE              In case of isobaric, specify: tmt10plex, tmt6plex, itraq8plex, itraq4plex
       --prectol                     Precursor error for search engine (default 10ppm)
       --iso_err                     Isotope error for search engine (default -1,2)
@@ -98,8 +100,8 @@ params.plaintext_email = false
 
 params.mzmls = false
 params.mods = false
+params.ptms = false
 params.maxvarmods = 2
-params.customMods = false
 params.martmap = false
 params.isobaric = false
 params.instrument = 'qe' // Default instrument is Q-Exactive
@@ -168,6 +170,9 @@ if (!(params.noquant) && params.isobaric && params.denoms) {
 }
 
 plextype = params.isobaric ? params.isobaric.replaceFirst(/[0-9]+plex/, "") : 'false'
+
+luciphor_ptms = params.ptms.tokenize(';')
+
 normalize = (!params.noquant && params.normalize && params.isobaric)
 rawisoquant = (!params.noquant && !params.normalize && params.isobaric)
 
@@ -211,6 +216,8 @@ summary['mzMLs']        = params.mzmls
 summary['Target DB']    = params.tdb
 summary['Sample annotations'] = params.sampletable
 summary['Modifications'] = params.mods
+summary['PTMs'] = params.ptms
+summary['Phospho enriched'] = params.phospho
 summary['Instrument'] = params.instrument
 summary['Precursor tolerance'] = params.prectol
 summary['Isotope error'] = params.iso_err
@@ -332,8 +339,8 @@ def or_na(it, length){
 // Set fraction name to NA if not specified
 mzml_in
   .tap { mzmlfiles_counter } // for counting, so config can set time limit
-  .map { it -> [it[1], file(it[0]).baseName.replaceFirst(/.*\/(\S+)\.mzML/, "\$1"), file(it[0]), it[2] ? it[2] : it[1], it[3] ? it[3] : 'NA' ]}
-  .into { sets; strips; mzmlfiles; mzml_quant; mzml_msgf }
+  .map { it -> [it[1], file(it[0]).baseName, file(it[0]), (it.size() > 2 ? it[2] : it[1]), or_na(it, 3)] }
+  .into { sets; strips; mzmlfiles; mzml_luciphor; mzml_quant; mzml_msgf }
 
 // Set names are first item in input lists, collect them for PSM tables and QC purposes
 sets
@@ -567,7 +574,7 @@ process createModFile {
 
   script:
   """
-  create_modfile.py ${params.maxvarmods} "${params.mods}${params.isobaric ? ";${params.isobaric}" : ''}" ${params.customMods ? "${params.customMods}" : ''}
+  create_modfile.py ${params.maxvarmods} "${params.msgfmods}" "${params.mods}${params.isobaric ? ";${params.isobaric}" : ''}${params.ptms ? ";${params.ptms}" : ''}"
   """
 }
 
@@ -646,17 +653,49 @@ process fdrToTSV {
   mkdir outtables
   msspsmtable percolator --perco $perco -d outtables -i ${tsvs.collect() { "'$it'" }.join(' ')} --mzids ${mzids.collect() { "'$it'" }.join(' ')}
   msspsmtable merge -i outtables/* -o psms
-  msspsmtable split -i psms --splitcol \$(head -n1 psms | tr '\t' '\n' | grep -n ^TD\$ | cut -f 1 -d':')
+  msspsmtable conffilt -i psms -o filtpsm --confidence-better lower --confidence-lvl $params.psmconflvl --confcolpattern 'PSM q-value'
+  msspsmtable conffilt -i filtpsm -o filtpep --confidence-better lower --confidence-lvl $params.pepconflvl --confcolpattern 'peptide q-value'
+  msspsmtable split -i filtpep --splitcol \$(head -n1 psms | tr '\t' '\n' | grep -n ^TD\$ | cut -f 1 -d':')
   """
 }
 
 // Collect percolator data of target/decoy and feed into PSM table creation
 tmzidtsv_perco
+  .tap { prepsm_perset }
   .concat(dmzidtsv_perco)
   .groupTuple(by: 1)
   .combine(quant_lookup)
   .set { prepsm }
 
+mzml_luciphor
+  .map { it -> [it[0], it[2]] } // only need setname and mzml
+  .groupTuple()
+  .join(prepsm_perset)
+  .set { psm_luciphor }
+
+process luciphorPTMLocalizationScoring {
+
+  when: params.ptms
+
+  input:
+  set val(setname), file(mzmls), val(td), file('psms') from psm_luciphor
+  each ptm from luciphor_ptms
+
+  script:
+  """
+  export MZML_PATH=\$(pwd)
+  export MINPSMS=${params.minpsms_luciphor}
+  export ALGO=${params.activation == 'hcd' ? '1' : '0'}
+  export MAXPEPLEN=${params.maxpeplen}
+  export MAXCHARGE=${params.maxcharge}
+  export THREAD=${task.cpus * params.threadspercore}
+  export MS2TOLVALUE=10
+  export MS2TOLTYPE=ppm
+  cat "$baseDir/assets/luciphor2_input_template.txt" | envsubst > lucinput.txt
+  luciphor_prep.py psms lucinput.txt "${params.msgfmods}" "${params.mods}${params.isobaric ? ";${params.isobaric}" : ''}" "${ptm}"
+  luciphor2 luciphor_config.txt
+  """
+}
 
 
 /*
@@ -686,13 +725,11 @@ process createPSMTable {
 
   """
   msspsmtable merge -i psms* -o psms.txt
-  msspsmtable conffilt -i psms.txt -o filtpsm --confidence-better lower --confidence-lvl $params.psmconflvl --confcolpattern 'PSM q-value'
-  msspsmtable conffilt -i filtpsm -o filtpep --confidence-better lower --confidence-lvl $params.pepconflvl --confcolpattern 'peptide q-value'
-  tail -n+2 filtpep | grep . || (echo "No ${td} PSMs made the combined PSM / peptide FDR cutoff (${params.psmconflvl} / ${params.pepconflvl})" && exit 1)
+  tail -n+2 psms.txt | grep . || (echo "No ${td} PSMs made the combined PSM / peptide FDR cutoff (${params.psmconflvl} / ${params.pepconflvl})" && exit 1)
   # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
   cat lookup > $psmlookup
-  msslookup psms -i filtpep --dbfile $psmlookup ${params.onlypeptides ? '' : "--fasta ${td == 'target' ? "\"${tdb}\"" : "\"${ddb}\" --decoy"}"} ${params.martmap ? "--map ${martmap}" : ''}
-  msspsmtable specdata -i filtpep --dbfile $psmlookup -o prepsms.txt --addmiscleav
+  msslookup psms -i psms.txt --dbfile $psmlookup ${params.onlypeptides ? '' : "--fasta ${td == 'target' ? "\"${tdb}\"" : "\"${ddb}\" --decoy"}"} ${params.martmap ? "--map ${martmap}" : ''}
+  msspsmtable specdata -i psms.txt --dbfile $psmlookup -o prepsms.txt --addmiscleav
   ${!params.noquant && td == 'target' ? "msspsmtable quant -i prepsms.txt -o qpsms.txt --dbfile $psmlookup --precursor ${params.isobaric ? '--isobaric' : ''}" : 'mv prepsms.txt qpsms.txt'}
   sed 's/\\#SpecFile/SpectraFile/' -i qpsms.txt
   ${!params.onlypeptides ? "msspsmtable genes -i qpsms.txt -o gpsms --dbfile $psmlookup" : ''}
