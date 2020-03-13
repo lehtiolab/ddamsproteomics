@@ -231,7 +231,7 @@ if (feattype != 'peptides') {
   peps = read.table(peptable, header=T, sep='\t', comment.char='', quote='')
   ms1qcols = grep('MS1.area', colnames(peps))
   nrpep_set = melt(peps, id.vars=c("Protein.s."), measure.vars=ms1qcols, na.rm=T)
-  if (dim(nrpep_set)[1] != 0) {
+  if (nrow(nrpep_set) > 0 && ncol(nrpep_set) > 1) { # first column is features (proteins/genes)
     nrpep_set$Set = sub('_MS1.area.*', '', nrpep_set$variable)
     nrpep_set = aggregate(variable~Protein.s.+Set, nrpep_set, length) 
     nrpep_set = transform(nrpep_set, setrank=ave(variable, Set, FUN = function(x) rank(x, ties.method = "random")))
