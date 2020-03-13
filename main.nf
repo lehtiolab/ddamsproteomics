@@ -292,10 +292,10 @@ process get_software_versions {
     echo $workflow.nextflow.version > v_nextflow.txt
     msgf_plus | head -n1 > v_msgf.txt
     hardklor | head -n1 > v_hk.txt || true
-    kronik | head -n2 > v_kr.txt
+    kronik | head -n2 | tr -cd '[:alnum:]._-' > v_kr.txt
     percolator -h |& head -n1 > v_perco.txt || true
     msspsmtable --version > v_mss.txt
-    source activate openms-2.4.0
+    source activate openms-2.5.0
     IsobaricAnalyzer |& grep Version > v_openms.txt || true
     scrape_software_versions.py > software_versions.yaml
     """
@@ -366,13 +366,14 @@ process quantifySpectra {
   script:
   activationtype = [hcd:'High-energy collision-induced dissociation', cid:'Collision-induced dissociation', etd:'Electron transfer dissociation'][params.activation]
   massshift = [tmt:0.0013, itraq:0.00125, false:0][plextype]
+  isobtype = params.isobaric == 'tmtpro' ? 'tmt16plex' : params.isobaric
   """
   # Run hardklor on config file with added line for in/out files
   # then run kronik on hardklor and quant isobaric labels if necessary
   hardklor <(cat $hkconf <(echo "$infile" hardklor.out))
   kronik -c 5 -d 3 -g 1 -m 8000 -n 600 -p 10 hardklor.out ${sample}.kr
-  source activate openms-2.4.0
-  ${params.isobaric ? "IsobaricAnalyzer  -type $params.isobaric -in $infile -out \"${infile}.consensusXML\" -extraction:select_activation \"$activationtype\" -extraction:reporter_mass_shift $massshift -extraction:min_precursor_intensity 1.0 -extraction:keep_unannotated_precursor true -quantification:isotope_correction true" : ''}
+  source activate openms-2.5.0
+  ${params.isobaric ? "IsobaricAnalyzer -type $isobtype -in $infile -out \"${infile}.consensusXML\" -extraction:select_activation \"$activationtype\" -extraction:reporter_mass_shift $massshift -extraction:min_precursor_intensity 1.0 -extraction:keep_unannotated_precursor true -quantification:isotope_correction true" : ''}
   """
 }
 
