@@ -44,7 +44,7 @@
   </div>
   <hr>
 
-{% for graphtype in ["featyield", "isobaric"] %}
+{% for graphtype in ["featyield", "isobaric", "pca"] %}
   {% if graphtype in features['peptides'] or ('proteins' in features and graphtype in features['proteins']) %}
   <h4 class="title is-4">{{ titles[graphtype] }}</h4>
   <div class="columns">
