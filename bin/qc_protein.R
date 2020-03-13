@@ -130,7 +130,7 @@ if (feattype == 'proteins') {
 use_sampletable = FALSE
 if (is.character(sampletable)) {
   use_sampletable = TRUE
-  sampletable = read.table('sampletable', header=F, sep='\t', comment.char='', quote='', colClasses=c('character'))
+  sampletable = read.table(sampletable, header=F, sep='\t', comment.char='', quote='', colClasses=c('character'))
   colnames(sampletable) = c('ch', 'set', 'sample', 'group')
   lookup = sampletable$set
   rownames(sampletable) = apply(sampletable[c('group', 'sample', 'set', 'ch')], 1, paste, collapse='_')
@@ -275,7 +275,7 @@ if (length(deqpval_cols)) {
 
 
 # PCA
-if (length(deqpval_cols)) {
+if (use_sampletable) {
   pca_ana <- prcomp(t(na.omit(feats[,tmtcols])), scale. = TRUE)
   score.df <- as.data.frame(pca_ana$x)
   rownames(score.df) = sub('_[a-z0-9]*plex', '', rownames(score.df))
