@@ -70,7 +70,7 @@
   <hr>
 
 
-{% for graphtype in ["featyield", "precursorarea", "isobaric", "nrpsms", "nrpsmsoverlapping", 
+{% for graphtype in ["featyield", "precursorarea", "isobaric", "normfactors", "nrpsms", "nrpsmsoverlapping",
                      "percentage_onepsm", "ms1nrpeps", "deqms", "pca"] %}
   {% if graphtype in features['peptides'] or ('proteins' in features and graphtype in features['proteins']) %}
   <h4 class="title is-4">{{ titles[graphtype] }}</h4>
@@ -81,12 +81,6 @@
       {{ features[feat][graphtype] }}
     </div>
     {% endfor %}
-    {% if graphtype == "isobaric" and 'normfac' in features['proteins'] %}
-    <div class="column">
-      <h5 class="title is-5">Median centering</h5>
-        {{ features['proteins']['normfac']}}
-    </div>
-    {% endif %}
   </div>
 <hr>
 {% endif %}

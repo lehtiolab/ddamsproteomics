@@ -897,7 +897,7 @@ process normalizeFeaturesDEqMS {
   input:
   set val(setname), file("psms"), val(acctype), file("features") from deqms
   output:
-  set val("${setname}_${acctype}"), file("${setname}_feats"), file("psmcounts") into quanted_feats
+  set val("${setname}_${acctype}"), file("${setname}_feats"), file("psmcounts"), file("${setname}_channelmedians") into quanted_feats
   when: normalize
   
   script:
@@ -924,7 +924,7 @@ if(normalize) {
     .map { it ->  ["${it[0]}_${it[2]}".toString()] + it }
     .join(quanted_feats)
     .groupTuple(by: 3)  // all outputs of same accession type together.
-    .map { it -> [it[1], it[3], it[5], it[6]] }
+    .map { it -> [it[1], it[3], it[5], it[6], it[7]] }
     .set { ptables_to_merge }
 } else {
   feats_out
@@ -946,13 +946,13 @@ psmlookup
 process proteinPeptideSetMerge {
 
   input:
-  set val(setnames), val(acctype), file(tables), file("psmcounts?") from ptables_to_merge
+  set val(setnames), val(acctype), file(tables), file("psmcounts?"), file(normfacs) from ptables_to_merge
   file(lookup) from tlookup
   file('sampletable') from Channel.from(sampletable).first()
   
   output:
   set val(acctype), file('proteintable'), file('sampletable') into featqc_extra_peptide_samples
-  set val(acctype), file('proteintable') into merged_feats
+  set val(acctype), file('proteintable'), file(normfacs) into merged_feats
 
   script:
   if (normalize)
@@ -1000,11 +1000,11 @@ process proteinPeptideSetMerge {
 process calculateDEqMS {
 
   input:
-  set val(acctype), file('feats') from dqms_feats 
+  set val(acctype), file('feats'), file(normfacs) from dqms_feats 
   file('sampletable') from Channel.from(sampletable).first()
 
   output:
-  set val(acctype), file('deqms_output') into dqms_out 
+  set val(acctype), file('deqms_output'), file(normfacs) into dqms_out 
 
   script:
   """
@@ -1065,18 +1065,24 @@ process featQC {
   publishDir "${params.outdir}", mode: 'copy', overwrite: true, saveAs: {it == "feats" ? "${outname}_table.txt": null}
 
   input:
-  set val(acctype), file('feats'), val(setnames), file(peptable), file(sampletable) from featqcinput
+  set val(acctype), file('feats'), file(normfacs), val(setnames), file(peptable), file(sampletable) from featqcinput
+
   output:
   file('feats') into featsout
   set val(acctype), file('featqc.html'), file('summary.txt'), file('overlap') into qccollect
 
   script:
   outname = (acctype == 'assoc') ? 'symbols' : acctype
+  show_normfactors = setdenoms.size() && normalize
   """
+  # combine multi-set normalization factors
+  cat ${normfacs} > allnormfacs
   # Create QC plots and put them base64 into HTML, R also creates summary.txt
-  qc_protein.R --sets ${setnames.collect() { "'$it'" }.join(' ')} --feattype ${acctype} --peptable $peptable ${params.sampletable ? "--sampletable $sampletable" : ''}
+  # FIXME normalization factor plots should not depend on denoms, can also be sweep when deqms has support for that
+  # ... change switch to that here and below: normalize ? --normtable ... 
+  qc_protein.R --sets ${setnames.collect() { "'$it'" }.join(' ')} --feattype ${acctype} --peptable $peptable ${params.sampletable ? "--sampletable $sampletable" : ''} ${show_normfactors ? '--normtable allnormfacs' : ''}
   echo "<html><body>" > featqc.html
-  for graph in featyield precursorarea coverage isobaric nrpsms nrpsmsoverlapping percentage_onepsm ms1nrpeps;
+  for graph in featyield precursorarea coverage isobaric ${show_normfactors ? 'normfactors': ''} nrpsms nrpsmsoverlapping percentage_onepsm ms1nrpeps;
     do
     [ -e \$graph ] && paste -d \\\\0  <(echo "<div class=\\"chunk\\" id=\\"\${graph}\\"><img src=\\"data:image/png;base64,") <(base64 -w 0 \$graph) <(echo '"></div>') >> featqc.html
     done 

@@ -11,7 +11,7 @@ parser$add_argument('--sets', dest='sets', type='character', nargs='+')
 parser$add_argument('--feattype', type='character')
 parser$add_argument('--peptable', type='character')
 parser$add_argument('--sampletable', type='character', default=FALSE)
-parser$add_argument('--normtable', type='character')
+parser$add_argument('--normtable', type='character', default=FALSE)
 opt = parser$parse_args()
 
 #args = commandArgs(trailingOnly=TRUE)
@@ -139,12 +139,13 @@ if (is.character(sampletable)) {
 }
 
 if (length(grep('plex', names(feats)))) {
+  # First produce the boxplots
   tmtcols = colnames(feats)[setdiff(grep('plex', colnames(feats)), grep('quanted', colnames(feats)))]
   overlap = na.exclude(feats[c(tmtcols, qcols)])
   overlap = dim(overlap[apply(overlap[qcols], 1, function(x) any(x<0.01)),])[1]
   tmt = melt(feats, id.vars=featcol, measure.vars = tmtcols)
   if (use_sampletable) {
-    tmt$Set = apply(tmt, 1, function(x) { key = sub('_[a-z0-9]*plex', '', x[["variable"]]); print(key); return (lookup[[key]]) })
+    tmt$Set = apply(tmt, 1, function(x) { key = sub('_[a-z0-9]*plex', '', x[["variable"]]); return (lookup[[key]]) })
   } else { 
     tmt$Set = sub('_[a-z0-9]*plex.*', '', tmt$variable)
   }
@@ -158,6 +159,21 @@ if (length(grep('plex', names(feats)))) {
   png('isobaric', height=(3 * nrsets + 1) * 72)
   print(outplot)
   dev.off()
+
+  # Also produce normalization factor plot
+  if (opt$normtable != FALSE) {
+    norms = read.table(opt$normtable, header=F, sep='\t', comment.char='', quote='')
+    colnames(norms) = c('Set', 'variable', 'value')
+    norms$variable = sub('[a-z].*[0-9]*plex_', '', norms$variable)
+    png('normfactors', height=(3 * nrsets + 1) * 72)
+    print(ggplot(norms, aes(fct_rev(Set), value, group=variable)) + 
+      geom_col(aes(fill=variable), position=position_dodge(width=1)) +
+      geom_text(aes(y=min(norms$value), label=round(value, 4)), position=position_dodge(width=1), colour="gray20", size=6, hjust=0) +
+      coord_flip() + ylab('Normalizing factor') + xlab('Channels') + theme_bw() + 
+      theme(axis.title=element_text(size=30), axis.text=element_text(size=20)) + 
+      theme(legend.text=element_text(size=20), legend.position="top", legend.title=element_blank()))
+    dev.off()
+  }
 }
 
 #nrpsmsoverlapping
