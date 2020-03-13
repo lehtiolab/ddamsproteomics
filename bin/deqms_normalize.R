@@ -27,6 +27,7 @@ write.table(countout, 'psmcounts', sep='\t', quote=F, row.names=F, col.names=F)
 rownames(psm.counts) = psm.counts$Var1
 
 # Normalize and filter features against the passed filtered_features table
+medianfile = sprintf("%s_channelmedians", setname)
 if (is.na(denomcols)) {
   print('Median sweeping')
   proteins.nm = medianSweeping(psms, group_col=2)
@@ -35,6 +36,17 @@ if (is.na(denomcols)) {
   print('Median summarizing with denominators')
   denomcols = as.numeric(strsplit(denomcols, ",")[[1]])
   proteins = medianSummary(psms, group_col=2, ref_col=denomcols)
+
+  ##### This could be built into yafeng/deqms#1, deprecate when released, call sweep/equalmediannorm with medianfile instead
+  sizefactor = matrixStats::colMedians(as.matrix(proteins),na.rm = TRUE)
+  write.table(data.frame(channels=colnames(proteins), medians=sizefactor), medianfile, sep='\t', quote=F, row.names=F)
+  #######
+
+  ### Add setnames to medians table. This should be done also for sweep when deqms has release:
+  chmedians = read.table(medianfile, sep='\t', header=T)
+  write.table(cbind(data.frame(setname=setname), chmedians), medianfile, sep='\t', quote=F, row.names=F, col.names=F)
+  ###
+
   proteins.nm = equalMedianNormalization(proteins)
 }
 # FIXME colnames proteins.nm should get sample name prefixed, so CTRL_tmt10plex_126, TREAT_tmt10plex_127N etc
