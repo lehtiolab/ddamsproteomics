@@ -9,7 +9,7 @@ dependencies:
   - bioconda::kronik=2.20
   - bioconda::msstitch=2.19
   - conda-forge::biopython=1.72
-  - bioconda::percolator=3.1
+  - bioconda::percolator=3.4
   - conda-forge::lxml=4.2.5
   - conda-forge::jinja2=2.10
   - conda-forge::r-argparse=2.0.1
