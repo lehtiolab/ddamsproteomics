@@ -1,7 +1,7 @@
-name: openms-2.4.0
+name: openms-2.5.0
 channels:
   - bioconda
   - conda-forge
   - defaults
 dependencies:
-  - bioconda::openms=2.4.0
+  - bioconda::openms=2.5.0
