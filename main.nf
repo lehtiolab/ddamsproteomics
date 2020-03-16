@@ -910,7 +910,7 @@ process normalizeFeaturesDEqMS {
   paste pepacc <(cut -f "\$channelcols" psms) > psmvals
   # run deqMS normalization and summarization, which produces logged ratios
 
-  ${params.denoms ? "denomcols=\$(egrep -n \'(${setdenoms[setname].join('|')})\' <( head -n1 psmvals | tr '\\t' '\\n') | cut -f1 -d ':' | tr '\\n' ',' | sed 's/,\$//') " : ""}
+  ${params.denoms ? "denomcols=\$(egrep -n \'(${setdenoms[setname].join('|')})\' <( head -n1 psmvals | tr '\\t' '\\n') | cut -f1 -d ':' | tr '\\n' ',' | sed 's/,\$//') " : "touch ${setname}_channelmedians"}
   deqms_normalize.R psmvals features $setname ${params.denoms ? "\$denomcols" : ''}
   # join feat tables on normalized proteins
   paste <(head -n1 features) <(head -n1 normalized_feats | cut -f2-2000) <(echo PSM counts) > ${setname}_feats 
