@@ -4,7 +4,7 @@ channels:
   - conda-forge
   - defaults
 dependencies:
-  - bioconda::msgf_plus=2019.07.03
+  - bioconda::msgf_plus=2020.03.12
   - bioconda::hardklor=2.3.0
   - bioconda::kronik=2.20
   - bioconda::msstitch=2.19
