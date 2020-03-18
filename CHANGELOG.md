@@ -1,5 +1,13 @@
 # lehtiolab/ddamsproteomics: Changelog
 
+## Version 1.5 [2020-03-17]
+- Upgrade percolator to 3.4
+- Upgrade openMS to 2.5
+- Upgrade MSGF+ to 2020.04.14
+- TMTpro 16plex can be searched
+- Channel median normalization factors output to QC
+- PCA in QC also for non-DEqMS samples
+
 ## Version 1.4 [2019-12-16]
 - Fix bug in ENSG FDR reporting (upgrade msstitch 2.19)
 - Low impact fixes for runs with bad MS / few PSMs.
