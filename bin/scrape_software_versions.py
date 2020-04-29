@@ -4,7 +4,7 @@ from collections import OrderedDict
 import re
 
 regexes = {
-    'nf-core/ddamsproteomics': ['v_pipeline.txt', r"(\S+)"],
+    'lehtiolab/ddamsproteomics': ['v_pipeline.txt', r"(\S+)"],
     'Nextflow': ['v_nextflow.txt', r"(\S+)"],
     'MSGF+': ['v_msgf.txt', r"([0-9\.]+)"],
     'Hardklor': ['v_hk.txt', r"([0-9\.]+)"],
@@ -15,7 +15,7 @@ regexes = {
 }
 
 results = OrderedDict()
-results['nf-core/ddamsproteomics'] = '<span style="color:#999999;\">N/A</span>'
+results['lehtiolab/ddamsproteomics'] = '<span style="color:#999999;\">N/A</span>'
 results['Nextflow'] = '<span style="color:#999999;\">N/A</span>'
 
 # Search each file using its regex
@@ -28,9 +28,9 @@ for k, v in regexes.items():
 
 # Dump to YAML
 print ('''
-id: 'nf-core/ddamsproteomics-software-versions'
-section_name: 'nf-core/ddamsproteomics Software Versions'
-section_href: 'https://github.com/nf-core/ddamsproteomics'
+id: 'lehtiolab/ddamsproteomics-software-versions'
+section_name: 'lehtiolab/ddamsproteomics Software Versions'
+section_href: 'https://github.com/lehtiolab/ddamsproteomics'
 plot_type: 'html'
 description: 'are collected at run time from the software output.'
 data: |
