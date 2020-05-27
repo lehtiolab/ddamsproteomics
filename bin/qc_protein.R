@@ -22,7 +22,7 @@ peptable = opt$peptable
 sampletable = opt$sampletable
 feats = read.table("feats", header=T, sep="\t", comment.char = "", quote = "")
 
-featcol = list(peptides='Peptide.sequence', proteins='Protein.ID', genes='Gene.ID', assoc='Gene.Name')[[feattype]]
+featcol = list(peptides='Peptide.sequence', proteins='Protein.ID', genes='Gene.Name', ensg='Gene.ID')[[feattype]]
 
 # nrpsms
 if (length(grep('plex', names(feats)))) {
@@ -206,11 +206,6 @@ if (length(grep('plex', names(feats)))) {
 
 # percentage_onepsm
 if (length(grep('plex', names(feats)))) {
-  nrpsmscols = colnames(feats)[grep('quanted_psm_count', colnames(feats))]
-  qcols = colnames(feats)[grep('_q.value', colnames(feats))]
-  tmtcols = colnames(feats)[grep('plex', colnames(feats))]
-  overlap = na.exclude(feats[c(featcol, tmtcols, qcols, nrpsmscols)])
-  overlap = overlap[apply(overlap[qcols], 1, function(x) any(x<0.01)),]
   if (nrow(overlap) > 0) {
     nrpsms = melt(overlap, id.vars=featcol, measure.vars = nrpsmscols)
     nrpsms$Set = sub('_quanted_psm_count', '', nrpsms$variable) # this is enough for DEqMS pipeline
@@ -247,12 +242,14 @@ if (feattype != 'peptides') {
 
 # precursorarea
 if (length(grep('area', names(feats)))) {
-    parea = melt(feats, id.vars=featcol, measure.vars = colnames(feats)[grep('area', colnames(feats))])
+    parea = melt(feats, id.vars=featcol, na.rm=T, measure.vars = colnames(feats)[grep('area', colnames(feats))])
     parea$Set = sub('_MS1.*', '', parea$variable)
-    png('precursorarea', height=(nrsets + 1) * 72)
-    print(ggplot(parea) + 
-      geom_boxplot(aes(fct_rev(Set), value)) + scale_y_log10() + coord_flip() + ylab("Intensity") + theme_bw() + theme(axis.title=element_text(size=30), axis.text=element_text(size=20), axis.title.y=element_blank()))
-    dev.off()
+    if (nrow(parea)) {
+      png('precursorarea', height=(nrsets + 1) * 72)
+      print(ggplot(parea) + 
+        geom_boxplot(aes(fct_rev(Set), value)) + scale_y_log10() + coord_flip() + ylab("Intensity") + theme_bw() + theme(axis.title=element_text(size=30), axis.text=element_text(size=20), axis.title.y=element_blank()))
+      dev.off()
+    }
 }
 
 
@@ -292,28 +289,31 @@ if (length(deqpval_cols)) {
 
 # PCA
 if (use_sampletable) {
-  pca_ana <- prcomp(t(na.omit(feats[,tmtcols])), scale. = TRUE)
-  score.df <- as.data.frame(pca_ana$x)
-  rownames(score.df) = sub('_[a-z0-9]*plex', '', rownames(score.df))
-  score.df$type = sampletable[rownames(score.df), "group"]
-
-  #Scree plot
-  contributions <- data.frame(contrib=round(summary(pca_ana)$importance[2,] * 100, 2)[1:20])
-  contributions$pc = rownames(contributions)
-  png('scree')
-  print(ggplot(data=contributions, aes(x=reorder(pc, -contrib), y=contrib)) +
-    geom_bar(stat='identity') +
-    theme_bw() + theme(axis.title=element_text(size=25), axis.text=element_text(size=15)) +
-    ylab("Contribution (%)"))
-  dev.off()
-  png('pca')
-  print(ggplot(data=score.df, aes(x =PC1, y =PC2, label=rownames(score.df), colour=type)) +
-    geom_hline(yintercept = 0, colour = "gray65") +
-    geom_vline(xintercept = 0, colour = "gray65") +
-    geom_point(size=4) +
-    theme_bw() + theme(axis.title=element_text(size=25), axis.text=element_text(size=20),
-		       legend.position="top", legend.text=element_text(size=20), legend.title=element_blank()) +
-    xlab(sprintf("PC1 (%s%%)", contributions$contrib[1])) + ylab(sprintf("PC2 (%s%%)", contributions$contrib[2]))
-    )
-  dev.off()
+  topca = na.omit(feats[,tmtcols])
+  if (nrow(topca)) {
+    pca_ana <- prcomp(t(topca), scale. = TRUE)
+    score.df <- as.data.frame(pca_ana$x)
+    rownames(score.df) = sub('_[a-z0-9]*plex', '', rownames(score.df))
+    score.df$type = sampletable[rownames(score.df), "group"]
+  
+    #Scree plot
+    contributions <- data.frame(contrib=round(summary(pca_ana)$importance[2,] * 100, 2)[1:20])
+    contributions$pc = rownames(contributions)
+    png('scree')
+    print(ggplot(data=contributions, aes(x=reorder(pc, -contrib), y=contrib)) +
+      geom_bar(stat='identity') +
+      theme_bw() + theme(axis.title=element_text(size=25), axis.text=element_text(size=15)) +
+      ylab("Contribution (%)"))
+    dev.off()
+    png('pca')
+    print(ggplot(data=score.df, aes(x =PC1, y =PC2, label=rownames(score.df), colour=type)) +
+      geom_hline(yintercept = 0, colour = "gray65") +
+      geom_vline(xintercept = 0, colour = "gray65") +
+      geom_point(size=4) +
+      theme_bw() + theme(axis.title=element_text(size=25), axis.text=element_text(size=20),
+  		       legend.position="top", legend.text=element_text(size=20), legend.title=element_blank()) +
+      xlab(sprintf("PC1 (%s%%)", contributions$contrib[1])) + ylab(sprintf("PC2 (%s%%)", contributions$contrib[2]))
+      )
+    dev.off()
+  }
 }
