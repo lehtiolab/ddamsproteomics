@@ -35,7 +35,10 @@ def helpMessage() {
                                     this list can easily be expanded
       --ptms                        As for --mods, but pipeline will output false localization rate e.g. --ptms 'Methyl;Dimethyl' 
       --phospho                     Flag to pass in case of using phospho-enriched samples
-      --isobaric VALUE              In case of isobaric, specify: tmt10plex, tmt6plex, itraq8plex, itraq4plex
+      --isobaric VALUE              In case of isobaric, specify per set the type and possible denominators/sweep/none.
+                                    Available types are tmt10plex, tmt6plex, itraq8plex, itraq4plex
+                                    E.g. --isobaric 'set1:tmt10plex:126:127N set2:tmtpro:127C:131 set3:tmt10plex:sweep set4:tmt10plex:intensities'
+
       --prectol                     Precursor error for search engine (default 10ppm)
       --iso_err                     Isotope error for search engine (default -1,2)
       --frag                        Fragmentation method for search engine (default 'auto')
@@ -172,14 +175,21 @@ if (params.onlypeptides) {
 
 
 // parse inputs that combine to form values or are otherwise more complex.
-setdenoms = [:]
-if (!(params.noquant) && params.isobaric && params.denoms) {
-  params.denoms.tokenize(' ').each{ it -> x=it.tokenize(':'); setdenoms.put(x[0], x[1..-1])}
-}
 
-plextype = params.isobaric ? params.isobaric.replaceFirst(/[0-9]+plex/, "") : 'false'
+// --isobaric 'set1:tmt10plex:127N:128N set2:tmtpro:sweep'
+isop = params.isobaric ? params.isobaric.tokenize(' ') : false
+setisobaric = isop ? isop.collect() {
+  y -> y.tokenize(':')
+}.collectEntries() {
+  x-> [x[0], x[1]]
+} : false
+// FIXME add non-isobaric sets here if we have any mixed-in?
+setdenoms = isop ? isop.collect() {
+  y -> y.tokenize(':')
+}.collectEntries() {
+  x-> [x[0], x.size() > 2 ? x[2..-1] : false]
+} : false
 
-luciphor_ptms = params.ptms ? params.ptms.tokenize(';') : false
 
 normalize = (!params.noquant && params.normalize && params.isobaric)
 rawisoquant = (!params.noquant && !params.normalize && params.isobaric)
@@ -404,14 +414,16 @@ process quantifySpectra {
 
   script:
   activationtype = [hcd:'High-energy collision-induced dissociation', cid:'Collision-induced dissociation', etd:'Electron transfer dissociation'][params.activation]
+  isobtype = setisobaric && setisobaric[setname] ? setisobaric[setname] : false
+  plextype = isobtype ? isobtype.replaceFirst(/[0-9]+plex/, "") : 'false'
   massshift = [tmt:0.0013, itraq:0.00125, false:0][plextype]
-  isobtype = params.isobaric == 'tmtpro' ? 'tmt16plex' : params.isobaric
+  isobtype = isobtype == 'tmtpro' ? 'tmt16plex' : isobtype
   """
   # Run hardklor on config file with added line for in/out files
   # then run kronik on hardklor and quant isobaric labels if necessary
   hardklor <(cat $hkconf <(echo "$infile" hardklor.out))
   kronik -c 5 -d 3 -g 1 -m 8000 -n 600 -p 10 hardklor.out ${sample}.kr
-  ${params.isobaric ? "IsobaricAnalyzer -type $isobtype -in $infile -out \"${infile}.consensusXML\" -extraction:select_activation \"$activationtype\" -extraction:reporter_mass_shift $massshift -extraction:min_precursor_intensity 1.0 -extraction:keep_unannotated_precursor true -quantification:isotope_correction true" : ''}
+  ${isobtype ? "IsobaricAnalyzer -type $isobtype -in $infile -out \"${infile}.consensusXML\" -extraction:select_activation \"$activationtype\" -extraction:reporter_mass_shift $massshift -extraction:min_precursor_intensity 1.0 -extraction:keep_unannotated_precursor true -quantification:isotope_correction true" : ''}
   """
 }
 
@@ -574,29 +586,19 @@ if (fractionation) {
 * Step 2: Identify peptides
 */
 
-process createModFile {
-
-  output:
-  file('mods.txt') into mods
-
-  script:
-  """
-  create_modfile.py ${params.maxvarmods} "${params.msgfmods}" "${params.mods}${params.isobaric ? ";${params.isobaric}" : ''}${params.ptms ? ";${params.ptms}" : ''}"
-  """
-}
-
 process msgfPlus {
   cpus = config.poolSize < 4 ? config.poolSize : 4
 
   input:
   set val(setname), val(sample), file(x), val(platename), val(fraction), file(db) from mzml_msgf
-  file(mods) from mods
 
   output:
   set val(setname), val(sample), file("${sample}.mzid") into mzids
   set val(setname), file("${sample}.mzid"), file("${sample}.mzid.tsv") into mzidtsvs
   
   script:
+  isobtype = setisobaric && setisobaric[setname] ? setisobaric[setname] : false
+  plextype = isobtype ? isobtype.replaceFirst(/[0-9]+plex/, "") : 'false'
   msgfprotocol = [tmt:4, itraq:2, false:0][plextype]
   msgfinstrument = [velos:1, qe:3, false:0][params.instrument]
   fragmeth = [auto:0, cid:1, etd:2, hcd:3, uvpd:4][params.frag]
@@ -605,7 +607,9 @@ process msgfPlus {
   ntt = [full: 2, semi: 1, non: 0][params.terminicleaved]
 
   """
-  msgf_plus -Xmx8G -d $db -s $x -o "${sample}.mzid" -thread ${task.cpus * params.threadspercore} -mod $mods -tda 0 -maxMissedCleavages $params.maxmiscleav -t ${params.prectol}  -ti ${params.iso_err} -m ${fragmeth} -inst ${msgfinstrument} -e ${enzyme} -protocol ${msgfprotocol} -ntt ${ntt} -minLength ${params.minpeplen} -maxLength ${params.maxpeplen} -minCharge ${params.mincharge} -maxCharge ${params.maxcharge} -n 1 -addFeatures 1
+  echo ${setname}
+  create_modfile.py ${params.maxvarmods} "${params.msgfmods}" "${params.mods}${isobtype ? ";${isobtype}" : ''}${params.ptms ? ";${params.ptms}" : ''}"
+  msgf_plus -Xmx8G -d $db -s $x -o "${sample}.mzid" -thread ${task.cpus * params.threadspercore} -mod "mods.txt" -tda 0 -maxMissedCleavages $params.maxmiscleav -t ${params.prectol}  -ti ${params.iso_err} -m ${fragmeth} -inst ${msgfinstrument} -e ${enzyme} -protocol ${msgfprotocol} -ntt ${ntt} -minLength ${params.minpeplen} -maxLength ${params.maxpeplen} -minCharge ${params.mincharge} -maxCharge ${params.maxcharge} -n 1 -addFeatures 1
   msgf_plus -Xmx3500M edu.ucsd.msjava.ui.MzIDToTsv -i "${sample}.mzid" -o out.tsv
   awk -F \$'\\t' '{OFS=FS ; print \$0, "Biological set" ${fractionation ? ', "Strip", "Fraction"' : ''}}' <( head -n+1 out.tsv) > "${sample}.mzid.tsv"
   awk -F \$'\\t' '{OFS=FS ; print \$0, "$setname" ${fractionation ? ", \"$platename\", \"$fraction\"" : ''}}' <( tail -n+2 out.tsv) >> "${sample}.mzid.tsv"
@@ -687,6 +691,8 @@ process luciphorPTMLocalizationScoring {
   each ptm from luciphor_ptms
 
   script:
+  outfile = "${ptm}__luciphor.out"
+  isobtype = setisobaric && setisobaric[setname] ? setisobaric[setname] : ''
   """
   export MZML_PATH=\$(pwd)
   export MINPSMS=${params.minpsms_luciphor}
@@ -697,7 +703,7 @@ process luciphorPTMLocalizationScoring {
   export MS2TOLVALUE=10
   export MS2TOLTYPE=ppm
   cat "$baseDir/assets/luciphor2_input_template.txt" | envsubst > lucinput.txt
-  luciphor_prep.py psms lucinput.txt "${params.msgfmods}" "${params.mods}${params.isobaric ? ";${params.isobaric}" : ''}" "${ptm}"
+  luciphor_prep.py psms lucinput.txt "${params.msgfmods}" "${params.mods}${isobtype ? ";${isobtype}" : ''}" "${ptm}" ${outfile}
   luciphor2 luciphor_config.txt
   """
 }
@@ -771,7 +777,7 @@ process psm2Peptides {
   """
   # Create peptide table from PSM table, picking best scoring unique peptides
   msstitch peptides -i psms -o "${setname}_peptides" --scorecolpattern svm --spectracol 1 --modelqvals \
-    ${quant ? "--ms1quantcolpattern area ${params.isobaric ?  "--isobquantcolpattern plex ${do_raw_isoquant ? "--minint 0.1 --denompatterns ${setdenoms[setname].join(' ')}" : ''}" : ''}" : ''}
+    ${quant ? "--ms1quantcolpattern area ${setisobaric && setisobaric[setname] ?  "--isobquantcolpattern plex ${do_raw_isoquant ? "--minint 0.1 --denompatterns ${setdenoms[setname].join(' ')}" : ''}" : ''}" : ''}
   """
 }
 
@@ -919,14 +925,14 @@ process proteinPeptideSetMerge {
   msstitch merge -i ${tables.join(' ')} --setnames ${setnames.join(' ')} --dbfile db.sqlite -o mergedtable \
     --fdrcolpattern '^q-value\$' ${acctype != 'peptides' ? '--mergecutoff 0.01' : ''} \
     ${!params.noquant ? "--ms1quantcolpattern area" : ''} \
-    ${!params.noquant && params.isobaric ? "--isobquantcolpattern plex" : ''} \
+    ${!params.noquant && setisobaric ? "--isobquantcolpattern plex" : ''} \
     ${params.onlypeptides ? "--no-group-annotation" : ''}
    
   # join psm count tables, first make a header from setnames
   head -n1 mergedtable > tmpheader
 
   # exchange sample names in header
-  ${params.sampletable && params.isobaric ?  
+  ${params.sampletable && setisobaric ?  
     'sed -i  "s/[^A-Za-z0-9_\\t]/_/g" sampletable ; \
     while read line ; do read -a arr <<< $line ; sed -i "s/${arr[1]}_\\([a-z0-9]*plex\\)_${arr[0]}/${arr[3]}_${arr[2]}_${arr[1]}_\\1_${arr[0]}/" tmpheader ; done < sampletable' \
   : ''}
