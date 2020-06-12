@@ -7,6 +7,8 @@ def get_msgfmods(modfile):
     with open(modfile) as fp:
         for line in fp:
             line = line.strip('\n')
+            if line == '' or line[0] == '#':
+                continue
             moddata = line.split(',')
             try:
                 msgfmods[moddata[-1].lower()].append(line)
@@ -24,6 +26,7 @@ def modpos(mod):
 
 
 def categorize_mod(mods, fixedmods, varmods):
+    """Puts mods into varmods/fixedmods lists"""
     moddata = [x.split(',') for x in mods]
     for modline in moddata:
         try:
