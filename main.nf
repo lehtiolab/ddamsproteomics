@@ -598,8 +598,9 @@ process msgfPlus {
   
   script:
   isobtype = setisobaric && setisobaric[setname] ? setisobaric[setname] : false
-  plextype = isobtype ? isobtype.replaceFirst(/[0-9]+plex/, "") : 'false'
-  msgfprotocol = [tmt:4, itraq:2, false:0][plextype]
+  // protcol 0 is automatic, msgf checks in mod file, TMT should be run with 1
+  // see at https://github.com/MSGFPlus/msgfplus/issues/19
+  msgfprotocol = params.phospho ? setisobaric[setname][0..4] == 'itraq' ? 3 : 1 : 0
   msgfinstrument = [velos:1, qe:3, false:0][params.instrument]
   fragmeth = [auto:0, cid:1, etd:2, hcd:3, uvpd:4][params.frag]
   enzyme = params.enzyme.indexOf('-') > -1 ? params.enzyme.replaceAll('-', '') : params.enzyme
