@@ -25,7 +25,7 @@ def helpMessage() {
       --mzmls                       Path to mzML files
       --mzmldef                     Alternative to --mzml: path to file containing list of mzMLs 
                                     with sample set and fractionation annotation (see docs)
-      --tdb                         Path to target FASTA protein database
+      --tdb                         Path to target FASTA protein databases, can be (quoted) '/path/to/*.fa'
       -profile                      Configuration profile to use. Can use multiple (comma separated)
                                     Available: standard, conda, docker, singularity, awsbatch, test
 
@@ -141,8 +141,7 @@ params.deqms = false
 
 // Validate and set file inputs
 fractionation = (params.hirief || params.fractions)
-tdb = file(params.tdb)
-if( !tdb.exists() ) exit 1, "Target fasta DB file not found: ${params.tdb}"
+if (file(params.tdb).size == 0) exit 1, "Target fasta DB file not found: ${params.tdb}"
 
 // Files which are not standard can be checked here
 if (params.martmap) {
@@ -355,14 +354,15 @@ def or_na(it, length){
 process createTargetDecoyFasta {
  
   input:
-  file('tdb') from Channel.from(tdb)
+  path(tdb) from Channel.fromPath(params.tdb).toList()
 
   output:
   file('db.fa') into concatdb
-  set file(tdb), file("decoy.fa") into bothdbs
+  set file('tdb'), file("decoy.fa") into bothdbs
 
   script:
   """
+  cat ${tdb.join(' ')} > tdb
   msstitch makedecoy -i tdb -o decoy.fa --scramble tryp_rev --ignore-target-hits
   cat tdb decoy.fa > db.fa
   """
