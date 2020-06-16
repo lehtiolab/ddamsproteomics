@@ -58,9 +58,10 @@ def helpMessage() {
       --genes                       Produce gene table (i.e. gene names from Swissprot or ENSEMBL)
       --ensg                        Produce ENSG stable ID table (when using ENSEMBL db)
       --fractions                   Fractionated samples, 
-      --hirief                      IEF fractionated samples, implies --fractions, allows delta pI calculation
-      --pipep FILE                  File containing peptide sequences and their isoelectric points. Example
-                                    can be found in https://github.com/nf-core/test-datasets/raw/ddamsproteomics/
+      --hirief                      File containing peptide sequences and their isoelectric points.
+                                    An example can be found here:
+                                    https://github.com/nf-core/test-datasets/blob/ddamsproteomics/testdata/formatted_known_peptides_ENSUniRefseq_TMT_predpi_20150825.txt
+                                    For IEF fractionated samples, implies --fractions, enables delta pI calculation
       --onlypeptides                Do not produce protein or gene level data
       --noquant                     Do not produce isobaric or MS1 quantification data
       --quantlookup FILE            Use previously generated SQLite lookup database containing spectra 
@@ -132,7 +133,6 @@ params.genefield = false
 params.quantlookup = false
 params.fractions = false
 params.hirief = false
-params.pipep = false
 params.onlypeptides = false
 params.noquant = false
 params.denoms = false
@@ -149,11 +149,7 @@ if (params.martmap) {
   martmap = file(params.martmap)
   if( !martmap.exists() ) exit 1, "Biomart ENSEMBL mapping file not found: ${params.martmap}"
 }
-if (params.pipep) {
-  trainingpep = file(params.pipep)
-  if( !trainingpep.exists() ) exit 1, "Peptide pI data file not found: ${params.pipep}"
-} else { trainingpep = false }
-
+if (params.hirief && !file(params.hirief).exists()) exit 1, "Peptide pI data file not found: ${params.hirief}"
 if (params.sampletable) {
   sampletable = file(params.sampletable)
   if( !sampletable.exists() ) exit 1, "Sampletable file not found: ${params.sampletable}"
@@ -262,8 +258,7 @@ summary['Custom FASTA delimiter'] = params.fastadelim
 summary['Custom FASTA gene field'] = params.genefield
 summary['Premade quant data SQLite'] = params.quantlookup
 summary['Fractionated sample'] = fractionation
-summary['HiRIEF'] = params.hirief 
-summary['peptide pI data'] = params.pipep
+summary['HiRIEF pI peptide data'] = params.hirief 
 summary['Only output peptides'] = params.onlypeptides
 summary['Do not quantify'] = params.noquant
 summary['Perform DE analysis'] = params.deqms
@@ -692,7 +687,7 @@ process createPSMTable {
   input:
   set val(setnames), val(td), file('psms?'), file('lookup'), file(tdb), file(ddb) from prepsm
   val(allstrips) from strips_for_deltapi
-  file(trainingpep) 
+  file(trainingpep) from Channel.fromPath(params.hirief).first()
   val(mzmlcount) from mzmlcount_psm
 
   output:
