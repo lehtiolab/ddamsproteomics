@@ -24,12 +24,15 @@ def helpMessage() {
     Mandatory arguments:
       --mzmls                       Path to mzML files
       --mzmldef                     Alternative to --mzml: path to file containing list of mzMLs 
-                                    with sample set and fractionation annotation (see docs)
+                                    with instrument, sample set and fractionation annotation (see docs)
       --tdb                         Path to target FASTA protein databases, can be (quoted) '/path/to/*.fa'
       -profile                      Configuration profile to use. Can use multiple (comma separated)
                                     Available: standard, conda, docker, singularity, awsbatch, test
 
     Options:
+      --instrument                  If not using --mzmldef, use this to specify instrument type.
+                                    Currently supporting 'qe' or 'velos'
+
       --mods                        Modifications specified by their UNIMOD name. e.g. --mods 'oxidation;carbamidomethyl'
                                     Note that there are a limited number of modifications available, but that
                                     this list can easily be expanded
@@ -236,7 +239,7 @@ summary['Sample annotations'] = params.sampletable
 summary['Modifications'] = params.mods
 summary['PTMs'] = params.locptms
 summary['Phospho enriched'] = params.phospho
-summary['Instrument'] = params.instrument
+summary['Instrument'] = params.mzmldef ? 'Set per mzML file in mzml definition file' : params.instrument
 summary['Precursor tolerance'] = params.prectol
 summary['Isotope error'] = params.iso_err
 summary['Fragmentation method'] = params.frag
@@ -336,7 +339,7 @@ if (workflow.profile.tokenize(',').intersect(['test', 'test_nofrac'])) {
 else if (!params.mzmldef) {
   Channel
     .fromPath(params.mzmls)
-    .map { it -> [it, 'NA'] }
+    .map { it -> [it, params.instrument, 'NA'] }
     .set { mzml_in }
 } else {
   Channel
@@ -376,7 +379,7 @@ bothdbs.into { psmdbs; fdrdbs }
 // Set fraction name to NA if not specified
 mzml_in
   .tap { mzmlfiles_counter } // for counting, so config can set time limit
-  .map { it -> [it[1], file(it[0]).baseName, file(it[0]), (it.size() > 2 ? it[2] : it[1]), or_na(it, 3)] }
+  .map { it -> [it[2], file(it[0]).baseName, file(it[0]), it[1], (it.size() > 3 ? it[3] : it[2]), or_na(it, 4)] }
   .tap { sets; strips; mzmlfiles; mzml_luciphor; mzml_quant }
   .combine(concatdb)
   .set { mzml_msgf }
@@ -391,7 +394,7 @@ sets
 
 // Strip names for HiRIEF fractionation are third item, 
 strips
-  .map { it -> it[3] }
+  .map { it -> it[4] }
   .unique()
   .toList()
   .set { strips_for_deltapi }
@@ -405,7 +408,7 @@ process quantifySpectra {
   when: !params.quantlookup && !params.noquant
 
   input:
-  set val(setname), val(sample), file(infile), val(platename), val(fraction) from mzml_quant
+  set val(setname), val(sample), file(infile), val(instr), val(platename), val(fraction) from mzml_quant
   file(hkconf) from Channel.fromPath("$baseDir/assets/hardklor.conf").first()
 
   output:
@@ -432,7 +435,7 @@ process quantifySpectra {
 mzmlfiles
   .toList()
   .map { it.sort( {a, b -> a[1] <=> b[1]}) } // sort on sample for consistent .sh script in -resume
-  .map { it -> [it.collect() { it[0] }, it.collect() { it[2] }, it.collect() { it[3] } ] } // lists: [sets], [mzmlfiles], [plates]
+  .map { it -> [it.collect() { it[0] }, it.collect() { it[2] }, it.collect() { it[4] } ] } // lists: [sets], [mzmlfiles], [plates]
   .into { mzmlfiles_all; mzmlfiles_all_count }
 
 mzmlfiles_counter
@@ -590,7 +593,7 @@ process msgfPlus {
   cpus = config.poolSize < 4 ? config.poolSize : 4
 
   input:
-  set val(setname), val(sample), file(x), val(platename), val(fraction), file(db) from mzml_msgf
+  set val(setname), val(sample), file(x), val(instrument), val(platename), val(fraction), file(db) from mzml_msgf
 
   output:
   set val(setname), val(sample), file("${sample}.mzid") into mzids
@@ -601,7 +604,7 @@ process msgfPlus {
   // protcol 0 is automatic, msgf checks in mod file, TMT should be run with 1
   // see at https://github.com/MSGFPlus/msgfplus/issues/19
   msgfprotocol = params.phospho ? setisobaric[setname][0..4] == 'itraq' ? 3 : 1 : 0
-  msgfinstrument = [velos:1, qe:3, false:0][params.instrument]
+  msgfinstrument = [velos:1, qe:3, false:0][instrument]
   fragmeth = [auto:0, cid:1, etd:2, hcd:3, uvpd:4][params.frag]
   enzyme = params.enzyme.indexOf('-') > -1 ? params.enzyme.replaceAll('-', '') : params.enzyme
   enzyme = [unspecific:0, trypsin:1, chymotrypsin: 2, lysc: 3, lysn: 4, gluc: 5, argc: 6, aspn:7, no_enzyme:9][enzyme]

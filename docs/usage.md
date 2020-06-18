@@ -113,8 +113,8 @@ Alternative to the above --mzml this would pass a text file which contains the m
 ```
 
 The file itself is tab-separated without header, contains a single line per mzML file specified as follows:
-`/path/to/file	sample_or_sampleset_name	OPTINAL:fractionation_plate_name	OPTIONAL:fraction_nr`
-
+`/path/to/file	instrument_type	sample_or_sampleset_name	OPTIONAL:fractionation_plate_name	OPTIONAL:fraction_nr`
+Instrument type can currently be one of 'qe', 'velos'.
 
 ### `--tdb`
 Target database. Decoy databases are created "tryptic-reverse" by the pipeline and searches are against a
