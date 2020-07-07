@@ -860,12 +860,12 @@ process makePeptides {
   file('warnings') optional true into pepwarnings
 
   script:
-  do_raw_isoquant = rawisoquant && td == 'target'
   quant = !params.noquant && td == 'target'
   """
   # Create peptide table from PSM table, picking best scoring unique peptides
+  ${quant && rawisoquant && setdenoms[setname][0] == 'sweep' ? 'echo Cannot run denominator-based peptide table while specifying median sweep currently, only used for normalization && exit 1' : ''}
   msstitch peptides -i psms -o "${setname}_peptides" --scorecolpattern svm --spectracol 1 --modelqvals \
-    ${quant ? "--ms1quantcolpattern area ${setisobaric && setisobaric[setname] ?  "--isobquantcolpattern plex ${do_raw_isoquant ? "--minint 0.1 --denompatterns ${setdenoms[setname].join(' ')}" : ''}" : ''}" : ''}
+    ${quant ? "--ms1quantcolpattern area ${setisobaric && setisobaric[setname] ? "--isobquantcolpattern plex ${rawisoquant ? "--minint 0.1 --denompatterns ${setdenoms[setname].join(' ')}" : ''}" : ''}" : ''}
   """
 }
 
@@ -960,8 +960,10 @@ process normalizeFeaturesDEqMS {
   paste pepacc <(cut -f "\$channelcols" psms) > psmvals
   # run deqMS normalization and summarization, which produces logged ratios
 
-  ${params.denoms ? "denomcols=\$(egrep -n \'(${setdenoms[setname].join('|')})\' <( head -n1 psmvals | tr '\\t' '\\n') | cut -f1 -d ':' | tr '\\n' ',' | sed 's/,\$//') " : "touch ${setname}_channelmedians"}
-  deqms_normalize.R psmvals features $setname ${params.denoms ? "\$denomcols" : ''}
+  # FIXME also in sweep we can in deqms 1.6 get a channelmedian, so only touch when reporting raw
+  # intensities (which will not go through this step!!)
+  ${setdenoms[setname] ? "denomcols=\$(egrep -n \'(${setdenoms[setname].join('|')})\' <( head -n1 psmvals | tr '\\t' '\\n') | cut -f1 -d ':' | tr '\\n' ',' | sed 's/,\$//') " : "touch ${setname}_channelmedians"}
+  deqms_normalize.R psmvals features $setname ${setdenoms[setname][0] != 'sweep' ? "\$denomcols" : ''}
   # join feat tables on normalized proteins
   paste <(head -n1 features) <(head -n1 normalized_feats | cut -f2-2000) <(echo PSM counts) > ${setname}_feats 
   join -a1 -o auto -e 'NA' -t \$'\\t' <(tail -n+2 features | sort -k1b,1 ) <(tail -n+2 normalized_feats | sort -k1b,1) >> feats_quants
