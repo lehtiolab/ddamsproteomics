@@ -392,10 +392,12 @@ sets
   .into { setnames_featqc; setnames_psmqc }
 
 // Strip names for HiRIEF fractionation are third item, 
+hiriefpep = params.hirief ? Channel.fromPath(params.hirief) : Channel.value('NA')
 strips
   .map { it -> it[4] }
   .unique()
   .toList()
+  .combine(hiriefpep)
   .set { strips_for_deltapi }
 
 
@@ -688,8 +690,7 @@ process createPSMTable {
 
   input:
   set val(setnames), val(td), file('psms?'), file('lookup'), file(tdb), file(ddb) from prepsm
-  val(allstrips) from strips_for_deltapi
-  file(trainingpep) from Channel.fromPath(params.hirief).first()
+  set val(allstrips), path(trainingpep) from strips_for_deltapi
   val(mzmlcount) from mzmlcount_psm
 
   output:
@@ -713,7 +714,7 @@ process createPSMTable {
     ${quant ? "--ms1quant ${params.isobaric ? '--isobaric' : ''}" : ''} \
     ${!params.onlypeptides ? "--genes --proteingroup" : ''}
   sed 's/\\#SpecFile/SpectraFile/' -i psmtable
-  ${params.hirief ? "echo \'${groovy.json.JsonOutput.toJson(params.strips)}\' >> strip.json && peptide_pi_annotator.py -i $trainingpep -p psmtable --o $outpsms --stripcolpattern Strip --pepcolpattern Peptide --fraccolpattern Fraction --stripdef strip.json --ignoremods \'*\'": "mv psmtable ${outpsms}"} 
+  ${params.hirief && td == 'target' ? "echo \'${groovy.json.JsonOutput.toJson(params.strips)}\' >> strip.json && peptide_pi_annotator.py -i $trainingpep -p psmtable --o $outpsms --stripcolpattern Strip --pepcolpattern Peptide --fraccolpattern Fraction --stripdef strip.json --ignoremods \'*\'": "mv psmtable ${outpsms}"} 
   msstitch split -i ${outpsms} --splitcol bioset
   ${setnames.collect() { "test -f '${it}.tsv' || echo 'No ${td} PSMs found for set ${it}' >> warnings" }.join(' && ') }
   """
