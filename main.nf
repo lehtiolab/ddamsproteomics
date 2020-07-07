@@ -144,7 +144,6 @@ params.deqms = false
 
 // Validate and set file inputs
 fractionation = (params.hirief || params.fractions)
-if (file(params.tdb).size == 0) exit 1, "Target fasta DB file not found: ${params.tdb}"
 
 // Files which are not standard can be checked here
 if (params.martmap) {
