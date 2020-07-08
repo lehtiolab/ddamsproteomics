@@ -188,13 +188,13 @@ setisobaric = isop ? isop.collect() {
 setdenoms = isop ? isop.collect() {
   y -> y.tokenize(':')
 }.collectEntries() {
-  x-> [x[0], x.size() > 2 ? x[2..-1] : false]
+  x-> [x[0], x[2..-1]]
 } : false
 
 luciphor_ptms = params.locptms ? params.locptms.tokenize(';') : false
 
-normalize = (!params.noquant && params.normalize && params.isobaric)
-rawisoquant = (!params.noquant && !params.normalize && params.isobaric)
+normalize = (!params.noquant && (params.normalize || params.deqms) && params.isobaric)
+rawisoquant = (!params.noquant && !normalize && params.isobaric)
 
 
 // AWSBatch sanity checking
@@ -379,7 +379,7 @@ bothdbs.into { psmdbs; fdrdbs }
 mzml_in
   .tap { mzmlfiles_counter } // for counting, so config can set time limit
   .map { it -> [it[2], file(it[0]).baseName, file(it[0]), it[1], (it.size() > 3 ? it[3] : it[2]), or_na(it, 4)] }
-  .tap { sets; strips; mzmlfiles; mzml_luciphor; mzml_quant }
+  .tap { sets; mzmlfiles; mzml_luciphor; mzml_quant }
   .combine(concatdb)
   .set { mzml_msgf }
 
@@ -390,15 +390,6 @@ sets
   .collect()
   .map { it -> [it] }
   .into { setnames_featqc; setnames_psmqc }
-
-// Strip names for HiRIEF fractionation are third item, 
-hiriefpep = params.hirief ? Channel.fromPath(params.hirief) : Channel.value('NA')
-strips
-  .map { it -> it[4] }
-  .unique()
-  .toList()
-  .combine(hiriefpep)
-  .set { strips_for_deltapi }
 
 
 /*
@@ -419,9 +410,9 @@ process quantifySpectra {
   script:
   activationtype = [hcd:'High-energy collision-induced dissociation', cid:'Collision-induced dissociation', etd:'Electron transfer dissociation'][params.activation]
   isobtype = setisobaric && setisobaric[setname] ? setisobaric[setname] : false
+  isobtype = isobtype == 'tmtpro' ? 'tmt16plex' : isobtype
   plextype = isobtype ? isobtype.replaceFirst(/[0-9]+plex/, "") : 'false'
   massshift = [tmt:0.0013, itraq:0.00125, false:0][plextype]
-  isobtype = isobtype == 'tmtpro' ? 'tmt16plex' : isobtype
   """
   # Run hardklor on config file with added line for in/out files
   # then run kronik on hardklor and quant isobaric labels if necessary
@@ -461,19 +452,10 @@ process createSpectraLookup {
 }
 
 
-// Collect all isobaric quant XML output for quant lookup building process
-isobaricxml
-  .ifEmpty(['NA', 'NA', 'NA'])
-  .set { consensusxml }
-//  .toList()
-//  .map { it.sort({a, b -> a[0] <=> b[0]}) }
-//  .map { it -> [it.collect() { it[0] }, it.collect() { it[1] }, it.collect() { it[2] }] } // samples, isoxml, mzmlfnames
-//  .set { isofiles_sets }
-
 // Collect all MS1 kronik output for quant lookup building process
 kronik_out
   .ifEmpty(['NA', 'NA'])
-  .join(consensusxml)
+  .join(isobaricxml, remainder: true)
   .toList()
   .map { it.sort({a, b -> a[0] <=> b[0]}) }
   .transpose()
@@ -684,13 +666,14 @@ tmzidtsv_perco
 * Step 3: Post-process peptide identification data
 */
 
+hiriefpep = params.hirief ? Channel.fromPath([params.hirief, params.hirief]) : Channel.value(['NA', 'NA'])
 process createPSMTable {
 
   publishDir "${params.outdir}", mode: 'copy', overwrite: true, saveAs: {["target_psmlookup.sql", "target_psmtable.txt", "decoy_psmtable.txt"].contains(it) ? it : null}
 
   input:
   set val(setnames), val(td), file('psms?'), file('lookup'), file(tdb), file(ddb) from prepsm
-  set val(allstrips), path(trainingpep) from strips_for_deltapi
+  file(trainingpep) from hiriefpep
   val(mzmlcount) from mzmlcount_psm
 
   output:
@@ -766,7 +749,7 @@ process luciphorPTMLocalizationScoring {
   cat "$baseDir/assets/luciphor2_input_template.txt" | envsubst > lucinput.txt
   luciphor_prep.py psms lucinput.txt "${params.msgfmods}" "${params.mods}${isobtype ? ";${isobtype}" : ''}" "${params.locptms}" luciphor.out
   luciphor2 luciphor_config.txt
-  luciphor_parse.py ${params.ptm_minscore_high} ptms.txt "${params.msgfmods}" "${params.locptms}"
+  luciphor_parse.py ${params.ptm_minscore_high} ptms.txt "${params.msgfmods}" "${params.locptms};${params.mods}"
   """
 }
 
@@ -1133,7 +1116,7 @@ process featQC {
   set val(acctype), file('featqc.html'), file('summary.txt'), file('overlap') into qccollect
 
   script:
-  show_normfactors = setdenoms.size() && normalize
+  show_normfactors = setdenoms && normalize
   """
   # combine multi-set normalization factors
   cat ${normfacs} > allnormfacs

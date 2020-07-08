@@ -25,7 +25,7 @@ def main():
     ptmmasses = {}
     msgfmods = get_msgfmods(modfile)
     for ptmname in ptms.split(';'):
-        for modline in msgfmods[ptmname]:
+        for modline in msgfmods[ptmname.lower()]:
             modline = modline.split(',')
             if modline[2] == 'fix':
                 continue
