@@ -935,6 +935,7 @@ process normalizeFeaturesDEqMS {
   when: normalize
   
   script:
+  sweep = setdenoms[setname][0] == 'sweep'
   """
   # get col nrs for isobaric quant values and create new PSM table with only those and feature columns
   # need to use awk first because cut cannot paste peptide column twice (happens when peptide is acctype)
@@ -945,8 +946,8 @@ process normalizeFeaturesDEqMS {
 
   # FIXME also in sweep we can in deqms 1.6 get a channelmedian, so only touch when reporting raw
   # intensities (which will not go through this step!!)
-  ${setdenoms[setname] ? "denomcols=\$(egrep -n \'(${setdenoms[setname].join('|')})\' <( head -n1 psmvals | tr '\\t' '\\n') | cut -f1 -d ':' | tr '\\n' ',' | sed 's/,\$//') " : "touch ${setname}_channelmedians"}
-  deqms_normalize.R psmvals features $setname ${setdenoms[setname][0] != 'sweep' ? "\$denomcols" : ''}
+  ${!sweep ? "denomcols=\$(egrep -n \'(${setdenoms[setname].join('|')})\' <( head -n1 psmvals | tr '\\t' '\\n') | cut -f1 -d ':' | tr '\\n' ',' | sed 's/,\$//') " : "touch ${setname}_channelmedians"}
+  deqms_normalize.R psmvals features $setname ${sweep ? '' : "\$denomcols"}
   # join feat tables on normalized proteins
   paste <(head -n1 features) <(head -n1 normalized_feats | cut -f2-2000) <(echo PSM counts) > ${setname}_feats 
   join -a1 -o auto -e 'NA' -t \$'\\t' <(tail -n+2 features | sort -k1b,1 ) <(tail -n+2 normalized_feats | sort -k1b,1) >> feats_quants
@@ -1116,7 +1117,7 @@ process featQC {
   set val(acctype), file('featqc.html'), file('summary.txt'), file('overlap') into qccollect
 
   script:
-  show_normfactors = setdenoms && normalize
+  show_normfactors = setdenoms && normalize && !setdenoms.values().flatten().any { it == 'sweep' }
   """
   # combine multi-set normalization factors
   cat ${normfacs} > allnormfacs
