@@ -23,7 +23,15 @@ The pipeline is built using [Nextflow](https://www.nextflow.io), a workflow tool
 - install [Docker](https://docs.docker.com/engine/installation/), [Singularity](https://www.sylabs.io/guides/3.0/user-guide/), or [Conda](https://conda.io/miniconda.html)
 - run pipeline:
 
-```nextflow run lehtiolab/ddamsproteomics --mzmls '/path/to/*.mzML' --tdb /path/to/proteins.fa --mods /path/to/mods.txt```
+```
+nextflow run lehtiolab/ddamsproteomics --mzmls '/path/to/*.mzML' --tdb /path/to/proteins.fa --mods 'oxidation;carbamidomethylation'
+```
+
+Or for two sample sets of isobaric data you can:
+
+```
+nextflow run lehtiolab/ddamsproteomics --mzmls '/path/to/*.mzML' --tdb /path/to/proteins.fa --mods 'oxidation;carbamidomethylation --isobaric 'setA:tmt10plex:126 setB:tmt10plex:127N'
+```
 
 The lehtiolab/ddamsproteomics pipeline comes with documentation about the pipeline, found in the `docs/` directory:
 

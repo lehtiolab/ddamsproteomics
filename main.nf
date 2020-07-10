@@ -40,7 +40,7 @@ def helpMessage() {
       --phospho                     Flag to pass in case of using phospho-enriched samples, changes MSGF protocol
       --isobaric VALUE              In case of isobaric, specify per set the type and possible denominators/sweep/none.
                                     Available types are tmt10plex, tmt6plex, itraq8plex, itraq4plex
-                                    E.g. --isobaric 'set1:tmt10plex:126:127N set2:tmtpro:127C:131 set3:tmt10plex:sweep set4:tmt10plex:intensities'
+                                    E.g. --isobaric 'set1:tmt10plex:126:127N set2:tmtpro:127C:131 set3:tmt10plex:sweep'
 
       --prectol                     Precursor error for search engine (default 10ppm)
       --iso_err                     Isotope error for search engine (default -1,2)
@@ -110,7 +110,6 @@ params.locptms = false
 params.ptm_minscore_high = 50
 params.phospho = false
 params.maxvarmods = 2
-params.martmap = false
 params.isobaric = false
 params.instrument = 'qe' // Default instrument is Q-Exactive
 params.prectol = '10.0ppm'
@@ -138,7 +137,6 @@ params.fractions = false
 params.hirief = false
 params.onlypeptides = false
 params.noquant = false
-params.denoms = false
 params.sampletable = false
 params.deqms = false
 
@@ -146,10 +144,6 @@ params.deqms = false
 fractionation = (params.hirief || params.fractions)
 
 // Files which are not standard can be checked here
-if (params.martmap) {
-  martmap = file(params.martmap)
-  if( !martmap.exists() ) exit 1, "Biomart ENSEMBL mapping file not found: ${params.martmap}"
-}
 if (params.hirief && !file(params.hirief).exists()) exit 1, "Peptide pI data file not found: ${params.hirief}"
 if (params.sampletable) {
   sampletable = file(params.sampletable)
@@ -177,7 +171,7 @@ if (params.onlypeptides) {
 
 // parse inputs that combine to form values or are otherwise more complex.
 
-// --isobaric 'set1:tmt10plex:127N:128N set2:tmtpro:sweep'
+// Isobaric input example: --isobaric 'set1:tmt10plex:127N:128N set2:tmtpro:sweep'
 isop = params.isobaric ? params.isobaric.tokenize(' ') : false
 setisobaric = isop ? isop.collect() {
   y -> y.tokenize(':')
@@ -254,7 +248,7 @@ summary['Isobaric tags'] = params.isobaric
 summary['Isobaric activation'] = params.activation
 summary['Isobaric normalization'] = params.normalize
 summary['Output genes'] = params.genes
-summary['Output symbols'] = params.symbols
+summary['Output ENSG IDs'] = params.ensg
 summary['Custom FASTA delimiter'] = params.fastadelim 
 summary['Custom FASTA gene field'] = params.genefield
 summary['Premade quant data SQLite'] = params.quantlookup
@@ -487,7 +481,6 @@ process quantLookup {
 
   input:
   file lookup from spec_lookup
-  //set val(isosamples), file(isofns), val(isomzmlnames)  from isofiles_sets
   set val(samples), file(krfns), val(mzmlnames), file(isofns) from krfiles_sets
 
   output:
@@ -828,7 +821,6 @@ process PTMSetMerge {
     ${!params.noquant && setisobaric ? "--isobquantcolpattern plex" : ''}
   head -n1 mergedtable | sed 's/q-value/FLR/g' > ptm_peptidetable.txt
   tail -n+2 mergedtable | sort -k1b,1 >> ptm_peptidetable.txt
-  
   """
 }
 
@@ -846,7 +838,7 @@ process makePeptides {
   quant = !params.noquant && td == 'target'
   """
   # Create peptide table from PSM table, picking best scoring unique peptides
-  ${quant && rawisoquant && setdenoms[setname][0] == 'sweep' ? 'echo Cannot run denominator-based peptide table while specifying median sweep currently, only used for normalization && exit 1' : ''}
+  ${quant && rawisoquant && setdenoms[setname][0] == 'sweep' ? 'echo Currently need denominators for non-normalized output tables, median sweep is only used when normalizing. && exit 1' : ''}
   msstitch peptides -i psms -o "${setname}_peptides" --scorecolpattern svm --spectracol 1 --modelqvals \
     ${quant ? "--ms1quantcolpattern area ${setisobaric && setisobaric[setname] ? "--isobquantcolpattern plex ${rawisoquant ? "--minint 0.1 --denompatterns ${setdenoms[setname].join(' ')}" : ''}" : ''}" : ''}
   """
@@ -856,7 +848,6 @@ process makePeptides {
 /*
 * Step 4: Infer and quantify proteins and genes
 */
-
 
 // Group set T-D combinations and remove those with only target or only decoy
 pre_tprepgs_in = Channel.create()
