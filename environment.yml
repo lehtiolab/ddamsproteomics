@@ -1,22 +1,25 @@
-name: ddamsproteomics-1.5
+name: ddamsproteomics-2.0
 channels:
   - bioconda
   - conda-forge
   - defaults
 dependencies:
-  - bioconda::msgf_plus=2020.03.12
+  - bioconda::msgf_plus=2020.03.14
   - bioconda::hardklor=2.3.0
   - bioconda::kronik=2.20
-  - bioconda::msstitch=2.19
+  - bioconda::openms=2.5.0
+  - bioconda::msstitch=3.2
   - conda-forge::biopython=1.72
   - bioconda::percolator=3.4
+  - bioconda::luciphor2=2020_04_03
   - conda-forge::lxml=4.2.5
   - conda-forge::jinja2=2.10
   - conda-forge::r-argparse=2.0.1
-  - conda-forge::r-ggplot2=3.0.0
-  - conda-forge::r-ggrepel=0.8.1
-  - conda-forge::r-reshape2=1.4.3
-  - conda-forge::r-forcats=0.3.0
-  - conda-forge::r-rmarkdown=1.10
-  - conda-forge::r-matrixstats=0.54.0
-  - bioconda::bioconductor-deqms=1.0.1
+  - conda-forge::r-ggplot2=3.3.1
+  - conda-forge::r-ggrepel=0.8.2
+  - conda-forge::r-reshape2=1.4.4
+  - conda-forge::r-forcats=0.5.0
+  - conda-forge::r-rmarkdown=2.2
+  - conda-forge::r-matrixstats=0.56.0
+  - bioconda::bioconductor-deqms=1.6.0
+  - conda-forge::r-cairo=1.5_12

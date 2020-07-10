@@ -21,7 +21,6 @@ psms = na.omit(psms)
 lastcol = dim(psms)[2]
 psms[,3:lastcol] = log2(psms[,3:lastcol])
 psm.counts = as.data.frame(table(psms$Feature))
-print(head(psm.counts)) # REMOCVE
 countout = data.frame(feat=psm.counts$Var1, matrix(psm.counts$Freq, nrow(psm.counts), 1))
 write.table(countout, 'psmcounts', sep='\t', quote=F, row.names=F, col.names=F)
 rownames(psm.counts) = psm.counts$Var1
@@ -37,7 +36,7 @@ if (is.na(denomcols)) {
   denomcols = as.numeric(strsplit(denomcols, ",")[[1]])
   proteins = medianSummary(psms, group_col=2, ref_col=denomcols)
 
-  ##### This could be built into yafeng/deqms#1, deprecate when released, call sweep/equalmediannorm with medianfile instead
+  ##### FIXME This can possibliy be built into yafeng/deqms#1, deprecate when released (not in 1.6), call sweep/equalmediannorm with medianfile instead
   sizefactor = matrixStats::colMedians(as.matrix(proteins),na.rm = TRUE)
   write.table(data.frame(channels=colnames(proteins), medians=sizefactor), medianfile, sep='\t', quote=F, row.names=F)
   #######
@@ -50,6 +49,6 @@ if (is.na(denomcols)) {
   proteins.nm = equalMedianNormalization(proteins)
 }
 # FIXME colnames proteins.nm should get sample name prefixed, so CTRL_tmt10plex_126, TREAT_tmt10plex_127N etc
-colnames(proteins.nm)
+# colnames(proteins.nm)
 featcol = data.frame(feats=rownames(proteins.nm))
 write.table(cbind(featcol, proteins.nm), 'normalized_feats', sep='\t', quote=F, row.names=F)

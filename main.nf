@@ -1,11 +1,11 @@
 #!/usr/bin/env nextflow
 /*
 ========================================================================================
-                         nf-core/ddamsproteomics
+                         lehtiolab/ddamsproteomics
 ========================================================================================
- nf-core/ddamsproteomics Analysis Pipeline.
+ lehtiolab/ddamsproteomics Analysis Pipeline.
  #### Homepage / Documentation
- https://github.com/nf-core/ddamsproteomics
+ https://github.com/lehtiolab/ddamsproteomics
 ----------------------------------------------------------------------------------------
 */
 
@@ -13,25 +13,35 @@
 def helpMessage() {
     log.info"""
     =========================================
-     nf-core/ddamsproteomics v${workflow.manifest.version}
+     lehtiolab/ddamsproteomics v${workflow.manifest.version}
     =========================================
     Usage:
 
     The typical command for running the pipeline is as follows:
 
-    nextflow run nf-core/ddamsproteomics --mzmls '*.mzML' --tdb swissprot_20181011.fa --mods assets/tmtmods.txt -profile standard,docker
+    nextflow run lehtiolab/ddamsproteomics --mzmls '*.mzML' --tdb swissprot_20181011.fa --mods 'oxidation;carbamidomethyl', --locptms 'phospho' -profile standard,docker
 
     Mandatory arguments:
       --mzmls                       Path to mzML files
       --mzmldef                     Alternative to --mzml: path to file containing list of mzMLs 
-                                    with sample set and fractionation annotation (see docs)
-      --tdb                         Path to target FASTA protein database
-      --mods                        Path to MSGF+ modification file (two examples in assets folder)
+                                    with instrument, sample set and fractionation annotation (see docs)
+      --tdb                         Path to target FASTA protein databases, can be (quoted) '/path/to/*.fa'
       -profile                      Configuration profile to use. Can use multiple (comma separated)
                                     Available: standard, conda, docker, singularity, awsbatch, test
 
     Options:
-      --isobaric VALUE              In case of isobaric, specify: tmt10plex, tmt6plex, itraq8plex, itraq4plex
+      --instrument                  If not using --mzmldef, use this to specify instrument type.
+                                    Currently supporting 'qe' or 'velos'
+
+      --mods                        Modifications specified by their UNIMOD name. e.g. --mods 'oxidation;carbamidomethyl'
+                                    Note that there are a limited number of modifications available, but that
+                                    this list can easily be expanded
+      --locptms                     As for --mods, but pipeline will output false localization rate e.g. --locptms 'methyl;dimethyl'  or --locptms 'phospho'
+      --phospho                     Flag to pass in case of using phospho-enriched samples, changes MSGF protocol
+      --isobaric VALUE              In case of isobaric, specify per set the type and possible denominators/sweep/none.
+                                    Available types are tmt10plex, tmt6plex, itraq8plex, itraq4plex
+                                    E.g. --isobaric 'set1:tmt10plex:126:127N set2:tmtpro:127C:131 set3:tmt10plex:sweep'
+
       --prectol                     Precursor error for search engine (default 10ppm)
       --iso_err                     Isotope error for search engine (default -1,2)
       --frag                        Fragmentation method for search engine (default 'auto')
@@ -48,15 +58,13 @@ def helpMessage() {
       --normalize                   Normalize isobaric values by median centering on channels of protein table
       --sampletable                 Path to sample annotation table in case of isobaric analysis
       --deqms                       Perform DEqMS differential expression analysis using sampletable
-      --genes                       Produce gene table (i.e. ENSG or gene names from Swissprot)
-      --symbols                     Produce gene symbols table (i.e. gene names when using ENSEMBL DB)
-      --martmap FILE                Necessary when using ENSEMBL FASTA database, tab-separated file 
-                                    with information from Biomart. An example can be found at
-                                    https://github.com/nf-core/test-datasets/raw/ddamsproteomics/testdata/
+      --genes                       Produce gene table (i.e. gene names from Swissprot or ENSEMBL)
+      --ensg                        Produce ENSG stable ID table (when using ENSEMBL db)
       --fractions                   Fractionated samples, 
-      --hirief                      IEF fractionated samples, implies --fractions, allows delta pI calculation
-      --pipep FILE                  File containing peptide sequences and their isoelectric points. Example
-                                    can be found in https://github.com/nf-core/test-datasets/raw/ddamsproteomics/
+      --hirief                      File containing peptide sequences and their isoelectric points.
+                                    An example can be found here:
+                                    https://github.com/nf-core/test-datasets/blob/ddamsproteomics/testdata/formatted_known_peptides_ENSUniRefseq_TMT_predpi_20150825.txt
+                                    For IEF fractionated samples, implies --fractions, enables delta pI calculation
       --onlypeptides                Do not produce protein or gene level data
       --noquant                     Do not produce isobaric or MS1 quantification data
       --quantlookup FILE            Use previously generated SQLite lookup database containing spectra 
@@ -83,7 +91,7 @@ def helpMessage() {
  * SET UP CONFIGURATION VARIABLES
  */
 
-// Show help emssage
+// Show help message
 if (params.help){
     helpMessage()
     exit 0
@@ -95,7 +103,13 @@ params.email = false
 params.plaintext_email = false
 
 params.mzmls = false
-params.martmap = false
+params.mods = false
+params.locptms = false
+// 50 is the minimum score for "good PTM" in HCD acc. to luciphor2 paper
+// TODO evaluate if we need to set it higher
+params.ptm_minscore_high = 50
+params.phospho = false
+params.maxvarmods = 2
 params.isobaric = false
 params.instrument = 'qe' // Default instrument is Q-Exactive
 params.prectol = '10.0ppm'
@@ -115,36 +129,22 @@ params.activation = 'hcd' // Only for isobaric quantification
 params.outdir = 'results'
 params.normalize = false
 params.genes = false
-params.symbols = false
+params.ensg = false
 params.fastadelim = false
 params.genefield = false
 params.quantlookup = false
 params.fractions = false
 params.hirief = false
-params.pipep = false
 params.onlypeptides = false
 params.noquant = false
-params.denoms = false
 params.sampletable = false
 params.deqms = false
 
 // Validate and set file inputs
 fractionation = (params.hirief || params.fractions)
-mods = file(params.mods)
-if( !mods.exists() ) exit 1, "Modification file not found: ${params.mods}"
-tdb = file(params.tdb)
-if( !tdb.exists() ) exit 1, "Target fasta DB file not found: ${params.tdb}"
 
 // Files which are not standard can be checked here
-if (params.martmap) {
-  martmap = file(params.martmap)
-  if( !martmap.exists() ) exit 1, "Biomart ENSEMBL mapping file not found: ${params.martmap}"
-}
-if (params.pipep) {
-  trainingpep = file(params.pipep)
-  if( !trainingpep.exists() ) exit 1, "Peptide pI data file not found: ${params.pipep}"
-} else { trainingpep = false }
-
+if (params.hirief && !file(params.hirief).exists()) exit 1, "Peptide pI data file not found: ${params.hirief}"
 if (params.sampletable) {
   sampletable = file(params.sampletable)
   if( !sampletable.exists() ) exit 1, "Sampletable file not found: ${params.sampletable}"
@@ -155,18 +155,40 @@ if (params.sampletable) {
 output_docs = file("$baseDir/docs/output.md")
 
 // set constant variables
-accolmap = [peptides: 12, proteins: 14, genes: 17, assoc: 18]
+accolmap = [peptides: 13, proteins: 15, ensg: 18, genes: 19]
+acctypes = ['proteins']
+if (params.onlypeptides) {
+  acctypes = []
+} else {
+  if (params.ensg) {
+  acctypes = acctypes.plus('ensg')
+  }
+  if (params.genes) {
+  acctypes = acctypes.plus('genes')
+  }
+}
 
 
 // parse inputs that combine to form values or are otherwise more complex.
-setdenoms = [:]
-if (!(params.noquant) && params.isobaric && params.denoms) {
-  params.denoms.tokenize(' ').each{ it -> x=it.tokenize(':'); setdenoms.put(x[0], x[1..-1])}
-}
 
-plextype = params.isobaric ? params.isobaric.replaceFirst(/[0-9]+plex/, "") : 'false'
-normalize = (!params.noquant && params.normalize && params.isobaric)
-rawisoquant = (!params.noquant && !params.normalize && params.isobaric)
+// Isobaric input example: --isobaric 'set1:tmt10plex:127N:128N set2:tmtpro:sweep'
+isop = params.isobaric ? params.isobaric.tokenize(' ') : false
+setisobaric = isop ? isop.collect() {
+  y -> y.tokenize(':')
+}.collectEntries() {
+  x-> [x[0], x[1]]
+} : false
+// FIXME add non-isobaric sets here if we have any mixed-in?
+setdenoms = isop ? isop.collect() {
+  y -> y.tokenize(':')
+}.collectEntries() {
+  x-> [x[0], x[2..-1]]
+} : false
+
+luciphor_ptms = params.locptms ? params.locptms.tokenize(';') : false
+
+normalize = (!params.noquant && (params.normalize || params.deqms) && params.isobaric)
+rawisoquant = (!params.noquant && !normalize && params.isobaric)
 
 
 // AWSBatch sanity checking
@@ -198,17 +220,19 @@ log.info """=======================================================
     | \\| |       \\__, \\__/ |  \\ |___     \\`-._,-`-,
                                           `._,._,\'
 
-nf-core/ddamsproteomics v${workflow.manifest.version}"
+lehtiolab/ddamsproteomics v${workflow.manifest.version}"
 ======================================================="""
 def summary = [:]
-summary['Pipeline Name']  = 'nf-core/ddamsproteomics'
+summary['Pipeline Name']  = 'lehtiolab/ddamsproteomics'
 summary['Pipeline Version'] = workflow.manifest.version
 summary['Run Name']     = custom_runName ?: workflow.runName
 summary['mzMLs']        = params.mzmls
 summary['Target DB']    = params.tdb
 summary['Sample annotations'] = params.sampletable
 summary['Modifications'] = params.mods
-summary['Instrument'] = params.instrument
+summary['PTMs'] = params.locptms
+summary['Phospho enriched'] = params.phospho
+summary['Instrument'] = params.mzmldef ? 'Set per mzML file in mzml definition file' : params.instrument
 summary['Precursor tolerance'] = params.prectol
 summary['Isotope error'] = params.iso_err
 summary['Fragmentation method'] = params.frag
@@ -224,13 +248,12 @@ summary['Isobaric tags'] = params.isobaric
 summary['Isobaric activation'] = params.activation
 summary['Isobaric normalization'] = params.normalize
 summary['Output genes'] = params.genes
-summary['Output symbols'] = params.symbols
+summary['Output ENSG IDs'] = params.ensg
 summary['Custom FASTA delimiter'] = params.fastadelim 
 summary['Custom FASTA gene field'] = params.genefield
 summary['Premade quant data SQLite'] = params.quantlookup
 summary['Fractionated sample'] = fractionation
-summary['HiRIEF'] = params.hirief 
-summary['peptide pI data'] = params.pipep
+summary['HiRIEF pI peptide data'] = params.hirief 
 summary['Only output peptides'] = params.onlypeptides
 summary['Do not quantify'] = params.noquant
 summary['Perform DE analysis'] = params.deqms
@@ -261,10 +284,10 @@ def create_workflow_summary(summary) {
 
     def yaml_file = workDir.resolve('workflow_summary_mqc.yaml')
     yaml_file.text  = """
-    id: 'nf-core-ddamsproteomics-summary'
+    id: 'lehtiolab-ddamsproteomics-summary'
     description: " - this information is collected when the pipeline is started."
-    section_name: 'nf-core/ddamsproteomics Workflow Summary'
-    section_href: 'https://github.com/nf-core/ddamsproteomics'
+    section_name: 'lehtiolab/ddamsproteomics Workflow Summary'
+    section_href: 'https://github.com/lehtiolab/ddamsproteomics'
     plot_type: 'html'
     data: |
         <dl class=\"dl-horizontal\">
@@ -294,8 +317,7 @@ process get_software_versions {
     hardklor | head -n1 > v_hk.txt || true
     kronik | head -n2 | tr -cd '[:alnum:]._-' > v_kr.txt
     percolator -h |& head -n1 > v_perco.txt || true
-    msspsmtable --version > v_mss.txt
-    source activate openms-2.5.0
+    msstitch --version > v_mss.txt
     IsobaricAnalyzer |& grep Version > v_openms.txt || true
     scrape_software_versions.py > software_versions.yaml
     """
@@ -310,7 +332,7 @@ if (workflow.profile.tokenize(',').intersect(['test', 'test_nofrac'])) {
 else if (!params.mzmldef) {
   Channel
     .fromPath(params.mzmls)
-    .map { it -> [it, 'NA'] }
+    .map { it -> [it, params.instrument, 'NA'] }
     .set { mzml_in }
 } else {
   Channel
@@ -323,14 +345,37 @@ else if (!params.mzmldef) {
 def or_na(it, length){
     return it.size() > length ? it[length] : 'NA'
 }
+
+
+process createTargetDecoyFasta {
+ 
+  input:
+  path(tdb) from Channel.fromPath(params.tdb).toList()
+
+  output:
+  file('db.fa') into concatdb
+  set file('tdb'), file("decoy.fa") into bothdbs
+
+  script:
+  """
+  cat ${tdb.join(' ')} > tdb
+  msstitch makedecoy -i tdb -o decoy.fa --scramble tryp_rev --ignore-target-hits
+  cat tdb decoy.fa > db.fa
+  """
+}
+
+bothdbs.into { psmdbs; fdrdbs }
+
 // Parse mzML input to get files and sample names etc
 // get setname, sample name (baseName), input mzML file. 
 // Set platename to samplename if not specified. 
 // Set fraction name to NA if not specified
 mzml_in
   .tap { mzmlfiles_counter } // for counting, so config can set time limit
-  .map { it -> [it[1], file(it[0]).baseName.replaceFirst(/.*\/(\S+)\.mzML/, "\$1"), file(it[0]), it[2] ? it[2] : it[1], it[3] ? it[3] : 'NA' ]}
-  .into { sets; strips; mzmlfiles; mzml_quant; mzml_msgf }
+  .map { it -> [it[2], file(it[0]).baseName, file(it[0]), it[1], (it.size() > 3 ? it[3] : it[2]), or_na(it, 4)] }
+  .tap { sets; mzmlfiles; mzml_luciphor; mzml_quant }
+  .combine(concatdb)
+  .set { mzml_msgf }
 
 // Set names are first item in input lists, collect them for PSM tables and QC purposes
 sets
@@ -339,13 +384,6 @@ sets
   .collect()
   .map { it -> [it] }
   .into { setnames_featqc; setnames_psmqc }
-
-// Strip names for HiRIEF fractionation are third item, 
-strips
-  .map { it -> it[3] }
-  .unique()
-  .toList()
-  .set { strips_for_deltapi }
 
 
 /*
@@ -356,15 +394,18 @@ process quantifySpectra {
   when: !params.quantlookup && !params.noquant
 
   input:
-  set val(setname), val(sample), file(infile), val(platename), val(fraction) from mzml_quant
+  set val(setname), val(sample), file(infile), val(instr), val(platename), val(fraction) from mzml_quant
   file(hkconf) from Channel.fromPath("$baseDir/assets/hardklor.conf").first()
 
   output:
-  set val(sample), file("${sample}.kr"), file(infile) into kronik_out
+  set val(sample), file("${sample}.kr"), val(infile.name) into kronik_out
   set val(sample), file("${infile}.consensusXML") optional true into isobaricxml
 
   script:
   activationtype = [hcd:'High-energy collision-induced dissociation', cid:'Collision-induced dissociation', etd:'Electron transfer dissociation'][params.activation]
+  isobtype = setisobaric && setisobaric[setname] ? setisobaric[setname] : false
+  isobtype = isobtype == 'tmtpro' ? 'tmt16plex' : isobtype
+  plextype = isobtype ? isobtype.replaceFirst(/[0-9]+plex/, "") : 'false'
   massshift = [tmt:0.0013, itraq:0.00125, false:0][plextype]
   isobtype = params.isobaric == 'tmtpro' ? 'tmt16plex' : params.isobaric
   """
@@ -372,8 +413,7 @@ process quantifySpectra {
   # then run kronik on hardklor and quant isobaric labels if necessary
   hardklor <(cat $hkconf <(echo "$infile" hardklor.out))
   kronik -c 5 -d 3 -g 1 -m 8000 -n 600 -p 10 hardklor.out ${sample}.kr
-  source activate openms-2.5.0
-  ${params.isobaric ? "IsobaricAnalyzer -type $isobtype -in $infile -out \"${infile}.consensusXML\" -extraction:select_activation \"$activationtype\" -extraction:reporter_mass_shift $massshift -extraction:min_precursor_intensity 1.0 -extraction:keep_unannotated_precursor true -quantification:isotope_correction true" : ''}
+  ${isobtype ? "IsobaricAnalyzer -type $isobtype -in $infile -out \"${infile}.consensusXML\" -extraction:select_activation \"$activationtype\" -extraction:reporter_mass_shift $massshift -extraction:min_precursor_intensity 1.0 -extraction:keep_unannotated_precursor true -quantification:isotope_correction true" : ''}
   """
 }
 
@@ -382,7 +422,7 @@ process quantifySpectra {
 mzmlfiles
   .toList()
   .map { it.sort( {a, b -> a[1] <=> b[1]}) } // sort on sample for consistent .sh script in -resume
-  .map { it -> [it.collect() { it[0] }, it.collect() { it[2] }, it.collect() { it[3] } ] } // lists: [sets], [mzmlfiles], [plates]
+  .map { it -> [it.collect() { it[0] }, it.collect() { it[2] }, it.collect() { it[4] } ] } // lists: [sets], [mzmlfiles], [plates]
   .into { mzmlfiles_all; mzmlfiles_all_count }
 
 mzmlfiles_counter
@@ -402,25 +442,19 @@ process createSpectraLookup {
 
   script:
   """
-  msslookup spectra -i ${mzmlfiles.join(' ')} --setnames ${setnames.join(' ')}
+  msstitch storespectra --spectra ${mzmlfiles.join(' ')} --setnames ${setnames.join(' ')}
   """
 }
 
 
-// Collect all isobaric quant XML output for quant lookup building process
-isobaricxml
-  .ifEmpty(['NA', 'NA', 'NA'])
-  .toList()
-  .map { it.sort({a, b -> a[0] <=> b[0]}) }
-  .map { it -> [it.collect() { it[0] }, it.collect() { it[1] }] } // samples, isoxml
-  .set { isofiles_sets }
-
 // Collect all MS1 kronik output for quant lookup building process
 kronik_out
   .ifEmpty(['NA', 'NA'])
+  .join(isobaricxml, remainder: true)
   .toList()
   .map { it.sort({a, b -> a[0] <=> b[0]}) }
-  .map { it -> [it.collect() { it[0] }, it.collect() { it[1] }, it.collect() { it[2] }] } // samples, kronikout, mzml
+  .transpose()
+  .toList()
   .set { krfiles_sets }
 
 
@@ -428,14 +462,14 @@ kronik_out
 // even if not needing quant (--noquant) this is necessary or NF will error
 if (params.noquant && !params.quantlookup) {
   newspeclookup
-    .into { quant_lookup; spec_lookup; countlookup }
+    .into { quant_lookup; spec_lookup; ptm_lookup_in; countlookup }
 } else if (!params.quantlookup) {
   newspeclookup
-    .into { spec_lookup; countlookup }
+    .into { spec_lookup; countlookup; ptm_lookup_in }
 } else {
   Channel
     .fromPath(params.quantlookup)
-    .into { quant_lookup; countlookup }
+    .into { quant_lookup; countlookup; ptm_lookup_in }
   Channel.empty().set { spec_lookup }
 } 
 
@@ -448,25 +482,16 @@ process quantLookup {
 
   input:
   file lookup from spec_lookup
-  set val(isosamples), file(isofns) from isofiles_sets
-  set val(krsamples), file(krfns), file(mzmls) from krfiles_sets
+  set val(samples), file(krfns), val(mzmlnames), file(isofns) from krfiles_sets
 
   output:
   file('db.sqlite') into newquantlookup
 
   script:
-  if (params.isobaric)
   """
   # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
   cat $lookup > db.sqlite
-  msslookup ms1quant --dbfile db.sqlite -i ${krfns.join(' ')} --spectra ${mzmls.join(' ')} --quanttype kronik --mztol 20.0 --mztoltype ppm --rttol 5.0 
-  msslookup isoquant --dbfile db.sqlite -i ${isofns.join(' ')} --spectra ${isosamples.collect{ x -> x + '.mzML' }.join(' ')}
-  """
-  else
-  """
-  # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
-  cat $lookup > db.sqlite
-  msslookup ms1quant --dbfile db.sqlite -i ${krfns.join(' ')} --spectra ${mzmls.join(' ')} --quanttype kronik --mztol 20.0 --mztoltype ppm --rttol 5.0 
+  msstitch storequant --dbfile db.sqlite ${params.isobaric ? "--isobaric ${isofns.join(' ')}" : ''} --kronik ${krfns.join(' ')} --spectra ${mzmlnames.join(' ')} --mztol 20.0 --mztoltype ppm --rttol 5.0 
   """
 }
 
@@ -541,45 +566,31 @@ if (fractionation) {
 * Step 2: Identify peptides
 */
 
-process createTargetDecoyFasta {
- 
-  input:
-  file(tdb)
-
-  output:
-  file('db.fa') into concatdb
-  set file(tdb), file("decoy.fa") into searchdbs 
-
-  script:
-  """
-  msslookup makedecoy -i "$tdb" -o decoy.fa --scramble tryp_rev --ignore-target-hits
-  cat "$tdb" decoy.fa > db.fa
-  """
-}
-
-
 process msgfPlus {
   cpus = config.poolSize < 4 ? config.poolSize : 4
 
   input:
-  set val(setname), val(sample), file(x), val(platename), val(fraction) from mzml_msgf
-  file(db) from concatdb
-  file mods
+  set val(setname), val(sample), file(x), val(instrument), val(platename), val(fraction), file(db) from mzml_msgf
 
   output:
   set val(setname), val(sample), file("${sample}.mzid") into mzids
   set val(setname), file("${sample}.mzid"), file("${sample}.mzid.tsv") into mzidtsvs
   
   script:
-  msgfprotocol = [tmt:4, itraq:2, false:0][plextype]
-  msgfinstrument = [velos:1, qe:3, false:0][params.instrument]
+  isobtype = setisobaric && setisobaric[setname] ? setisobaric[setname] : false
+  // protcol 0 is automatic, msgf checks in mod file, TMT should be run with 1
+  // see at https://github.com/MSGFPlus/msgfplus/issues/19
+  msgfprotocol = params.phospho ? setisobaric[setname][0..4] == 'itraq' ? 3 : 1 : 0
+  msgfinstrument = [velos:1, qe:3, false:0][instrument]
   fragmeth = [auto:0, cid:1, etd:2, hcd:3, uvpd:4][params.frag]
   enzyme = params.enzyme.indexOf('-') > -1 ? params.enzyme.replaceAll('-', '') : params.enzyme
   enzyme = [unspecific:0, trypsin:1, chymotrypsin: 2, lysc: 3, lysn: 4, gluc: 5, argc: 6, aspn:7, no_enzyme:9][enzyme]
   ntt = [full: 2, semi: 1, non: 0][params.terminicleaved]
 
   """
-  msgf_plus -Xmx8G -d $db -s $x -o "${sample}.mzid" -thread ${task.cpus * params.threadspercore} -mod $mods -tda 0 -maxMissedCleavages $params.maxmiscleav -t ${params.prectol}  -ti ${params.iso_err} -m ${fragmeth} -inst ${msgfinstrument} -e ${enzyme} -protocol ${msgfprotocol} -ntt ${ntt} -minLength ${params.minpeplen} -maxLength ${params.maxpeplen} -minCharge ${params.mincharge} -maxCharge ${params.maxcharge} -n 1 -addFeatures 1
+  echo ${setname}
+  create_modfile.py ${params.maxvarmods} "${params.msgfmods}" "${params.mods}${isobtype ? ";${isobtype}" : ''}${params.locptms ? ";${params.locptms}" : ''}"
+  msgf_plus -Xmx8G -d $db -s $x -o "${sample}.mzid" -thread ${task.cpus * params.threadspercore} -mod "mods.txt" -tda 0 -maxMissedCleavages $params.maxmiscleav -t ${params.prectol}  -ti ${params.iso_err} -m ${fragmeth} -inst ${msgfinstrument} -e ${enzyme} -protocol ${msgfprotocol} -ntt ${ntt} -minLength ${params.minpeplen} -maxLength ${params.maxpeplen} -minCharge ${params.mincharge} -maxCharge ${params.maxcharge} -n 1 -addFeatures 1
   msgf_plus -Xmx3500M edu.ucsd.msjava.ui.MzIDToTsv -i "${sample}.mzid" -o out.tsv
   awk -F \$'\\t' '{OFS=FS ; print \$0, "Biological set" ${fractionation ? ', "Strip", "Fraction"' : ''}}' <( head -n+1 out.tsv) > "${sample}.mzid.tsv"
   awk -F \$'\\t' '{OFS=FS ; print \$0, "$setname" ${fractionation ? ", \"$platename\", \"$fraction\"" : ''}}' <( tail -n+2 out.tsv) >> "${sample}.mzid.tsv"
@@ -631,9 +642,9 @@ process fdrToTSV {
   if (params.fdrmethod == 'tdconcat')
   """
   mkdir outtables
-  msspsmtable percolator --perco $perco -d outtables -i ${tsvs.collect() { "'$it'" }.join(' ')} --mzids ${mzids.collect() { "'$it'" }.join(' ')}
-  msspsmtable merge -i outtables/* -o psms
-  msspsmtable split -i psms --splitcol \$(head -n1 psms | tr '\t' '\n' | grep -n ^TD\$ | cut -f 1 -d':')
+  msstitch perco2psm --perco $perco -d outtables -i ${tsvs.collect() { "'$it'" }.join(' ')} --mzids ${mzids.collect() { "'$it'" }.join(' ')} --filtpsm 0.01 --filtpep 0.01
+  msstitch concat -i outtables/* -o psms
+  msstitch split -i psms --splitcol \$(head -n1 psms | tr '\t' '\n' | grep -n ^TD\$ | cut -f 1 -d':')
   """
 }
 
@@ -642,23 +653,21 @@ tmzidtsv_perco
   .concat(dmzidtsv_perco)
   .groupTuple(by: 1)
   .combine(quant_lookup)
+  .combine(psmdbs)
   .set { prepsm }
-
-
 
 /*
 * Step 3: Post-process peptide identification data
 */
 
+hiriefpep = params.hirief ? Channel.fromPath([params.hirief, params.hirief]) : Channel.value(['NA', 'NA'])
 process createPSMTable {
 
   publishDir "${params.outdir}", mode: 'copy', overwrite: true, saveAs: {["target_psmlookup.sql", "target_psmtable.txt", "decoy_psmtable.txt"].contains(it) ? it : null}
 
   input:
-  set val(setnames), val(td), file('psms?'), file('lookup') from prepsm
-  set file(tdb), file(ddb) from searchdbs
-  val(allstrips) from strips_for_deltapi
-  file(trainingpep) 
+  set val(setnames), val(td), file('psms?'), file('lookup'), file(tdb), file(ddb) from prepsm
+  file(trainingpep) from hiriefpep
   val(mzmlcount) from mzmlcount_psm
 
   output:
@@ -671,22 +680,19 @@ process createPSMTable {
   psmlookup = "${td}_psmlookup.sql"
   outpsms = "${td}_psmtable.txt"
 
+  quant = !params.noquant && td == 'target'
   """
-  msspsmtable merge -i psms* -o psms.txt
-  msspsmtable conffilt -i psms.txt -o filtpsm --confidence-better lower --confidence-lvl $params.psmconflvl --confcolpattern 'PSM q-value'
-  msspsmtable conffilt -i filtpsm -o filtpep --confidence-better lower --confidence-lvl $params.pepconflvl --confcolpattern 'peptide q-value'
-  tail -n+2 filtpep | grep . || (echo "No ${td} PSMs made the combined PSM / peptide FDR cutoff (${params.psmconflvl} / ${params.pepconflvl})" && exit 1)
+  msstitch concat -i psms* -o psms.txt
+  tail -n+2 psms.txt | grep . || (echo "No ${td} PSMs made the combined PSM / peptide FDR cutoff (${params.psmconflvl} / ${params.pepconflvl})" && exit 1)
   # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
   cat lookup > $psmlookup
-  msslookup psms -i filtpep --dbfile $psmlookup ${params.onlypeptides ? '' : "--fasta ${td == 'target' ? "\"${tdb}\"" : "\"${ddb}\" --decoy"}"} ${params.martmap ? "--map ${martmap}" : ''}
-  msspsmtable specdata -i filtpep --dbfile $psmlookup -o prepsms.txt --addmiscleav
-  ${!params.noquant && td == 'target' ? "msspsmtable quant -i prepsms.txt -o qpsms.txt --dbfile $psmlookup --precursor ${params.isobaric ? '--isobaric' : ''}" : 'mv prepsms.txt qpsms.txt'}
-  sed 's/\\#SpecFile/SpectraFile/' -i qpsms.txt
-  ${!params.onlypeptides ? "msspsmtable genes -i qpsms.txt -o gpsms --dbfile $psmlookup" : ''}
-  ${!params.onlypeptides ? "msslookup proteingroup -i qpsms.txt --dbfile $psmlookup" : ''}
-  ${!params.onlypeptides ? "msspsmtable proteingroup -i gpsms -o ${params.hirief ? "pgpsms" : "$outpsms"} --dbfile $psmlookup" : "mv qpsms.txt ${params.hirief ? "pgpsms" : "$outpsms"}" }
-  ${params.hirief ? "echo \'${groovy.json.JsonOutput.toJson(params.strips)}\' >> strip.json && peptide_pi_annotator.py -i $trainingpep -p pgpsms --o $outpsms --stripcolpattern Strip --pepcolpattern Peptide --fraccolpattern Fraction --stripdef strip.json --ignoremods \'*\'": ''} 
-  msspsmtable split -i ${outpsms} --bioset
+  msstitch psmtable -i psms.txt --dbfile $psmlookup --addmiscleav -o psmtable \
+    ${params.onlypeptides ? '' : "--fasta ${td == 'target' ? "\"${tdb}\"" : "\"${ddb}\""}"} \
+    ${quant ? "--ms1quant ${params.isobaric ? '--isobaric' : ''}" : ''} \
+    ${!params.onlypeptides ? "--genes --proteingroup" : ''}
+  sed 's/\\#SpecFile/SpectraFile/' -i psmtable
+  ${params.hirief && td == 'target' ? "echo \'${groovy.json.JsonOutput.toJson(params.strips)}\' >> strip.json && peptide_pi_annotator.py -i $trainingpep -p psmtable --o $outpsms --stripcolpattern Strip --pepcolpattern Peptide --fraccolpattern Fraction --stripdef strip.json --ignoremods \'*\'": "mv psmtable ${outpsms}"} 
+  msstitch split -i ${outpsms} --splitcol bioset
   ${setnames.collect() { "test -f '${it}.tsv' || echo 'No ${td} PSMs found for set ${it}' >> warnings" }.join(' && ') }
   """
 }
@@ -700,69 +706,143 @@ setpsmtables
   .map{ it -> [it[0], it[1].collect() { it.baseName.replaceFirst(/\.tsv$/, "") }, it[1]]}
   .tap { deqms_psms }
   .transpose()
-  .set { psm_pep }
+  .tap { psm_pep }
+  .filter { it -> it[0] == 'target' }
+  .map { it -> it[1..2] }
+  .set { psm_ptm }
+
+mzml_luciphor
+  .map { it -> [it[0], it[2]] } // only need setname and mzml
+  .groupTuple()
+  .join(psm_ptm)
+  .set { psm_luciphor }
 
 
-process psm2Peptides {
+process luciphorPTMLocalizationScoring {
+
+  cpus = config.poolSize < 4 ? config.poolSize : 4
+  when: params.locptms
 
   input:
-  set val(td), val(setname), file('psms') from psm_pep
-  
+  set val(setname), file(mzmls), file('psms') from psm_luciphor
+
   output:
-  set val(setname), val(td), file("${setname}_linmod") into pepslinmod
-  set val(setname), val('peptides'), val(td), file("${setname}_linmod") into peptides_out
-  set val(setname), val(td), file(psms), file('proteins'), val('proteins') into proteins
-  set val(setname), val(td), file(psms), file('genes'), val('genes') into genes
-  set val(setname), val(td), file(psms), file('symbols'), val('assoc') into symbols
-  file('warnings') optional true into pepwarnings
+  set val(setname), file('psms'), file('ptms.txt') into luciphor_out, luciphor_all
 
   script:
-  col = accolmap.peptides + 1  // psm2pep adds a column
-  do_raw_isoquant = rawisoquant && td == 'target'
+  isobtype = setisobaric && setisobaric[setname] ? setisobaric[setname] : ''
   """
-  # Create peptide table from PSM table, picking best scoring unique peptides
-  msspeptable psm2pep -i psms -o peptides --scorecolpattern svm --spectracol 1 ${!params.noquant && params.isobaric && td == 'target' ? "--isobquantcolpattern plex" : "" } ${!params.noquant && td == 'target' ? "--ms1quantcolpattern area" : ""}
-  # Move peptide sequence to first column
-  paste <( cut -f ${col} peptides) <( cut -f 1-${col-1},${col+1}-500 peptides) > peptide_table.txt
-  # Create empty protein/gene/gene-symbol tables with only the identified accessions, will be filled later
-  echo Protein ID|tee proteins genes symbols
-  ${!params.onlypeptides ? "tail -n+2 psms|cut -f ${accolmap.proteins}|grep -v '\\;'| grep -v '^NA\$' | grep -v '^\$'|sort|uniq >> proteins || echo 'Could not find any ${td} proteins for set ${setname}' >> warnings" : "" }
-  ${params.genes ? "tail -n+2 psms|cut -f ${accolmap.genes}|grep -v '\\;'| grep -v '^NA\$' | grep -v '^\$'|sort|uniq >> genes || echo 'Could not find any ${td} genes for set ${setname}' >> warnings" : ""}
-  ${params.symbols ? "tail -n+2 psms|cut -f ${accolmap.assoc}|grep -v '\\;'| grep -v '^NA\$' | grep -v '^\$'|sort|uniq >> symbols || echo 'Could not find any ${td} symbols for set ${setname}' >> warnings" : ""}
-  ${do_raw_isoquant ? "msspsmtable isoratio -i psms -o pepisoquant --targettable peptide_table.txt --protcol ${accolmap.peptides} --isobquantcolpattern plex --minint 0.1 --denompatterns ${setdenoms[setname].join(' ')}" : ''}
-  ${do_raw_isoquant ? "mv pepisoquant peptide_table.txt" : ''}
-  # Create linear modeled q-values of peptides (modeled svm scores vs q-values) for more protein-FDR precision.
-  msspeptable modelqvals -i peptide_table.txt -o ${setname}_linmod --scorecolpattern svm --fdrcolpattern '^q-value'
-  cut -f \$(head -n1 "${setname}_linmod" | tr '\\t' '\\n' | grep -n 'linear modeled' | cut -f1 -d':') "${setname}_linmod" | grep "^[0-1]\\.[0-9]*\$" || echo 'Could not calculate linear modeled q-values for ${td} peptides of set ${setname}' >> warnings
+  export MZML_PATH=\$(pwd)
+  export MINPSMS=${params.minpsms_luciphor}
+  export ALGO=${params.activation == 'hcd' ? '1' : '0'}
+  export MAXPEPLEN=${params.maxpeplen}
+  export MAXCHARGE=${params.maxcharge}
+  export THREAD=${task.cpus * params.threadspercore}
+  export MS2TOLVALUE=0.025
+  export MS2TOLTYPE=Da
+  cat "$baseDir/assets/luciphor2_input_template.txt" | envsubst > lucinput.txt
+  luciphor_prep.py psms lucinput.txt "${params.msgfmods}" "${params.mods}${isobtype ? ";${isobtype}" : ''}" "${params.locptms}" luciphor.out
+  luciphor2 luciphor_config.txt
+  luciphor_parse.py ${params.ptm_minscore_high} ptms.txt "${params.msgfmods}" "${params.locptms};${params.mods}"
+  """
+}
+
+process createPTMLookup {
+  publishDir "${params.outdir}", mode: 'copy', overwrite: true, saveAs: {it == ptmtable ? ptmtable : null}
+
+  when: params.locptms
+
+  input:
+  set val(setnames), file(psms), file(ptmtables) from luciphor_all.toList().transpose().toList()
+  file(ptmlup) from ptm_lookup_in
+
+  output:
+  file(ptmtable) into features_out
+  file("ptmlup.sql") into ptm_lookup
+
+  script:
+  ptmtable = "ptm_psmtable.txt"
+  """
+  msstitch concat -i ${ptmtables.collect() {"\"$it\""}.join(' ')} -o "${ptmtable}"
+  # FIXME this sed replace line can be removed from mssttich 3.1, then spectracol 1 works
+  sed 's/SpectraFile/\\#SpecFile/' -i "${ptmtable}"
+  cat "${ptmlup}" > ptmlup.sql
+  msstitch psmtable -i "${ptmtable}" --dbfile ptmlup.sql -o ptmtable_read --spectracol 1
+  """
+}
+
+process makePTMs {
+
+  when: params.locptms
+
+  input:
+  set val(setname), file('psms'), file(ptmtable) from luciphor_out
+  
+  output:
+  file(ptmtable)
+  set val(setname), file(peptable) into ptms_to_merge
+  
+  script:
+  peptable = "${setname}_ptm_peptides.txt"
+  """
+  # Generate PTM PSM and peptide table
+  msstitch peptides -i "${ptmtable}" -o "ptmpeps" --scorecolpattern svm --spectracol 1
+  #  ${!params.noquant ? "--ms1quantcolpattern area ${setisobaric && setisobaric[setname] ?  "--isobquantcolpattern plex --minint 0.1 --denompatterns ${setdenoms[setname].join(' ')}" : ''}" : ''}
+
+  # Normalize isobaric quant data for PTMs
+  awk -F \$'\\t' -v OFS=\$'\\t' '{print \$${accolmap.peptides}, \$${accolmap.peptides}}' "${ptmtable}" | sed \'s/Peptide/Accession/\' > pepacc
+  channelcols=\$(head -n1 "${ptmtable}" | tr '\\t' '\\n' | grep -n plex | cut -f1 -d ':'| tr '\\n' ',' | sed 's/,\$//')
+  paste pepacc <(cut -f "\$channelcols" "${ptmtable}") > psmvals
+  ptm_normalize.R psmvals "${setname}" ${setdenoms[setname] ? "\$(egrep -n \'(${setdenoms[setname].join('|')})\' <( head -n1 psmvals | tr '\\t' '\\n') | cut -f1 -d ':' | tr '\\n' ',' | sed 's/,\$//') " : ''}
+  # Paste peptide table and quant
+  paste <(head -n1 ptmpeps) <(head -n1 normalized_feats | cut -f2-2000) > "${peptable}"
+  join -a1 -o auto -e 'NA' -t \$'\\t' <(tail -n+2 ptmpeps | sort -k1b,1) <(tail -n+2 normalized_feats | sort -k1b,1) >> "${peptable}"
   """
 }
 
 
-// Different amount of processes depending on genes and gene symbols are desired
-// Input for proteins, genes and symbols is identical at this stage so tap and concat
-// onto itself.
-if (params.genes && params.symbols) { 
-  pepslinmod
-    .tap { pepsg; pepss }
-    .concat(pepsg, pepss)
-    .set { pepslinmod_prot }
-  proteins
-    .concat(genes, symbols)
-    .join(pepslinmod_prot, by: [0,1])
-    .set { prepgs_in }
-} else if (params.genes) { 
-  pepslinmod
-    .tap { pepsg }
-    .concat(pepsg)
-    .set { pepslinmod_prot }
-  proteins
-    .concat(genes)
-    .join(pepslinmod_prot, by: [0,1])
-    .set { prepgs_in }
-} else { 
-  proteins
-    .join(pepslinmod, by: [0,1])
-    .set { prepgs_in }
+process PTMSetMerge {
+  publishDir "${params.outdir}", mode: 'copy', overwrite: true 
+
+  when: params.locptms
+
+  input:
+  set val(setnames), file(tables) from ptms_to_merge.toList().transpose().toList()
+  file(lookup) from ptm_lookup
+
+  output:
+  file('ptm_peptidetable.txt') into ptmpep_out
+
+  script:
+  """
+  cat $lookup > db.sqlite
+  msstitch merge -i ${tables.join(' ')} --setnames ${setnames.join(' ')} --dbfile db.sqlite -o mergedtable --no-group-annotation \
+    --fdrcolpattern 'FLR\$' \
+    ${!params.noquant ? "--ms1quantcolpattern area" : ''} \
+    ${!params.noquant && setisobaric ? "--isobquantcolpattern plex" : ''}
+  head -n1 mergedtable | sed 's/q-value/FLR/g' > ptm_peptidetable.txt
+  tail -n+2 mergedtable | sort -k1b,1 >> ptm_peptidetable.txt
+  """
+}
+
+
+process makePeptides {
+  input:
+  set val(td), val(setname), file('psms') from psm_pep
+  
+  output:
+  set val(setname), val(td), file(psms), file("${setname}_peptides") into prepgs_in
+  set val(setname), val('peptides'), val(td), file("${setname}_peptides") into peptides_out
+  file('warnings') optional true into pepwarnings
+
+  script:
+  quant = !params.noquant && td == 'target'
+  """
+  # Create peptide table from PSM table, picking best scoring unique peptides
+  ${quant && rawisoquant && setdenoms[setname][0] == 'sweep' ? 'echo Currently need denominators for non-normalized output tables, median sweep is only used when normalizing. && exit 1' : ''}
+  msstitch peptides -i psms -o "${setname}_peptides" --scorecolpattern svm --spectracol 1 --modelqvals \
+    ${quant ? "--ms1quantcolpattern area ${setisobaric && setisobaric[setname] ? "--isobquantcolpattern plex ${rawisoquant ? "--minint 0.1 --denompatterns ${setdenoms[setname].join(' ')}" : ''}" : ''}" : ''}
+  """
 }
 
 
@@ -770,25 +850,26 @@ if (params.genes && params.symbols) {
 * Step 4: Infer and quantify proteins and genes
 */
 
-
-// Group set/acctype T-D combinations and remove those with only target or only decoy
-tprepgs_in = Channel.create()
+// Group set T-D combinations and remove those with only target or only decoy
+pre_tprepgs_in = Channel.create()
 dprepgs_in = Channel.create()
 prepgs_in
-  .groupTuple(by: [0,4])
-  .filter { it -> it[1].size() == 2 }
+  .groupTuple(by: 0) // group by setname/acctype
+  .filter { it -> it[1].size() == 2 } // must have target and decoy ?
   .transpose()
-  .choice(tprepgs_in, dprepgs_in) { it[1] == 'target' ? 0 : 1 }
-
+  .choice(pre_tprepgs_in, dprepgs_in) { it[1] == 'target' ? 0 : 1 }
+// combine target with fasta files
+pre_tprepgs_in
+  .combine(fdrdbs)
+  .set { tprepgs_in }
 
 process proteinGeneSymbolTableFDR {
   
   when: !params.onlypeptides
-
   input:
-  set val(setname), val(td), file('tpsms'), file('tproteins'), val(acctype), file('tpeplinmod') from tprepgs_in
-  set val(setname), val(td), file('dpsms'), file('dproteins'), val(acctype), file('dpeplinmod') from dprepgs_in
-  set file(tfasta), file(dfasta) from searchdbs
+  set val(setname), val(td), file('tpsms'), file('tpeptides'), file(tfasta), file(dfasta) from tprepgs_in
+  set val(setname), val(td), file('dpsms'), file('dpeptides') from dprepgs_in
+  each acctype from acctypes
 
   output:
   set val(setname), val(acctype), file("${setname}_protfdr") into protfdrout
@@ -797,13 +878,10 @@ process proteinGeneSymbolTableFDR {
   script:
   scorecolpat = acctype == 'proteins' ? '^q-value$' : 'linear model'
   """
-  ${!params.noquant ? "mssprottable ms1quant -i tproteins -o tprotms1 --psmtable tpsms --protcol ${accolmap[acctype]}" : 'mv tproteins tprotms1'}
-  ${rawisoquant ? "msspsmtable isoratio -i tpsms -o tprotquant --protcol ${accolmap[acctype]} --targettable tprotms1 --isobquantcolpattern plex --minint 0.1 --denompatterns ${setdenoms[setname].join(' ')}": 'mv tprotms1 tprotquant'}
-
   # score col is linearmodel_qval or q-value, but if the column only contains 0.0 or NA (no linear modeling possible due to only q<10e-04), we use svm instead
-  tscol=\$(head -1 tpeplinmod | tr '\\t' '\\n' | grep -n "${scorecolpat}" | cut -f 1 -d':')
-  dscol=\$(head -1 dpeplinmod | tr '\\t' '\\n' | grep -n "${scorecolpat}" | cut -f 1 -d':')
-  if [ -n "\$(cut -f \$tscol tpeplinmod | tail -n+2 | egrep -v '(NA\$|0\\.0\$)')" ] && [ -n "\$(cut -f \$dscol dpeplinmod | tail -n+2 | egrep -v '(NA\$|0\\.0\$)')" ]
+  tscol=\$(head -1 tpeptides| tr '\\t' '\\n' | grep -n "${scorecolpat}" | cut -f 1 -d':')
+  dscol=\$(head -1 dpeptides| tr '\\t' '\\n' | grep -n "${scorecolpat}" | cut -f 1 -d':')
+  if [ -n "\$(cut -f \$tscol tpeptides| tail -n+2 | egrep -v '(NA\$|0\\.0\$)')" ] && [ -n "\$(cut -f \$dscol dpeptides| tail -n+2 | egrep -v '(NA\$|0\\.0\$)')" ]
     then
       scpat="${scorecolpat}"
       logflag="--logscore"
@@ -812,14 +890,12 @@ process proteinGeneSymbolTableFDR {
       logflag=""
       echo 'Not enough q-values or linear-model q-values for peptides to calculate FDR for ${acctype} of set ${setname}, using svm score instead.' >> warnings
   fi
-
-  mssprottable bestpeptide -i tprotquant -o tbestpeptides --peptable tpeplinmod --scorecolpattern "\$scpat" \$logflag --protcol ${accolmap[acctype] + 1}
-  mssprottable bestpeptide -i dproteins -o dbestpeptides --peptable dpeplinmod --scorecolpattern "\$scpat" \$logflag --protcol ${accolmap[acctype] + 1}
-
-  mssprottable ${acctype == 'proteins' ? 'protfdr' : 'pickedfdr'} -i tbestpeptides --decoyfn dbestpeptides -o ${setname}_protfdr ${acctype == 'genes' ? "--picktype fasta --targetfasta '$tfasta' --decoyfasta '$dfasta' ${params.fastadelim ? "--fastadelim '${params.fastadelim}' --genefield '${params.genefield}'" : '' }" : ''} ${acctype == 'assoc' ? '--picktype result' : ''}
+  msstitch ${acctype} -i tpeptides --decoyfn dpeptides -o "${setname}_protfdr" --scorecolpattern "\$scpat" \$logflag \
+    ${!params.noquant ? "--ms1quant --psmtable tpsms ${rawisoquant ? "--isobquantcolpattern plex --denompatterns ${setdenoms[setname].join(' ')} --minint 0.1": ''}" : ''} \
+    ${acctype != 'proteins' ? "--targetfasta '$tfasta' --decoyfasta '$dfasta' ${params.fastadelim ? "--fastadelim '${params.fastadelim}' --genefield '${params.genefield}'": ''}" : ''}
   """
 }
-
+    
 
 psmwarnings
   .concat(pepwarnings)
@@ -851,6 +927,7 @@ process normalizeFeaturesDEqMS {
   when: normalize
   
   script:
+  sweep = setdenoms[setname][0] == 'sweep'
   """
   # get col nrs for isobaric quant values and create new PSM table with only those and feature columns
   # need to use awk first because cut cannot paste peptide column twice (happens when peptide is acctype)
@@ -859,8 +936,10 @@ process normalizeFeaturesDEqMS {
   paste pepacc <(cut -f "\$channelcols" psms) > psmvals
   # run deqMS normalization and summarization, which produces logged ratios
 
-  ${params.denoms ? "denomcols=\$(egrep -n \'(${setdenoms[setname].join('|')})\' <( head -n1 psmvals | tr '\\t' '\\n') | cut -f1 -d ':' | tr '\\n' ',' | sed 's/,\$//') " : "touch ${setname}_channelmedians"}
-  deqms_normalize.R psmvals features $setname ${params.denoms ? "\$denomcols" : ''}
+  # FIXME also in sweep we can in deqms 1.6 get a channelmedian, so only touch when reporting raw
+  # intensities (which will not go through this step!!)
+  ${!sweep ? "denomcols=\$(egrep -n \'(${setdenoms[setname].join('|')})\' <( head -n1 psmvals | tr '\\t' '\\n') | cut -f1 -d ':' | tr '\\n' ',' | sed 's/,\$//') " : "touch ${setname}_channelmedians"}
+  deqms_normalize.R psmvals features $setname ${sweep ? '' : "\$denomcols"}
   # join feat tables on normalized proteins
   paste <(head -n1 features) <(head -n1 normalized_feats | cut -f2-2000) <(echo PSM counts) > ${setname}_feats 
   join -a1 -o auto -e 'NA' -t \$'\\t' <(tail -n+2 features | sort -k1b,1 ) <(tail -n+2 normalized_feats | sort -k1b,1) >> feats_quants
@@ -909,13 +988,17 @@ process proteinPeptideSetMerge {
   """
   # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
   cat $lookup > db.sqlite
-  msslookup ${acctype == 'peptides' ? 'peptides --fdrcolpattern \'^q-value\' --peptidecol' : 'proteins --fdrcolpattern \'q-value\' --protcol'} 1 --dbfile db.sqlite -i ${tables.join(' ')} --setnames ${setnames.join(' ')} ${!params.noquant ? "--ms1quantcolpattern area" : ""}  ${!params.noquant && params.isobaric ? '--isobquantcolpattern plex' : ''} ${acctype in ['genes', 'assoc'] ? "--genecentric ${acctype}" : ''}
-  ${acctype == 'peptides' ? 'msspeptable build' : 'mssprottable build --mergecutoff 0.01'} --dbfile db.sqlite -o mergedtable ${!params.noquant && params.isobaric ? '--isobaric' : ''} ${!params.noquant ? "--precursor": ""} --fdr ${acctype in ['genes', 'assoc'] ? "--genecentric ${acctype}" : ''} ${params.onlypeptides ? "--noncentric" : ''}
+  msstitch merge -i ${tables.join(' ')} --setnames ${setnames.join(' ')} --dbfile db.sqlite -o mergedtable \
+    --fdrcolpattern '^q-value\$' ${acctype != 'peptides' ? '--mergecutoff 0.01' : ''} \
+    ${!params.noquant ? "--ms1quantcolpattern area" : ''} \
+    ${!params.noquant && setisobaric ? "--isobquantcolpattern plex" : ''} \
+    ${params.onlypeptides ? "--no-group-annotation" : ''}
+   
   # join psm count tables, first make a header from setnames
   head -n1 mergedtable > tmpheader
 
   # exchange sample names in header
-  ${params.sampletable && params.isobaric ?  
+  ${params.sampletable && setisobaric ?  
     'sed -i  "s/[^A-Za-z0-9_\\t]/_/g" sampletable ; \
     while read line ; do read -a arr <<< $line ; sed -i "s/${arr[1]}_\\([a-z0-9]*plex\\)_${arr[0]}/${arr[3]}_${arr[2]}_${arr[1]}_\\1_${arr[0]}/" tmpheader ; done < sampletable' \
   : ''}
@@ -931,8 +1014,12 @@ process proteinPeptideSetMerge {
   else
   """
   cat $lookup > db.sqlite
-  msslookup ${acctype == 'peptides' ? 'peptides --fdrcolpattern \'^q-value\' --peptidecol' : 'proteins --fdrcolpattern \'q-value\' --protcol'} 1 --dbfile db.sqlite -i ${tables.join(' ')} --setnames ${setnames.join(' ')} ${!params.noquant ? "--ms1quantcolpattern area" : ""}  ${!params.noquant && params.isobaric ? '--isobquantcolpattern plex' : ''} ${acctype in ['genes', 'assoc'] ? "--genecentric ${acctype}" : ''}
-  ${acctype == 'peptides' ? 'msspeptable build' : 'mssprottable build --mergecutoff 0.01'} --dbfile db.sqlite -o mergedtable ${!params.noquant && params.isobaric ? '--isobaric' : ''} ${!params.noquant ? "--precursor": ""} --fdr ${acctype in ['genes', 'assoc'] ? "--genecentric ${acctype}" : ''} ${params.onlypeptides ? "--noncentric" : ''}
+  msstitch merge -i ${tables.join(' ')} --setnames ${setnames.join(' ')} --dbfile db.sqlite -o mergedtable \
+    --fdrcolpattern '^q-value\$' ${acctype != 'peptides' ? '--mergecutoff 0.01' : ''} \
+    ${!params.noquant ? "--ms1quantcolpattern area" : ''} \
+    ${!params.noquant && params.isobaric ? "--isobquantcolpattern plex --psmnrcolpattern quanted" : ''} \
+    ${params.onlypeptides ? "--no-group-annotation" : ''}
+
   ${!params.noquant && params.isobaric ? "sed -i 's/\\ \\-\\ \\#\\ quanted\\ PSMs/_quanted_psm_count/g' mergedtable": ''}
   sed -i 's/\\#/Amount/g' mergedtable
   # exchange sample names in header
@@ -1012,7 +1099,7 @@ plain_feats
 
 
 process featQC {
-  publishDir "${params.outdir}", mode: 'copy', overwrite: true, saveAs: {it == "feats" ? "${outname}_table.txt": null}
+  publishDir "${params.outdir}", mode: 'copy', overwrite: true, saveAs: {it == "feats" ? "${acctype}_table.txt": null}
 
   input:
   set val(acctype), file('feats'), file(normfacs), val(setnames), file(peptable), file(sampletable) from featqcinput
@@ -1022,8 +1109,7 @@ process featQC {
   set val(acctype), file('featqc.html'), file('summary.txt'), file('overlap') into qccollect
 
   script:
-  outname = (acctype == 'assoc') ? 'symbols' : acctype
-  show_normfactors = setdenoms.size() && normalize
+  show_normfactors = setdenoms && normalize && !setdenoms.values().flatten().any { it == 'sweep' }
   """
   # combine multi-set normalization factors
   cat ${normfacs} > allnormfacs
@@ -1147,9 +1233,9 @@ process output_documentation {
 workflow.onComplete {
 
     // Set up the e-mail variables
-    def subject = "[nf-core/ddamsproteomics] Successful: $workflow.runName"
+    def subject = "[lehtiolab/ddamsproteomics] Successful: $workflow.runName"
     if(!workflow.success){
-      subject = "[nf-core/ddamsproteomics] FAILED: $workflow.runName"
+      subject = "[lehtiolab/ddamsproteomics] FAILED: $workflow.runName"
     }
     def email_fields = [:]
     email_fields['version'] = workflow.manifest.version
@@ -1197,11 +1283,11 @@ workflow.onComplete {
           if( params.plaintext_email ){ throw GroovyException('Send plaintext e-mail, not HTML') }
           // Try to send HTML e-mail using sendmail
           [ 'sendmail', '-t' ].execute() << sendmail_html
-          log.info "[nf-core/ddamsproteomics] Sent summary e-mail to $params.email (sendmail)"
+          log.info "[lehtiolab/ddamsproteomics] Sent summary e-mail to $params.email (sendmail)"
         } catch (all) {
           // Catch failures and try with plaintext
           [ 'mail', '-s', subject, params.email ].execute() << email_txt
-          log.info "[nf-core/ddamsproteomics] Sent summary e-mail to $params.email (mail)"
+          log.info "[lehtiolab/ddamsproteomics] Sent summary e-mail to $params.email (mail)"
         }
     }
 
@@ -1215,6 +1301,6 @@ workflow.onComplete {
     def output_tf = new File( output_d, "pipeline_report.txt" )
     output_tf.withWriter { w -> w << email_txt }
 
-    log.info "[nf-core/ddamsproteomics] Pipeline Complete"
+    log.info "[lehtiolab/ddamsproteomics] Pipeline Complete"
 
 }
