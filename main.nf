@@ -407,6 +407,7 @@ process quantifySpectra {
   isobtype = isobtype == 'tmtpro' ? 'tmt16plex' : isobtype
   plextype = isobtype ? isobtype.replaceFirst(/[0-9]+plex/, "") : 'false'
   massshift = [tmt:0.0013, itraq:0.00125, false:0][plextype]
+  isobtype = params.isobaric == 'tmtpro' ? 'tmt16plex' : params.isobaric
   """
   # Run hardklor on config file with added line for in/out files
   # then run kronik on hardklor and quant isobaric labels if necessary
