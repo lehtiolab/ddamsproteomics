@@ -1,5 +1,18 @@
 # lehtiolab/ddamsproteomics: Changelog
 
+## Version 2.0 [2020-07-20]
+- Interface changes:
+  - modification specification, no more mod file
+  - `--genes`/`--symbols` are now called `--ensg`/`--genes`
+  - multi-instrument runs, mzml definition file can be used to spec instrument
+  - Enable diff TMT/itraq mixing
+  - Multiple DBs possible to pass e.g. `--tdb /path/to/*.fa`
+  - `--hirief` flag contains the peptide pI file previously specified in `--pipep`
+- msstitch updated to v3.2 (no longer need Biomart map)
+- General package update for openMS, R packages
+- Luciphor based PTM reporting on PSM/peptide tables, for phospho, e.g not working yet is acetyl/TMT 
+
+
 ## Version 1.4 [2019-12-16]
 - Fix bug in ENSG FDR reporting (upgrade msstitch 2.19)
 - Low impact fixes for runs with bad MS / few PSMs.
