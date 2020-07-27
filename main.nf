@@ -726,7 +726,7 @@ process luciphorPTMLocalizationScoring {
   set val(setname), file(mzmls), file('psms') from psm_luciphor
 
   output:
-  set val(setname), file('psms'), file('ptms.txt') into luciphor_out, luciphor_all
+  set val(setname), file('ptms.txt') into luciphor_out, luciphor_all
 
   script:
   isobtype = setisobaric && setisobaric[setname] ? setisobaric[setname] : ''
@@ -752,7 +752,7 @@ process createPTMLookup {
   when: params.locptms
 
   input:
-  set val(setnames), file(psms), file(ptmtables) from luciphor_all.toList().transpose().toList()
+  set val(setnames), file('ptms?') from luciphor_all.toList().transpose().toList()
   file(ptmlup) from ptm_lookup_in
 
   output:
@@ -762,9 +762,7 @@ process createPTMLookup {
   script:
   ptmtable = "ptm_psmtable.txt"
   """
-  msstitch concat -i ${ptmtables.collect() {"\"$it\""}.join(' ')} -o "${ptmtable}"
-  # FIXME this sed replace line can be removed from mssttich 3.1, then spectracol 1 works
-  sed 's/SpectraFile/\\#SpecFile/' -i "${ptmtable}"
+  msstitch concat -i ptms* -o "${ptmtable}"
   cat "${ptmlup}" > ptmlup.sql
   msstitch psmtable -i "${ptmtable}" --dbfile ptmlup.sql -o ptmtable_read --spectracol 1
   """
@@ -775,7 +773,7 @@ process makePTMs {
   when: params.locptms
 
   input:
-  set val(setname), file('psms'), file(ptmtable) from luciphor_out
+  set val(setname), file(ptmtable) from luciphor_out
   
   output:
   file(ptmtable)
