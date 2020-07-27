@@ -1,5 +1,13 @@
 # lehtiolab/ddamsproteomics: Changelog
 
+## Version 2.2 [2020-07-24]
+- Fix MS1 quant bug by upgrading to msstitch 3.3
+- Switch MS1 quantification to Dinosaur from Hardklor/Kronik to include showing FWHM
+- Fix name collision bug where multi-set input led to multiple files from luciphor all called ptms.txt, cannot stage those
+
+## Version 2.1 [2020-07-22]
+- Bugfix that crashed pipeline, likely merge problem, should have tested better
+
 ## Version 2.0 [2020-07-20]
 - Interface changes:
   - modification specification, no more mod file
