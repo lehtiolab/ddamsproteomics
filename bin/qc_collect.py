@@ -58,6 +58,7 @@ else:
 titles = {'psm-scans': '# PSMs and scans', 'miscleav': 'Missed cleavages',
           'missing-tmt': 'Isobaric missing values', 'fryield': fryield,
           'retentiontime': 'Retention time', 'precerror': 'Precursor error',
+          'fwhm': 'LC full width at half max (FWHM)',
           'msgfscore': 'MSGF Score',
           'featyield': 'Identifications', 'isobaric': 'Isobaric intensities',
           'normfactors': 'Isobaric normalization factors',

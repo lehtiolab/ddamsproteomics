@@ -395,10 +395,9 @@ process quantifySpectra {
 
   input:
   set val(setname), val(sample), file(infile), val(instr), val(platename), val(fraction) from mzml_quant
-  file(hkconf) from Channel.fromPath("$baseDir/assets/hardklor.conf").first()
 
   output:
-  set val(sample), file("${sample}.kr"), val(infile.name) into kronik_out
+  set val(sample), file("${infile.baseName}.features.tsv"), val(infile.name) into dino_out 
   set val(sample), file("${infile}.consensusXML") optional true into isobaricxml
 
   script:
@@ -408,10 +407,7 @@ process quantifySpectra {
   plextype = isobtype ? isobtype.replaceFirst(/[0-9]+plex/, "") : 'false'
   massshift = [tmt:0.0013, itraq:0.00125, false:0][plextype]
   """
-  # Run hardklor on config file with added line for in/out files
-  # then run kronik on hardklor and quant isobaric labels if necessary
-  hardklor <(cat $hkconf <(echo "$infile" hardklor.out))
-  kronik -c 5 -d 3 -g 1 -m 8000 -n 600 -p 10 hardklor.out ${sample}.kr
+  dinosaur --concurrency=${task.cpus * params.threadspercore} "${infile}"
   ${isobtype ? "IsobaricAnalyzer -type $isobtype -in $infile -out \"${infile}.consensusXML\" -extraction:select_activation \"$activationtype\" -extraction:reporter_mass_shift $massshift -extraction:min_precursor_intensity 1.0 -extraction:keep_unannotated_precursor true -quantification:isotope_correction true" : ''}
   """
 }
@@ -447,14 +443,14 @@ process createSpectraLookup {
 
 
 // Collect all MS1 kronik output for quant lookup building process
-kronik_out
+dino_out
   .ifEmpty(['NA', 'NA'])
   .join(isobaricxml, remainder: true)
   .toList()
   .map { it.sort({a, b -> a[0] <=> b[0]}) }
   .transpose()
   .toList()
-  .set { krfiles_sets }
+  .set { dinofiles_sets }
 
 
 // Need to populate channels depending on if a pre-made quant lookup has been passed
@@ -481,7 +477,7 @@ process quantLookup {
 
   input:
   file lookup from spec_lookup
-  set val(samples), file(krfns), val(mzmlnames), file(isofns) from krfiles_sets
+  set val(samples), file(dinofns), val(mzmlnames), file(isofns) from dinofiles_sets
 
   output:
   file('db.sqlite') into newquantlookup
@@ -490,7 +486,7 @@ process quantLookup {
   """
   # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
   cat $lookup > db.sqlite
-  msstitch storequant --dbfile db.sqlite ${params.isobaric ? "--isobaric ${isofns.join(' ')}" : ''} --kronik ${krfns.join(' ')} --spectra ${mzmlnames.join(' ')} --mztol 20.0 --mztoltype ppm --rttol 5.0 
+  msstitch storequant --dbfile db.sqlite ${params.isobaric ? "--isobaric ${isofns.join(' ')}" : ''} --dinosaur ${dinofns.join(' ')} --spectra ${mzmlnames.join(' ')} --mztol 20.0 --mztoltype ppm --rttol 5.0 
   """
 }
 
@@ -1071,7 +1067,7 @@ process psmQC {
     do
     [[ -e \$graph ]] && paste -d \\\\0  <(echo "<div class=\\"chunk\\" id=\\"\${graph}\\"><img src=\\"data:image/png;base64,") <(base64 -w 0 \$graph) <(echo '"></div>') >> psmqc.html
     done 
-  for graph in retentiontime precerror fryield msgfscore
+  for graph in retentiontime precerror fwhm fryield msgfscore
     do
     for plateid in ${plates.join(' ')}
       do

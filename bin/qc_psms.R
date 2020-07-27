@@ -77,7 +77,7 @@ if (has_fractions) {
 }
   
 ptypes = list(retentiontime=c('Retention.time.min.', 'time(min)'), precerror=c('PrecursorError.ppm.', 'Precursor error (ppm)'), 
-              fryield=c('SpecID', '# PSMs'), msgfscore=c('MSGFScore', 'MSGF Score'))
+              fryield=c('SpecID', '# PSMs'), msgfscore=c('MSGFScore', 'MSGF Score'), fwhm=c('FWHM', 'FWHM'))
 fryield_form = paste('SpecID ~', xcol)
 for (plateid in plateids) {
   if (has_fractions) {
