@@ -21,7 +21,8 @@ feats.nostd = feats[, !grepl('^X__POOL', colnames(feats))]
 sampletable = sampletable[sampletable$group != 'X__POOL',]
 
 # Get all features with more than 1 measurement in ALL sample groups, discard the rest
-feats.quant = feats.nostd[, grepl('plex', colnames(feats.nostd))]
+# First regex for all channels, exclude the Amount PSMs columns with lookbehind regex (need PCRE)
+feats.quant = feats.nostd[, grepl('plex_.*(?<!PSMs)$', colnames(feats.nostd), perl=T)]
 feats.quant$feat = rownames(feats.quant)
 feat.quantcount = melt(feats.quant, id.vars='feat')
 feat.quantcount$group = sapply(as.character(feat.quantcount$variable), function(x) lookup[[ sub('_[a-z]+[0-9]+plex', '', x) ]])
@@ -35,13 +36,13 @@ filtered_feats_quantcount = na.omit(feat.quantcount)
 # With those features, filter the quant feats and median(PSM counts) > 0 and not NA
 names(feats)[1] = 'feat'
 names(feats.nostd)[1] = 'feat'
-quantpsmcols = grepl('quanted_psm_count', colnames(feats.nostd))
+quantpsmcols = grepl('_Amount.fully.quanted.PSMs', colnames(feats.nostd))
 feats.nostd$median_psmcount = round(rowMedians(as.matrix(feats.nostd[quantpsmcols]), na.rm=T))
 feats.filt = merge(filtered_feats_quantcount['feat', drop=F], feats.nostd, by='feat')
 feats.filt = feats.filt[feats.filt$median_psmcount > 0,]
 rownames(feats.filt) = feats.filt$feat
 feats.psms = feats.filt$median_psmcount
-feats.filt = feats.filt[, grepl('plex', colnames(feats.filt))]
+feats.filt = feats.filt[, grepl('plex_.*(?<!PSMs)$', colnames(feats.filt), perl=T)]
 
 # Take median PSMs, do lmFit
 rownames(sampletable) = 1:nrow(sampletable)

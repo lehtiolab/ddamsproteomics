@@ -19,8 +19,10 @@ and processes data using the following steps:
 * [MSGF+](#msgf) - Peptide identification search engine
 * [Percolator](#percolator) - Target-decoy scoring
 * [OpenMS](#openms) - Quantification of isobaric tags
-* [Hardklor/Kronik](#hardklor) - Quantification of precursor peptides
+* [Dinosaur](#dinosaur) - Quantification of precursor peptides
+* [Luciphor2](#luciphor2) - False localization rates for PTMs
 * [Msstitch](#msstitch) - Post processing, protein inference
+* [DEqMS](#deqms) - Differential expression analysis
 
 ## MSGF+
 [MSGF+](https://omics.pnl.gov/software/ms-gf) (aka MSGF+ or MSGFPlus) performs peptide identification by scoring MS/MS spectra against peptides derived from a protein sequence database.
@@ -34,9 +36,17 @@ and processes data using the following steps:
 [OpenMS](http://www.openms.de/) is a library that contains a large amount of tools for MS data analysis. This workflow uses its isobaric quantification program to extract peak intenstities for isobaric multiplex samples.
 
 
-## Hardklor/Kronik
-[Hardklor](https://proteome.gs.washington.edu/software/hardklor/) identifies peptide features in MS1 data by reducing isotope distributions to a single monoisotopic mass. It in tandem with its [Kronik](https://github.com/mhoopmann/kronik) utility (which summarizes the Hardklor results from LC/MS data) can be used to quantify MS1 peptide features.
+## Dinosaur
+[Dinosaur](https://github.com/fickludd/dinosaur) identifies peptide features in MS1 data and is an improved reimplementation of the MaxQuant algorithm.
+
+
+## Luciphor2
+[Luciphor2](https://github.com/dfermin/lucxor) is a site localization tool for generic post-translational modifications, and yields false localization rates for peptide PTM configurations.
 
 
 ## Msstitch
 [Msstitch](https://github.com/glormph/msstitch) is a package to merge identification and quantification PSM data, reporting PSM, peptide, protein and gene tables, adding q-values, quantitfications, protein groups, etc.
+
+
+## DEqMS
+[DEqMS](https://github.com/yafeng/deqms) is an R package for testing differential protein expression in quantitative proteomic analysis, built on top of the Limma package.

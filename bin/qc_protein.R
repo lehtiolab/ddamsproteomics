@@ -24,12 +24,14 @@ feats = read.table("feats", header=T, sep="\t", comment.char = "", quote = "")
 
 featcol = list(peptides='Peptide.sequence', proteins='Protein.ID', genes='Gene.Name', ensg='Gene.ID')[[feattype]]
 
+if (length(grep('plex', names(feats)))) {
+  nrpsmscols = colnames(feats)[grep('_Amount.fully.quanted.PSMs', colnames(feats))]
+}
+
 # nrpsms
 if (length(grep('plex', names(feats)))) {
-  nrpsmscols = colnames(feats)[grep('quanted_psm_count', colnames(feats))]
   nrpsms = melt(feats, id.vars=featcol, measure.vars = nrpsmscols)
-  nrpsms$Set = sub('_[a-z0-9]*plex_[0-9NC]*_quanted_psm_count', '', nrpsms$variable)
-  nrpsms$Set = sub('_quanted_psm_count', '', nrpsms$Set)
+  nrpsms$Set = sub('_Amount.fully.quanted.PSMs', '', nrpsms$variable)
   summary_psms = aggregate(value~Set, nrpsms, median)
   colnames(summary_psms) = c('Set', paste('no_psm_', feattype, sep=''))
   nrpsms = aggregate(value~get(featcol)+Set, nrpsms, max)
@@ -178,15 +180,13 @@ if (length(grep('plex', names(feats)))) {
 
 #nrpsmsoverlapping
 if (length(grep('plex', names(feats)))) {
-  nrpsmscols = colnames(feats)[grep('quanted_psm_count', colnames(feats))]
   qcols = colnames(feats)[grep('_q.value', colnames(feats))]
   tmtcols = colnames(feats)[grep('plex', colnames(feats))]
   overlap = na.exclude(feats[c(featcol, tmtcols, qcols, nrpsmscols)])
   overlap = overlap[apply(overlap[qcols], 1, function(x) any(x<0.01)),]
   if (nrow(overlap) > 0) {
     nrpsms = melt(overlap, id.vars=featcol, measure.vars = nrpsmscols)
-    nrpsms$Set = sub('_[a-z0-9]*plex_[0-9NC]*_quanted_psm_count', '', nrpsms$variable)
-    nrpsms$Set = sub('_quanted_psm_count', '', nrpsms$Set)
+    nrpsms$Set = sub('_Amount.fully.quanted.PSMs', '', nrpsms$variable)
     if (feattype == 'peptides') {
       nrpsms = aggregate(value~Peptide.sequence+Set, nrpsms, max)
     } else {
@@ -208,9 +208,7 @@ if (length(grep('plex', names(feats)))) {
 if (length(grep('plex', names(feats)))) {
   if (nrow(overlap) > 0) {
     nrpsms = melt(overlap, id.vars=featcol, measure.vars = nrpsmscols)
-    nrpsms$Set = sub('_quanted_psm_count', '', nrpsms$variable) # this is enough for DEqMS pipeline
-    # but need also following line for normal pipe bc nr-psms values are reported per channel
-    nrpsms$Set = sub('_[a-z0-9]*plex.*', '', nrpsms$Set)
+    nrpsms$Set = sub('_Amount.fully.quanted.PSMs', '', nrpsms$variable)
     feats_in_set = aggregate(value~Set, data=nrpsms, length) 
     feats_in_set$percent_single = aggregate(value~Set, data=nrpsms, function(x) length(grep('[^01]', x)))$value / feats_in_set$value * 100
     png('percentage_onepsm')
