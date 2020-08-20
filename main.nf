@@ -723,10 +723,13 @@ process luciphorPTMLocalizationScoring {
   set val(setname), file(mzmls), file('psms') from psm_luciphor
 
   output:
-  set val(setname), file('ptms.txt') into luciphor_out, luciphor_all
+  set val(setname), file('ptms.txt'), file(peptable) into luciphor_all
 
   script:
+  denom = !params.noquant && setdenoms ? setdenoms[setname] : false
+  specialdenom = denom && (denom[0] == 'sweep' || denom[0] == 'intensity')
   isobtype = setisobaric && setisobaric[setname] ? setisobaric[setname] : ''
+  peptable = "${setname}_ptm_peptides.txt"
   """
   export MZML_PATH=\$(pwd)
   export MINPSMS=${params.minpsms_luciphor}
@@ -740,21 +743,35 @@ process luciphorPTMLocalizationScoring {
   luciphor_prep.py psms lucinput.txt "${params.msgfmods}" "${params.mods}${isobtype ? ";${isobtype}" : ''}" "${params.locptms}" luciphor.out
   luciphor2 luciphor_config.txt
   luciphor_parse.py ${params.ptm_minscore_high} ptms.txt "${params.msgfmods}" "${params.locptms};${params.mods}"
+  # Generate PTM peptide table
+  msstitch peptides -i "ptms.txt" -o "${peptable}" --scorecolpattern svm --spectracol 1 \
+    ${!params.noquant ? "--ms1quantcolpattern area ${setisobaric && setisobaric[setname] ? '--isobquantcolpattern plex --minint 0.1' : ''}" : ''} \
+    ${denom && denom[0] == 'sweep' ? '--mediansweep --logquantratios': ''} \
+    ${denom && denom[0] == 'intensity' ? '--medianintensity' : ''} \
+    ${denom && !specialdenom ? "--logquantratios --denompatterns ${setdenoms[setname].join(' ')}": ''}
   """
 }
 
+// Sort to be able to resume
+luciphor_all
+  .toList()
+  .map { it.sort( {a, b -> a[0] <=> b[0]}) }
+  .transpose()
+  .toList()
+  .set { lucptmfiles_to_lup }
+
+
 process createPTMLookup {
-  publishDir "${params.outdir}", mode: 'copy', overwrite: true, saveAs: {it == ptmtable ? ptmtable : null}
+  publishDir "${params.outdir}", mode: 'copy', overwrite: true
 
   when: params.locptms
 
   input:
-  set val(setnames), file('ptms?') from luciphor_all.toList().transpose().toList()
+  tuple val(setnames), file('ptms?'), file(peptides) from lucptmfiles_to_lup
   file(ptmlup) from ptm_lookup_in
 
   output:
-  file(ptmtable) into features_out
-  file("ptmlup.sql") into ptm_lookup
+  tuple path(ptmtable), path('ptm_peptidetable.txt') into features_out
 
   script:
   ptmtable = "ptm_psmtable.txt"
@@ -762,55 +779,8 @@ process createPTMLookup {
   msstitch concat -i ptms* -o "${ptmtable}"
   cat "${ptmlup}" > ptmlup.sql
   msstitch psmtable -i "${ptmtable}" --dbfile ptmlup.sql -o ptmtable_read --spectracol 1
-  """
-}
 
-process makePTMs {
-
-  when: params.locptms
-
-  input:
-  set val(setname), file(ptmtable) from luciphor_out
-  
-  output:
-  file(ptmtable)
-  set val(setname), file(peptable) into ptms_to_merge
-  
-  script:
-  peptable = "${setname}_ptm_peptides.txt"
-  """
-  # Generate PTM PSM and peptide table
-  msstitch peptides -i "${ptmtable}" -o "ptmpeps" --scorecolpattern svm --spectracol 1
-  #  ${!params.noquant ? "--ms1quantcolpattern area ${setisobaric && setisobaric[setname] ?  "--isobquantcolpattern plex --minint 0.1 --denompatterns ${setdenoms[setname].join(' ')}" : ''}" : ''}
-
-  # Normalize isobaric quant data for PTMs
-  awk -F \$'\\t' -v OFS=\$'\\t' '{print \$${accolmap.peptides}, \$${accolmap.peptides}}' "${ptmtable}" | sed \'s/Peptide/Accession/\' > pepacc
-  channelcols=\$(head -n1 "${ptmtable}" | tr '\\t' '\\n' | grep -n plex | cut -f1 -d ':'| tr '\\n' ',' | sed 's/,\$//')
-  paste pepacc <(cut -f "\$channelcols" "${ptmtable}") > psmvals
-  ptm_normalize.R psmvals "${setname}" ${setdenoms[setname] ? "\$(egrep -n \'(${setdenoms[setname].join('|')})\' <( head -n1 psmvals | tr '\\t' '\\n') | cut -f1 -d ':' | tr '\\n' ',' | sed 's/,\$//') " : ''}
-  # Paste peptide table and quant
-  paste <(head -n1 ptmpeps) <(head -n1 normalized_feats | cut -f2-2000) > "${peptable}"
-  join -a1 -o auto -e 'NA' -t \$'\\t' <(tail -n+2 ptmpeps | sort -k1b,1) <(tail -n+2 normalized_feats | sort -k1b,1) >> "${peptable}"
-  """
-}
-
-
-process PTMSetMerge {
-  publishDir "${params.outdir}", mode: 'copy', overwrite: true 
-
-  when: params.locptms
-
-  input:
-  set val(setnames), file(tables) from ptms_to_merge.toList().transpose().toList()
-  file(lookup) from ptm_lookup
-
-  output:
-  file('ptm_peptidetable.txt') into ptmpep_out
-
-  script:
-  """
-  cat $lookup > db.sqlite
-  msstitch merge -i ${tables.join(' ')} --setnames ${setnames.join(' ')} --dbfile db.sqlite -o mergedtable --no-group-annotation \
+  msstitch merge -i ${peptides.join(' ')} --setnames ${setnames.join(' ')} --dbfile ptmlup.sql -o mergedtable --no-group-annotation \
     --fdrcolpattern 'FLR\$' \
     ${!params.noquant ? "--ms1quantcolpattern area" : ''} \
     ${!params.noquant && setisobaric ? "--isobquantcolpattern plex" : ''}
