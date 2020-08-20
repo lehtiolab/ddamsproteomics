@@ -701,7 +701,6 @@ def listify(it) {
 setpsmtables
   .map { it -> [it[0], listify(it[1])] }
   .map{ it -> [it[0], it[1].collect() { it.baseName.replaceFirst(/\.tsv$/, "") }, it[1]]}
-  .tap { deqms_psms }
   .transpose()
   .tap { psm_pep }
   .filter { it -> it[0] == 'target' }
@@ -829,14 +828,21 @@ process makePeptides {
   set val(setname), val(td), file(psms), file("${setname}_peptides") into prepgs_in
   set val(setname), val('peptides'), val(td), file("${setname}_peptides") into peptides_out
   file('warnings') optional true into pepwarnings
+  set val(setname), path(normfactors) optional true into pepnormfac
 
   script:
   quant = !params.noquant && td == 'target'
+  denom = quant && setdenoms ? setdenoms[setname] : false
+  specialdenom = denom && (denom[0] == 'sweep' || denom[0] == 'intensity')
+  normfactors = "${setname}_normfacs"
   """
   # Create peptide table from PSM table, picking best scoring unique peptides
-  ${quant && rawisoquant && setdenoms[setname][0] == 'sweep' ? 'echo Currently need denominators for non-normalized output tables, median sweep is only used when normalizing. && exit 1' : ''}
   msstitch peptides -i psms -o "${setname}_peptides" --scorecolpattern svm --spectracol 1 --modelqvals \
-    ${quant ? "--ms1quantcolpattern area ${setisobaric && setisobaric[setname] ? "--isobquantcolpattern plex ${rawisoquant ? "--minint 0.1 --denompatterns ${setdenoms[setname].join(' ')}" : ''}" : ''}" : ''}
+    ${quant ? "--ms1quantcolpattern area ${setisobaric && setisobaric[setname] ? '--isobquantcolpattern plex --minint 0.1' : ''}" : ''} \
+    ${denom && denom[0] == 'sweep' ? '--mediansweep' : ''} \
+    ${denom && denom[0] == 'intensity' ? '--medianintensity' : ''} \
+    ${denom && !specialdenom ? "--denompatterns ${setdenoms[setname].join(' ')}" : ''} \
+    ${quant && normalize ? "--median-normalize --logquantratios | grep plex | sed 's/^/$setname'\$'\t/' > $normfactors": ''}
   """
 }
 
@@ -869,9 +875,13 @@ process proteinGeneSymbolTableFDR {
   output:
   set val(setname), val(acctype), file("${setname}_protfdr") into protfdrout
   file('warnings') optional true into fdrwarnings
+  set val(setname), val(acctype), path(normfactors) optional true into protnormfac
 
   script:
   scorecolpat = acctype == 'proteins' ? '^q-value$' : 'linear model'
+  denom = !params.noquant && setdenoms ? setdenoms[setname] : false
+  specialdenom = denom && (denom[0] == 'sweep' || denom[0] == 'intensity')
+  normfactors = "${setname}_normfacs"
   """
   # score col is linearmodel_qval or q-value, but if the column only contains 0.0 or NA (no linear modeling possible due to only q<10e-04), we use svm instead
   tscol=\$(head -1 tpeptides| tr '\\t' '\\n' | grep -n "${scorecolpat}" | cut -f 1 -d':')
@@ -886,8 +896,12 @@ process proteinGeneSymbolTableFDR {
       echo 'Not enough q-values or linear-model q-values for peptides to calculate FDR for ${acctype} of set ${setname}, using svm score instead.' >> warnings
   fi
   msstitch ${acctype} -i tpeptides --decoyfn dpeptides -o "${setname}_protfdr" --scorecolpattern "\$scpat" \$logflag \
-    ${!params.noquant ? "--ms1quant --psmtable tpsms ${rawisoquant ? "--isobquantcolpattern plex --denompatterns ${setdenoms[setname].join(' ')} --minint 0.1": ''}" : ''} \
-    ${acctype != 'proteins' ? "--targetfasta '$tfasta' --decoyfasta '$dfasta' ${params.fastadelim ? "--fastadelim '${params.fastadelim}' --genefield '${params.genefield}'": ''}" : ''}
+    ${acctype != 'proteins' ? "--targetfasta '$tfasta' --decoyfasta '$dfasta' ${params.fastadelim ? "--fastadelim '${params.fastadelim}' --genefield '${params.genefield}'": ''}" : ''} \
+    ${!params.noquant ? "--ms1quant --psmtable tpsms ${setisobaric && setisobaric[setname] ? '--isobquantcolpattern plex --minint 0.1' : ''}" : ''} \
+    ${denom && denom[0] == 'sweep' ? '--mediansweep' : ''} \
+    ${denom && denom[0] == 'intensity' ? '--medianintensity' : ''} \
+    ${denom && !specialdenom ? "--denompatterns ${setdenoms[setname].join(' ')}" : ''} \
+    ${normalize ? "--median-normalize --logquantratios | grep plex | sed 's/^/$setname'\$'\t/' > $normfactors": ''}
   """
 }
     
@@ -898,64 +912,23 @@ psmwarnings
   .toList()
   .set { warnings }
 
-// setname, acctype, outfile
+protgenes = (normalize ? protfdrout.join(protnormfac, by:[0, 1]) : protfdrout )
+
 peptides_out
   .filter { it[2] == 'target' }
+  // setname, acctype, outfile
   .map { it -> [it[0], it[1], it[3]] }
-  .concat(protfdrout)
+  .set { tpeps }
+
+peps_tomerge = (normalize ? tpeps.join(pepnormfac) : tpeps)
+
+peps_tomerge
+  .concat(protgenes)
   .set { features_out }
 
-deqms_psms
-  .filter { it[0] == 'target' }
-  .map { it -> [it[1], it[2]] } 
-  .transpose()
-  .cross(features_out)
-  .map { it -> it[0] + [it[1][1], it[1][2]] }
-  .into { feats_out; deqms }
-
-
-process normalizeFeaturesDEqMS {
-  input:
-  set val(setname), file("psms"), val(acctype), file("features") from deqms
-  output:
-  set val("${setname}_${acctype}"), file("${setname}_feats"), file("psmcounts"), file("${setname}_channelmedians") into quanted_feats
-  when: normalize
-  
-  script:
-  sweep = setdenoms[setname][0] == 'sweep'
-  """
-  # get col nrs for isobaric quant values and create new PSM table with only those and feature columns
-  # need to use awk first because cut cannot paste peptide column twice (happens when peptide is acctype)
-  awk -F \$'\\t' -v OFS=\$'\\t' '{print \$${accolmap.peptides}, \$${accolmap[acctype]}}' psms ${acctype == 'peptides' ? '| sed \'s/Peptide/Accession/\' ' : ''} > pepacc
-  channelcols=\$(head -n1 psms | tr '\\t' '\\n' | grep -n plex | cut -f1 -d ':'| tr '\\n' ',' | sed 's/,\$//')
-  paste pepacc <(cut -f "\$channelcols" psms) > psmvals
-  # run deqMS normalization and summarization, which produces logged ratios
-
-  # FIXME also in sweep we can in deqms 1.6 get a channelmedian, so only touch when reporting raw
-  # intensities (which will not go through this step!!)
-  ${!sweep ? "denomcols=\$(egrep -n \'(${setdenoms[setname].join('|')})\' <( head -n1 psmvals | tr '\\t' '\\n') | cut -f1 -d ':' | tr '\\n' ',' | sed 's/,\$//') " : "touch ${setname}_channelmedians"}
-  deqms_normalize.R psmvals features $setname ${sweep ? '' : "\$denomcols"}
-  # join feat tables on normalized proteins
-  paste <(head -n1 features) <(head -n1 normalized_feats | cut -f2-2000) <(echo PSM counts) > ${setname}_feats 
-  join -a1 -o auto -e 'NA' -t \$'\\t' <(tail -n+2 features | sort -k1b,1 ) <(tail -n+2 normalized_feats | sort -k1b,1) >> feats_quants
-  join -a1 -o auto -e 'NA' -t \$'\\t' feats_quants <(sort -k1b,1 psmcounts) >> ${setname}_feats
-  """
-}
-
-
-if(normalize) {
-  feats_out
-    .map { it ->  ["${it[0]}_${it[2]}".toString()] + it }
-    .join(quanted_feats)
-    .groupTuple(by: 3)  // all outputs of same accession type together.
-    .map { it -> [it[1], it[3], it[5], it[6], it[7]] }
-    .set { ptables_to_merge }
-} else {
-  feats_out
-    .map { it -> [it[0], it[2], it[3]] } // setname, accession type, feature table
-    .groupTuple(by: 1) // collect all tables for same feature
-    .set { ptables_to_merge }
-}
+features_out
+  .groupTuple(by: 1)  // all outputs of same accession type together.
+  .set { ptables_to_merge }
 
 psmlookup
   .filter { it[0] == 'target' }
@@ -970,7 +943,7 @@ psmlookup
 process proteinPeptideSetMerge {
 
   input:
-  set val(setnames), val(acctype), file(tables), file("psmcounts?"), file(normfacs) from ptables_to_merge
+  set val(setnames), val(acctype), file(tables), file(normfacs) from ptables_to_merge
   file(lookup) from tlookup
   file('sampletable') from Channel.from(sampletable).first()
   
@@ -979,7 +952,6 @@ process proteinPeptideSetMerge {
   set val(acctype), file('proteintable'), file(normfacs) into merged_feats
 
   script:
-  if (normalize)
   """
   # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
   cat $lookup > db.sqlite
@@ -989,41 +961,14 @@ process proteinPeptideSetMerge {
     ${!params.noquant && setisobaric ? "--isobquantcolpattern plex" : ''} \
     ${params.onlypeptides ? "--no-group-annotation" : ''}
    
-  # join psm count tables, first make a header from setnames
-  head -n1 mergedtable > tmpheader
-
-  # exchange sample names in header
+  # make a header for sample names, first clean it from #-sign and fix name
+  head -n1 mergedtable | sed 's/\\#/Amount/g;s/\\ \\-\\ Amount\\ fully\\ quanted\\ PSMs/_fully_quanted_psm_count/g' > header
+  # exchange sample names on isobaric fields in header
   ${params.sampletable && setisobaric ?  
     'sed -i  "s/[^A-Za-z0-9_\\t]/_/g" sampletable ; \
-    while read line ; do read -a arr <<< $line ; sed -i "s/${arr[1]}_\\([a-z0-9]*plex\\)_${arr[0]}/${arr[3]}_${arr[2]}_${arr[1]}_\\1_${arr[0]}/" tmpheader ; done < sampletable' \
+    while read line ; do read -a arr <<< $line ; sed -i "s/${arr[1]}_\\([a-z0-9]*plex\\)_${arr[0]}/${arr[3]}_${arr[2]}_${arr[1]}_\\1_${arr[0]}/" header ; done < sampletable' \
   : ''}
-  # Add psm quant nr field to header
-  for setn in ${setnames.join(' ')}; do echo "\$setn"_quanted_psm_count ; done >> tmpheader
-  tr '\\n' '\\t' < tmpheader | sed 's/\\s\$/\\n/;s/\\#/Amount/g' > header  # sed to sub trailing tab for a newline, and not have pound sign
-  # then join the table content
-  tail -n+2 mergedtable | sort -k1b,1 > joined
-  for count in \$(seq 1 ${setnames.toList().size}); do join -a1 -o auto -e 'NA' -t \$'\\t' joined <(sort -k1b,1 psmcounts"\$count" ) >> joined_tmp; mv joined_tmp joined; done
-  # finally put header on content
-  cat header joined > proteintable
-  """
-  else
-  """
-  cat $lookup > db.sqlite
-  msstitch merge -i ${tables.join(' ')} --setnames ${setnames.join(' ')} --dbfile db.sqlite -o mergedtable \
-    --fdrcolpattern '^q-value\$' ${acctype != 'peptides' ? '--mergecutoff 0.01' : ''} \
-    ${!params.noquant ? "--ms1quantcolpattern area" : ''} \
-    ${!params.noquant && params.isobaric ? "--isobquantcolpattern plex --psmnrcolpattern quanted" : ''} \
-    ${params.onlypeptides ? "--no-group-annotation" : ''}
-
-  ${!params.noquant && params.isobaric ? "sed -i 's/\\ \\-\\ \\#\\ quanted\\ PSMs/_quanted_psm_count/g' mergedtable": ''}
-  sed -i 's/\\#/Amount/g' mergedtable
-  # exchange sample names in header
-  head -n1 mergedtable > tmpheader
-  ${params.sampletable && params.isobaric ?  
-    'sed -i  "s/[^A-Za-z0-9_\\t]/_/g" sampletable ; \
-    while read line ; do read -a arr <<< $line ; sed -i "s/${arr[1]}_\\([a-z0-9]*plex\\)_${arr[0]}/${arr[3]}_${arr[2]}_${arr[1]}_\\1_${arr[0]}/" tmpheader ; done < sampletable'\
-  : ''}
-  cat tmpheader <(tail -n+2 mergedtable) > proteintable
+  cat header <(tail -n+2 mergedtable) > proteintable
   """
 }
 
