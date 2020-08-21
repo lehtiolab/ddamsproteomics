@@ -28,6 +28,8 @@ if (length(grep('plex', names(feats)))) {
   nrpsmscols = colnames(feats)[grep('_Amount.fully.quanted.PSMs', colnames(feats))]
 }
 
+width = 4
+
 # nrpsms
 if (length(grep('plex', names(feats)))) {
   nrpsms = melt(feats, id.vars=featcol, measure.vars = nrpsmscols)
@@ -36,11 +38,11 @@ if (length(grep('plex', names(feats)))) {
   colnames(summary_psms) = c('Set', paste('no_psm_', feattype, sep=''))
   nrpsms = aggregate(value~get(featcol)+Set, nrpsms, max)
   nrpsms = transform(nrpsms, setrank=ave(value, Set, FUN = function(x) rank(x, ties.method = "random")))
-  png('nrpsms')
+  svg('nrpsms', width=width)
   print(ggplot(nrpsms, aes(y=value, x=setrank)) +
     geom_step(aes(color=Set), size=2) + scale_y_log10() + xlab('Rank') + ylab('# PSMs quanted') +
     theme_bw() + 
-    theme(axis.title=element_text(size=30), axis.text=element_text(size=20), legend.position="top", legend.text=element_text(size=20), legend.title=element_blank()) +
+    theme(axis.title=element_text(size=15), axis.text=element_text(size=10), legend.position="top", legend.text=element_text(size=10), legend.title=element_blank()) +
     scale_x_reverse())
     dev.off()
 }
@@ -63,7 +65,7 @@ if (feattype == 'peptides') {
 am_prots = am_prots[!is.na(am_prots$value),]
 am_prots = am_prots[am_prots$value < 0.01,]
 am_prots$Set = sub('_q.value', '', am_prots$variable)
-png('featyield', height=(nrsets + 2) * 72)
+svg('featyield', height=(nrsets + 2), width=width)
 if (feattype == 'peptides') {
   totalunique = length(unique(subset(am_prots, nrprots == 1)$Peptide.sequence))
   unipepprotnr = aggregate(nrprots ~ Set, subset(am_prots, nrprots == 1), length)
@@ -79,7 +81,7 @@ if (feattype == 'peptides') {
   am_prots = melt(am_prots)
   colnames(am_prots)[3] = 'accession'
   print(ggplot(am_prots) +
-    coord_flip() + ylab('# identified') + theme_bw() + theme(axis.title=element_text(size=30), axis.text=element_text(size=20), axis.title.y=element_blank(), legend.text=element_text(size=20), legend.title=element_blank(), legend.position='top', plot.title=element_text(size=20)) +
+    coord_flip() + ylab('# identified') + theme_bw() + theme(axis.title=element_text(size=15), axis.text=element_text(size=10), axis.title.y=element_blank(), legend.text=element_text(size=10), legend.title=element_blank(), legend.position='top', plot.title=element_text(size=15)) +
     geom_bar(aes(fct_rev(Set), y=accession, fill=variable), stat='identity', position='dodge') +
     geom_text(data=subset(am_prots, variable=='All'), aes(fct_rev(Set), accession/2, label=accession), colour="white", size=7, nudge_x=-0.25) + 
     geom_text(data=subset(am_prots, variable=='Non-shared (unique)'), aes(fct_rev(Set), accession/2, label=accession), colour="white", size=7, nudge_x=+0.25) + 
@@ -111,7 +113,7 @@ if (feattype == 'peptides') {
   summary[is.na(summary)] = 0
   write.table(summary, 'summary.txt', row.names=F, quote=F, sep='\t')
   print(ggplot(am_prots) +
-    coord_flip() + ylab('# identified') + theme_bw() + theme(axis.title=element_text(size=30), axis.text=element_text(size=20), axis.title.y=element_blank(), plot.title=element_text(size=20)) +
+    coord_flip() + ylab('# identified') + theme_bw() + theme(axis.title=element_text(size=15), axis.text=element_text(size=10), axis.title.y=element_blank(), plot.title=element_text(size=15)) +
     geom_bar(aes(fct_rev(Set), y=accession), stat='identity') +
     geom_text(aes(fct_rev(Set), accession/2, label=accession), colour="white", size=10) + ggtitle(paste('Overlap for all sets: ', overlap, '\nTotal identified: ', nrow(feats))))
 }
@@ -154,11 +156,11 @@ if (length(grep('plex', names(feats)))) {
   tmt$variable = sub('.*_[a-z].*[0-9]*plex_', '', tmt$variable)
   outplot = ggplot(na.exclude(tmt)) + geom_boxplot(aes(fct_rev(Set), value, fill=fct_rev(variable)), position=position_dodge(width=1)) +
     coord_flip() + ylab('Fold change') + xlab('Channels') + theme_bw() + 
-    theme(axis.title=element_text(size=30), axis.text=element_text(size=20), plot.title=element_text(size=30) ) + 
-    theme(legend.text=element_text(size=20), legend.position="top", legend.title=element_blank()) +
+    theme(axis.title=element_text(size=20), axis.text=element_text(size=15), plot.title=element_text(size=20) ) + 
+    theme(legend.text=element_text(size=15), legend.position="top", legend.title=element_blank()) +
     ggtitle(paste('Overlap with values in \nall ', length(tmtcols), 'channels: ', overlap))
   if (min(na.exclude(tmt$value)) >= 0) { outplot = outplot + scale_y_log10() }
-  png('isobaric', height=(3 * nrsets + 1) * 72)
+  png('isobaric', height=(2 * nrsets + 3) * 72)
   print(outplot)
   dev.off()
 
@@ -167,13 +169,13 @@ if (length(grep('plex', names(feats)))) {
     norms = read.table(opt$normtable, header=F, sep='\t', comment.char='', quote='')
     colnames(norms) = c('Set', 'variable', 'value')
     norms$variable = sub('[a-z].*[0-9]*plex_', '', norms$variable)
-    png('normfactors', height=(3 * nrsets + 1) * 72)
+    svg('normfactors', height=(3 * nrsets + 1), width=width)
     print(ggplot(norms, aes(fct_rev(Set), value, group=variable)) + 
       geom_col(aes(fill=variable), position=position_dodge(width=1)) +
-      geom_text(aes(y=min(norms$value), label=round(value, 4)), position=position_dodge(width=1), colour="gray20", size=6, hjust=0) +
+      geom_text(aes(y=min(norms$value), label=round(value, 4)), position=position_dodge(width=1), colour="gray20", size=3, hjust=0) +
       coord_flip() + ylab('Normalizing factor') + xlab('Channels') + theme_bw() + 
-      theme(axis.title=element_text(size=30), axis.text=element_text(size=20)) + 
-      theme(legend.text=element_text(size=20), legend.position="top", legend.title=element_blank()))
+      theme(axis.title=element_text(size=15), axis.text=element_text(size=10)) + 
+      theme(legend.text=element_text(size=10), legend.position="top", legend.title=element_blank()))
     dev.off()
   }
 }
@@ -193,16 +195,15 @@ if (length(grep('plex', names(feats)))) {
       nrpsms = aggregate(value~get(featcol)+Set, nrpsms, max)
     }
     nrpsms = transform(nrpsms, setrank=ave(value, Set, FUN = function(x) rank(x, ties.method = "random")))
-    png('nrpsmsoverlapping')
+    svg('nrpsmsoverlapping', width=width)
     print(ggplot(nrpsms, aes(y=value, x=setrank)) +
       geom_step(aes(color=Set), size=2) + scale_y_log10() + xlab('Rank') + ylab('# PSMs quanted') +
       theme_bw() + 
-      theme(axis.title=element_text(size=30), axis.text=element_text(size=20), legend.position="top", legend.text=element_text(size=20), legend.title=element_blank()) +
+      theme(axis.title=element_text(size=15), axis.text=element_text(size=10), legend.position="top", legend.text=element_text(size=10), legend.title=element_blank()) +
       scale_x_reverse())
       dev.off()
   }
 }
-
 
 # percentage_onepsm
 if (length(grep('plex', names(feats)))) {
@@ -211,10 +212,10 @@ if (length(grep('plex', names(feats)))) {
     nrpsms$Set = sub('_Amount.fully.quanted.PSMs', '', nrpsms$variable)
     feats_in_set = aggregate(value~Set, data=nrpsms, length) 
     feats_in_set$percent_single = aggregate(value~Set, data=nrpsms, function(x) length(grep('[^01]', x)))$value / feats_in_set$value * 100
-    png('percentage_onepsm')
+    svg('percentage_onepsm', width=width)
     print(ggplot(feats_in_set, aes(Set, percent_single)) +
       geom_col(aes(fill=Set)) + theme_bw() + ylab('% of identifications') +
-      theme(axis.title=element_text(size=30), axis.text=element_text(size=20), legend.position="top", legend.text=element_text(size=20), legend.title=element_blank()) )
+      theme(axis.title=element_text(size=15), axis.text=element_text(size=10), legend.position="top", legend.text=element_text(size=10), legend.title=element_blank()) )
     dev.off()
   }
 }
@@ -228,11 +229,11 @@ if (feattype != 'peptides') {
     nrpep_set$Set = sub('_MS1.area.*', '', nrpep_set$variable)
     nrpep_set = aggregate(variable~Protein.s.+Set, nrpep_set, length) 
     nrpep_set = transform(nrpep_set, setrank=ave(variable, Set, FUN = function(x) rank(x, ties.method = "random")))
-    png('ms1nrpeps')
+    svg('ms1nrpeps', width=width)
     print(ggplot(nrpep_set, aes(y=variable, x=setrank)) +
       geom_step(aes(color=Set), size=2) + scale_y_log10() + xlab('Rank') + ylab('# peptides with MS1') +
       theme_bw() + 
-      theme(axis.title=element_text(size=30), axis.text=element_text(size=20), legend.position="top", legend.text=element_text(size=20), legend.title=element_blank()) +
+      theme(axis.title=element_text(size=15), axis.text=element_text(size=10), legend.position="top", legend.text=element_text(size=10), legend.title=element_blank()) +
       scale_x_reverse())
     dev.off()
   }
@@ -243,9 +244,9 @@ if (length(grep('area', names(feats)))) {
     parea = melt(feats, id.vars=featcol, na.rm=T, measure.vars = colnames(feats)[grep('area', colnames(feats))])
     parea$Set = sub('_MS1.*', '', parea$variable)
     if (nrow(parea)) {
-      png('precursorarea', height=(nrsets + 1) * 72)
+      svg('precursorarea', height=(nrsets + 1), width=width)
       print(ggplot(parea) + 
-        geom_boxplot(aes(fct_rev(Set), value)) + scale_y_log10() + coord_flip() + ylab("Intensity") + theme_bw() + theme(axis.title=element_text(size=30), axis.text=element_text(size=20), axis.title.y=element_blank()))
+        geom_boxplot(aes(fct_rev(Set), value)) + scale_y_log10() + coord_flip() + ylab("Intensity") + theme_bw() + theme(axis.title=element_text(size=15), axis.text=element_text(size=10), axis.title.y=element_blank()))
       dev.off()
     }
 }
@@ -296,20 +297,21 @@ if (use_sampletable) {
   
     #Scree plot
     contributions <- data.frame(contrib=round(summary(pca_ana)$importance[2,] * 100, 2)[1:20])
-    contributions$pc = rownames(contributions)
-    png('scree')
+    contributions$pc = sub('PC', '', rownames(contributions))
+    print(contributions)
+    svg('scree', width=width)
     print(ggplot(data=contributions, aes(x=reorder(pc, -contrib), y=contrib)) +
       geom_bar(stat='identity') +
-      theme_bw() + theme(axis.title=element_text(size=25), axis.text=element_text(size=15)) +
-      ylab("Contribution (%)"))
+      theme_bw() + theme(axis.title=element_text(size=15), axis.text=element_text(size=5)) +
+      ylab("Contribution (%)") + xlab('PC (ranked by contribution)'))
     dev.off()
-    png('pca')
+    svg('pca', width=width)
     print(ggplot(data=score.df, aes(x =PC1, y =PC2, label=rownames(score.df), colour=type)) +
       geom_hline(yintercept = 0, colour = "gray65") +
       geom_vline(xintercept = 0, colour = "gray65") +
       geom_point(size=4) +
-      theme_bw() + theme(axis.title=element_text(size=25), axis.text=element_text(size=20),
-  		       legend.position="top", legend.text=element_text(size=20), legend.title=element_blank()) +
+      theme_bw() + theme(axis.title=element_text(size=15), axis.text=element_text(size=10),
+  		       legend.position="top", legend.text=element_text(size=10), legend.title=element_blank()) +
       xlab(sprintf("PC1 (%s%%)", contributions$contrib[1])) + ylab(sprintf("PC2 (%s%%)", contributions$contrib[2]))
       )
     dev.off()

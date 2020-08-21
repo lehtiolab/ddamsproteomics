@@ -982,14 +982,16 @@ process psmQC {
   echo "<html><body>" > psmqc.html
   for graph in psm-scans missing-tmt miscleav
     do
-    [[ -e \$graph ]] && paste -d \\\\0  <(echo "<div class=\\"chunk\\" id=\\"\${graph}\\"><img src=\\"data:image/png;base64,") <(base64 -w 0 \$graph) <(echo '"></div>') >> psmqc.html
+    [[ -e \$graph ]] && echo "<div class=\\"chunk\\" id=\\"\${graph}\\"> \$(sed "s/id=\\"/id=\\"\${graph}/g;s/\\#/\\#\${graph}/g" <\$graph) </div>" >> psmqc.html
+#paste -d \\\\0  <(echo "<div class=\\"chunk\\" id=\\"\${graph}\\"><img src=\\"data:image/png;base64,") <(base64 -w 0 \$graph) <(echo '"></div>') >> psmqc.html
     done 
   for graph in retentiontime precerror fwhm fryield msgfscore
     do
     for plateid in ${plates.join(' ')}
       do
       plate="PLATE___\${plateid}___\${graph}"
-      [[ -e \$plate ]] && paste -d \\\\0  <(echo "<div class=\\"chunk \$plateid\\" id=\\"\${graph}\\"><img src=\\"data:image/png;base64,") <(base64 -w 0 \$plate) <(echo '"></div>') >> psmqc.html
+    #  [[ -e \$plate ]] && paste -d \\\\0  <(echo "<div class=\\"chunk \$plateid\\" id=\\"\${graph}\\"><img src=\\"data:image/png;base64,") <(base64 -w 0 \$plate) <(echo '"></div>') >> psmqc.html
+    [[ -e \$plate ]] && echo "<div class=\\"chunk \$plateid\\" id=\\"\${graph}\\"> \$(sed "s/id=\\"/id=\\"\${plate}/g;s/\\#/\\#\${plate}/g" < \$plate) </div>" >> psmqc.html
       done 
     done
   echo "</body></html>" >> psmqc.html
@@ -1028,10 +1030,13 @@ process featQC {
   # ... change switch to that here and below: normalize ? --normtable ... 
   qc_protein.R --sets ${setnames.collect() { "'$it'" }.join(' ')} --feattype ${acctype} --peptable $peptable ${params.sampletable ? "--sampletable $sampletable" : ''} ${show_normfactors ? '--normtable allnormfacs' : ''}
   echo "<html><body>" > featqc.html
-  for graph in featyield precursorarea coverage isobaric ${show_normfactors ? 'normfactors': ''} nrpsms nrpsmsoverlapping percentage_onepsm ms1nrpeps;
+  for graph in featyield precursorarea ${show_normfactors ? 'normfactors': ''} nrpsms nrpsmsoverlapping percentage_onepsm ms1nrpeps;
     do
-    [ -e \$graph ] && paste -d \\\\0  <(echo "<div class=\\"chunk\\" id=\\"\${graph}\\"><img src=\\"data:image/png;base64,") <(base64 -w 0 \$graph) <(echo '"></div>') >> featqc.html
+    [ -e \$graph ] && echo "<div class=\\"chunk\\" id=\\"\${graph}\\"> \$(sed "s/id=\\"/id=\\"${acctype}-\${graph}/g;s/\\#/\\#${acctype}-\${graph}/g" <\$graph) </div>" >> featqc.html
     done 
+    # coverage and isobaric plots are png because a lot of points
+    [ -e isobaric ] && paste -d \\\\0  <(echo "<div class=\\"chunk\\" id=\\"isobaric\\"><img src=\\"data:image/png;base64,") <(base64 -w 0 isobaric) <(echo '"></div>') >> featqc.html
+    [ -e coverage ] && paste -d \\\\0  <(echo "<div class=\\"chunk\\" id=\\"coverage\\"><img src=\\"data:image/png;base64,") <(base64 -w 0 coverage) <(echo '"></div>') >> featqc.html
   # Fetch special (multi-pane) DEqMS and PCA plots
   # Use ls to check because wildcard doesnt work in -e
   ls deqms_volcano_* && echo '<div class="chunk" id="deqms">' >> featqc.html
@@ -1042,7 +1047,7 @@ process featQC {
   ls deqms_volcano_* && echo '</div>' >> featqc.html
   [ -e pca ] && echo '<div class="chunk" id="pca">' >> featqc.html && for graph in pca scree;
     do 
-    paste -d \\\\0  <(echo '<div><img src="data:image/png;base64,') <(base64 -w 0 \$graph) <(echo '"></div>') >> featqc.html
+    echo "<div> \$(sed "s/id=\\"/id=\\"${acctype}-\${graph}/g;s/\\#/\\#${acctype}-\${graph}/g" <\$graph) </div>" >> featqc.html
     done
     [ -e pca ] && echo '</div>' >> featqc.html
 
