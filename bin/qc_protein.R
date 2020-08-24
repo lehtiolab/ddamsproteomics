@@ -29,6 +29,7 @@ if (length(grep('plex', names(feats)))) {
 }
 
 width = 4
+height = 4
 
 # nrpsms
 if (length(grep('plex', names(feats)))) {
@@ -38,7 +39,7 @@ if (length(grep('plex', names(feats)))) {
   colnames(summary_psms) = c('Set', paste('no_psm_', feattype, sep=''))
   nrpsms = aggregate(value~get(featcol)+Set, nrpsms, max)
   nrpsms = transform(nrpsms, setrank=ave(value, Set, FUN = function(x) rank(x, ties.method = "random")))
-  svg('nrpsms', width=width)
+  svg('nrpsms', width=width, height=height)
   print(ggplot(nrpsms, aes(y=value, x=setrank)) +
     geom_step(aes(color=Set), size=2) + scale_y_log10() + xlab('Rank') + ylab('# PSMs quanted') +
     theme_bw() + 
@@ -195,7 +196,7 @@ if (length(grep('plex', names(feats)))) {
       nrpsms = aggregate(value~get(featcol)+Set, nrpsms, max)
     }
     nrpsms = transform(nrpsms, setrank=ave(value, Set, FUN = function(x) rank(x, ties.method = "random")))
-    svg('nrpsmsoverlapping', width=width)
+    svg('nrpsmsoverlapping', width=width, height=height)
     print(ggplot(nrpsms, aes(y=value, x=setrank)) +
       geom_step(aes(color=Set), size=2) + scale_y_log10() + xlab('Rank') + ylab('# PSMs quanted') +
       theme_bw() + 
@@ -212,7 +213,7 @@ if (length(grep('plex', names(feats)))) {
     nrpsms$Set = sub('_Amount.fully.quanted.PSMs', '', nrpsms$variable)
     feats_in_set = aggregate(value~Set, data=nrpsms, length) 
     feats_in_set$percent_single = aggregate(value~Set, data=nrpsms, function(x) length(grep('[^01]', x)))$value / feats_in_set$value * 100
-    svg('percentage_onepsm', width=width)
+    svg('percentage_onepsm', width=width, height=height)
     print(ggplot(feats_in_set, aes(Set, percent_single)) +
       geom_col(aes(fill=Set)) + theme_bw() + ylab('% of identifications') +
       theme(axis.title=element_text(size=15), axis.text=element_text(size=10), legend.position="top", legend.text=element_text(size=10), legend.title=element_blank()) )
@@ -229,7 +230,7 @@ if (feattype != 'peptides') {
     nrpep_set$Set = sub('_MS1.area.*', '', nrpep_set$variable)
     nrpep_set = aggregate(variable~Protein.s.+Set, nrpep_set, length) 
     nrpep_set = transform(nrpep_set, setrank=ave(variable, Set, FUN = function(x) rank(x, ties.method = "random")))
-    svg('ms1nrpeps', width=width)
+    svg('ms1nrpeps', width=width, height=height)
     print(ggplot(nrpep_set, aes(y=variable, x=setrank)) +
       geom_step(aes(color=Set), size=2) + scale_y_log10() + xlab('Rank') + ylab('# peptides with MS1') +
       theme_bw() + 
@@ -299,13 +300,13 @@ if (use_sampletable) {
     contributions <- data.frame(contrib=round(summary(pca_ana)$importance[2,] * 100, 2)[1:20])
     contributions$pc = sub('PC', '', rownames(contributions))
     print(contributions)
-    svg('scree', width=width)
+    svg('scree', width=width, height=height)
     print(ggplot(data=contributions, aes(x=reorder(pc, -contrib), y=contrib)) +
       geom_bar(stat='identity') +
       theme_bw() + theme(axis.title=element_text(size=15), axis.text=element_text(size=5)) +
       ylab("Contribution (%)") + xlab('PC (ranked by contribution)'))
     dev.off()
-    svg('pca', width=width)
+    svg('pca', width=width, height=height)
     print(ggplot(data=score.df, aes(x =PC1, y =PC2, label=rownames(score.df), colour=type)) +
       geom_hline(yintercept = 0, colour = "gray65") +
       geom_vline(xintercept = 0, colour = "gray65") +

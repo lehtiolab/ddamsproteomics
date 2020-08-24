@@ -35,7 +35,7 @@ amount_id=merge.data.frame(amount_ms2[c(xcol, mscol)], amount_psms[c(xcol, psmco
 amount_id = melt(amount_id, measure.vars=c(mscol, psmcol))
 procents = dcast(amount_id, get(xcol)~variable, value.var=ycol)
 procents$p = procents$`PSMs IDed` / procents$`MS2 scans`
-svg('psm-scans', width=width, height=(3 * nrsets + 2)) 
+svg('psm-scans', width=width, height=nrsets + 2) 
 #, width=width, height=(3 * nrsets + 2) * 72)
 print(ggplot(amount_id) +
   geom_bar(aes_string(x=xcol, y=ycol, fill='variable'), stat='identity', position='dodge') + coord_flip() +
@@ -51,7 +51,7 @@ if (length(grep('plex', names(feats)))) {
   psm_empty = aggregate(value~get(xcol)+ variable, psm_empty, sum)
   names(psm_empty) = c(xcol, 'channels', 'nr_missing_values')
   psm_empty$channels = sub('.*plex_', '', psm_empty$channels)
-  svg('missing-tmt', width=width, height=(3 * nrsets + 2))
+  svg('missing-tmt', width=width, height=(nrsets + 2))
   print(ggplot(psm_empty) + 
     geom_bar(aes_string(x=xcol, y='nr_missing_values', fill='channels'), stat='identity', position="dodge") + ylab('# PSMs without quant') + coord_flip() + theme_bw() + theme(axis.title.x=element_text(size=15), axis.title.y=element_blank(), axis.text=element_text(size=10), legend.position="top", legend.text=element_text(size=10), legend.title=element_blank()))
   dev.off()
@@ -59,7 +59,7 @@ if (length(grep('plex', names(feats)))) {
 
 mcl = aggregate(as.formula(paste('SpecID~', xcol, '+ missed_cleavage')), feats, length)
 mcl$missed_cleavage = as.factor(mcl$missed_cleavage)
-svg('miscleav', width=width, height=(3 * nrsets + 2))
+svg('miscleav', width=width, height=(nrsets + 2))
 mcplot = ggplot(subset(mcl, missed_cleavage %in% c(1,2,3)), aes_string(xcol, 'SpecID')) + geom_bar(aes(fill=missed_cleavage), position='dodge', stat='identity') + coord_flip() + ylab('# PSMs') + theme_bw() + theme(axis.title.x=element_text(size=15), axis.title.y=element_blank(), axis.text=element_text(size=10), legend.position="top", legend.text=element_text(size=10), legend.title=element_blank())
 
 if (nrow(subset(mcl, missed_cleavage == 1))) {
@@ -88,7 +88,7 @@ for (plateid in plateids) {
     w = 14
   } else { 
     subfeats = feats
-    h = (2 * nrow(unique(feats[xcol])) + 1)
+    h = nrow(unique(feats[xcol])) + 1
     w = 14
   }
   for (ptype in names(ptypes)) {
