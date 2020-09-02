@@ -70,6 +70,13 @@ def helpMessage() {
       --quantlookup FILE            Use previously generated SQLite lookup database containing spectra 
                                     quantification data when e.g. re-running. Need to match exactly to the
                                     mzML files of the current run
+      --targetpsmlookup FILE        When adding a new sample set to existing PSM/lookup output, a complementary run,
+                                    this passes the old target PSM lookup.  Any old sets with identical names to new
+                                    sets will be removed prior to adding new data.
+      --decoypsmlookup FILE         As for --targetpsmlookup, but filled with earlier run decoy PSMs
+      --targetpsms FILE             In a complementary run, this passes the old target PSM table. If the new set has the 
+                                    same name as an old set, the old set will be removed prior to adding new data.
+      --decoypsms FILE              In a complmentary run, this passes the old decoy PSM table.
       --fastadelim VALUE            FASTA header delimiter in case non-standard FASTA is used, to be used with
                                     --genefield
       --genefield VALUE             Number to determine in which field of the FASTA header (split 
@@ -139,6 +146,10 @@ params.onlypeptides = false
 params.noquant = false
 params.sampletable = false
 params.deqms = false
+params.targetpsmlookup = false
+params.decoypsmlookup = false
+params.targetpsms = false
+params.decoypsms = false
 
 // Validate and set file inputs
 fractionation = (params.hirief || params.fractions)
@@ -150,6 +161,19 @@ if (params.sampletable) {
   if( !sampletable.exists() ) exit 1, "Sampletable file not found: ${params.sampletable}"
 } else {
   sampletable = 0
+}
+
+if (params.targetpsmlookup && params.decoypsmlookup && params.targetpsms && params.decoypsms) {
+  if (params.quantlookup) exit 1, "When specifying a complementary you may not pass --quantlookup"
+  complementary_run = true
+  prev_results = Channel
+    .fromPath([params.targetpsmlookup, params.decoypsmlookup, params.targetpsms, params.decoypsms])
+    .toList()
+} else if (params.targetpsmlookup || params.decoypsmlookup || params.targetpsms || params.decoypsms) {
+  exit 1, "When specifying a complementary run you need to pass all of --targetpsmlookup, --decoypsmlookup, --targetpsms, --decoypsms"
+} else {
+  complementary_run = false
+  prev_results = Channel.empty()
 }
 
 output_docs = file("$baseDir/docs/output.md")
@@ -252,6 +276,10 @@ summary['Output ENSG IDs'] = params.ensg
 summary['Custom FASTA delimiter'] = params.fastadelim 
 summary['Custom FASTA gene field'] = params.genefield
 summary['Premade quant data SQLite'] = params.quantlookup
+summary['Previous run target results SQLite'] = params.targetpsmlookup
+summary['Previous run decoy results SQLite'] = params.decoypsmlookup
+summary['Previous run target PSMs'] = params.targetpsms
+summary['Previous run decoy PSMs'] = params.decoypsms
 summary['Fractionated sample'] = fractionation
 summary['HiRIEF pI peptide data'] = params.hirief 
 summary['Only output peptides'] = params.onlypeptides
@@ -375,18 +403,9 @@ bothdbs.into { psmdbs; fdrdbs }
 mzml_in
   .tap { mzmlfiles_counter } // for counting, so config can set time limit
   .map { it -> [it[2], file(it[0]).baseName, file(it[0]), it[1], (it.size() > 3 ? it[3] : it[2]), or_na(it, 4)] }
-  .tap { sets; mzmlfiles; mzml_luciphor; mzml_quant }
+  .tap { mzmlfiles; mzml_luciphor; mzml_quant }
   .combine(concatdb)
   .set { mzml_msgf }
-
-// Set names are first item in input lists, collect them for PSM tables and QC purposes
-sets
-  .map{ it -> it[0] }
-  .unique()
-  .collect()
-  .map { it -> [it] }
-  .into { setnames_featqc; setnames_psmqc }
-
 
 /*
 * Step 1: Extract quant data from peptide spectra
@@ -420,28 +439,77 @@ mzmlfiles
   .toList()
   .map { it.sort( {a, b -> a[1] <=> b[1]}) } // sort on sample for consistent .sh script in -resume
   .map { it -> [it.collect() { it[0] }, it.collect() { it[2] }, it.collect() { it[4] } ] } // lists: [sets], [mzmlfiles], [plates]
-  .into { mzmlfiles_all; mzmlfiles_all_count }
+  .into { mzmlfiles_all; mzmlfiles_all_count; mzmlfiles_comp }
 
 mzmlfiles_counter
   .count()
   .subscribe { println "$it mzML files in analysis" }
   .into { mzmlcount_psm; mzmlcount_percolator }
 
-process createSpectraLookup {
 
-  when: !params.quantlookup
+
+process complementSpectraLookupCleanPSMs {
+
+  when: complementary_run
+
+  input:
+  set val(setnames), path(mzmlfiles), val(platenames) from mzmlfiles_comp
+  set path(tlup), path(dlup), path(tpsms), path(dpsms) from prev_results
+
+  output:
+  set path('t_cleaned_psms.txt'), path('d_cleaned_psms.txt') into cleaned_psms
+  set path('target_db.sqlite'), path('decoy_db.sqlite') into complemented_speclookup 
+  path('all_setnames') into oldnewsets 
+  
+  script:
+  """
+  # If this is an addition to an old lookup, copy it and extract set names
+  cp "${tlup}" target_db.sqlite && sqlite3 target_db.sqlite "SELECT set_name FROM biosets" > old_setnames
+  cp "${dlup}" decoy_db.sqlite
+  # If adding to old lookup: grep new setnames in old and run msstitch deletesets if they match
+  grep -f old_setnames <(echo ${setnames.join('\n')} ) && msstitch deletesets -i "${tpsms}" -o t_cleaned_psms.txt --dbfile target_db.sqlite --setnames ${setnames.join(' ')}
+  grep -f old_setnames <(echo ${setnames.join('\n')} ) && msstitch deletesets -i "${dpsms}" -o d_cleaned_psms.txt --dbfile decoy_db.sqlite --setnames ${setnames.join(' ')}
+  msstitch storespectra --spectra ${mzmlfiles.join(' ')} --setnames ${setnames.join(' ')} --dbfile target_db.sqlite
+  copy_spectra.py target_db.sqlite decoy_db.sqlite ${setnames.join(' ')}
+  cat old_setnames <(echo ${setnames.join('\n')}) | sort -u > all_setnames
+  """
+}
+
+
+process createNewSpectraLookup {
+
+  when: !params.quantlookup && !complementary_run
 
   input:
   set val(setnames), file(mzmlfiles), val(platenames) from mzmlfiles_all
 
   output:
-  file 'mslookup_db.sqlite' into newspeclookup 
+  set path('target_db.sqlite'), path('decoy_db.sqlite') into newspeclookup 
+  val(setnames) into allsetnames
 
   script:
   """
-  msstitch storespectra --spectra ${mzmlfiles.join(' ')} --setnames ${setnames.join(' ')}
+  msstitch storespectra --spectra ${mzmlfiles.join(' ')} --setnames ${setnames.join(' ')} -o target_db.sqlite
+  ln -s target_db.sqlite decoy_db.sqlite
   """
 }
+
+if (complementary_run) {
+  oldnewsets
+    .splitText()
+    .map { it -> it.replaceAll('\n', '') }
+    .toList()
+    .set { allsetnames }
+  cleaned_psms
+    .flatMap { it -> [['target', it[0]], ['decoy', it[1]]] }
+    .set { td_oldpsms }
+}
+
+// Set names are first item in input lists, collect them for PSM tables and QC purposes
+allsetnames
+  .tap { setnames_psms; setnames_psmqc }
+  .toList()
+  .set { setnames_featqc }
 
 
 // Collect all MS1 kronik output for quant lookup building process
@@ -457,17 +525,26 @@ dino_out
 
 // Need to populate channels depending on if a pre-made quant lookup has been passed
 // even if not needing quant (--noquant) this is necessary or NF will error
+newspeclookup
+  .concat(complemented_speclookup)
+  .tap { spectoquant }
+  .map { it -> it[0] } // get only target lookup
+  .into { ptm_lookup_in; countlookup }
+
 if (params.noquant && !params.quantlookup) {
-  newspeclookup
-    .into { quant_lookup; spec_lookup; ptm_lookup_in; countlookup }
-} else if (!params.quantlookup) {
-  newspeclookup
-    .into { spec_lookup; countlookup; ptm_lookup_in }
-} else {
+  // Noquant, fresh spectra lookup scenario
+  spectoquant
+    .flatMap { it -> [[it[0], 'target'], [it[1], 'decoy']] }
+    .set { specquant_lookups }
+} else if (params.quantlookup) {
+  // Runs with a premade quant lookup eg from previous search
   Channel
     .fromPath(params.quantlookup)
-    .into { quant_lookup; countlookup; ptm_lookup_in }
-  Channel.empty().set { spec_lookup }
+    .flatMap { it -> [[it, 'target'], [it, 'decoy']] }
+    .tap { specquant_lookups }
+    .filter { it[1] == 'target' }
+    .map { it -> it[0] }
+    .tap { ptm_lookup_in; countlookup }
 } 
 
 
@@ -478,24 +555,25 @@ process quantLookup {
   when: !params.quantlookup && !params.noquant
 
   input:
-  file lookup from spec_lookup
+  set path(tlookup), path(dlookup) from spectoquant
   set val(samples), file(dinofns), val(mzmlnames), file(isofns) from dinofiles_sets
 
   output:
-  file('db.sqlite') into newquantlookup
+  set path('target.sqlite'), path(dlookup) into newquantlookup
 
   script:
   """
   # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
-  cat $lookup > db.sqlite
-  msstitch storequant --dbfile db.sqlite ${params.isobaric ? "--isobaric ${isofns.join(' ')}" : ''} --dinosaur ${dinofns.join(' ')} --spectra ${mzmlnames.join(' ')} --mztol 20.0 --mztoltype ppm --rttol 5.0 
+  cat $tlookup > target.sqlite
+  msstitch storequant --dbfile target.sqlite ${params.isobaric ? "--isobaric ${isofns.join(' ')}" : ''} --dinosaur ${dinofns.join(' ')} --spectra ${mzmlnames.join(' ')} --mztol 20.0 --mztoltype ppm --rttol 5.0 
   """
 }
 
 
 if (!params.quantlookup && !params.noquant) {
   newquantlookup
-    .set { quant_lookup }
+    .flatMap { it -> [[it[0], 'target'], [it[1], 'decoy']] }
+    .set { specquant_lookups }
 } 
 
 mzmlfiles_all_count
@@ -598,6 +676,7 @@ process msgfPlus {
 
 mzids
   .groupTuple()
+  //.map { it -> [it[1], it[2]] }
   .set { mzids_2pin }
 
 
@@ -632,8 +711,8 @@ process fdrToTSV {
   set val(setname), file(mzids), file(tsvs), file(perco) from mzperco
 
   output:
-  set val(setname), val('target'), file('target.tsv') into tmzidtsv_perco
-  set val(setname), val('decoy'), file('decoy.tsv') into dmzidtsv_perco
+  set path('target.tsv'), val('target') into tmzidtsv_perco
+  set path('decoy.tsv'), val('decoy') into dmzidtsv_perco
 
   script:
   if (params.fdrmethod == 'tdconcat')
@@ -648,24 +727,31 @@ process fdrToTSV {
 // Collect percolator data of target/decoy and feed into PSM table creation
 tmzidtsv_perco
   .concat(dmzidtsv_perco)
-  .groupTuple(by: 1)
-  .combine(quant_lookup)
+  .groupTuple(by: 1) // group by TD
+  .join(specquant_lookups, by: 1) // join on TD
   .combine(psmdbs)
-  .set { prepsm }
+  .set { psmswithout_oldpsms }
+if (complementary_run) {
+  psmswithout_oldpsms.join(td_oldpsms).set { prepsm }
+} else {
+  psmswithout_oldpsms.set { prepsm }
+}
 
 /*
 * Step 3: Post-process peptide identification data
 */
 
 hiriefpep = params.hirief ? Channel.fromPath([params.hirief, params.hirief]) : Channel.value(['NA', 'NA'])
+
 process createPSMTable {
 
-  publishDir "${params.outdir}", mode: 'copy', overwrite: true, saveAs: {["target_psmlookup.sql", "target_psmtable.txt", "decoy_psmtable.txt"].contains(it) ? it : null}
+  publishDir "${params.outdir}", mode: 'copy', overwrite: true, saveAs: {["target_psmlookup.sql", "decoy_psmlookup.sql", "target_psmtable.txt", "decoy_psmtable.txt"].contains(it) ? it : null}
 
   input:
-  set val(setnames), val(td), file('psms?'), file('lookup'), file(tdb), file(ddb) from prepsm
+  set val(td), path('psms?'), path('lookup'), path(tdb), path(ddb), file(cleaned_oldpsms) from prepsm
   file(trainingpep) from hiriefpep
   val(mzmlcount) from mzmlcount_psm
+  val(setnames) from setnames_psms
 
   output:
   set val(td), file("${outpsms}") into psm_result
@@ -683,12 +769,14 @@ process createPSMTable {
   tail -n+2 psms.txt | grep . || (echo "No ${td} PSMs made the combined PSM / peptide FDR cutoff (${params.psmconflvl} / ${params.pepconflvl})" && exit 1)
   # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
   cat lookup > $psmlookup
-  msstitch psmtable -i psms.txt --dbfile $psmlookup --addmiscleav -o psmtable \
-    ${params.onlypeptides ? '' : "--fasta ${td == 'target' ? "\"${tdb}\"" : "\"${ddb}\""}"} \
+  sed 's/\\#SpecFile/SpectraFile/' -i psms.txt
+  msstitch psmtable -i psms.txt --dbfile $psmlookup --addmiscleav -o psmsrefined --spectracol 1 \
+    ${params.onlypeptides ? '' : "--fasta \"${td == 'target' ? "${tdb}" : "${ddb}"}\" --genes"} \
     ${quant ? "--ms1quant ${params.isobaric ? '--isobaric' : ''}" : ''} \
-    ${!params.onlypeptides ? "--genes --proteingroup" : ''}
-  sed 's/\\#SpecFile/SpectraFile/' -i psmtable
-  ${params.hirief && td == 'target' ? "echo \'${groovy.json.JsonOutput.toJson(params.strips)}\' >> strip.json && peptide_pi_annotator.py -i $trainingpep -p psmtable --o $outpsms --stripcolpattern Strip --pepcolpattern Peptide --fraccolpattern Fraction --stripdef strip.json --ignoremods \'*\'": "mv psmtable ${outpsms}"} 
+    ${!params.onlypeptides ? '--proteingroup' : ''} \
+    ${complementary_run ? "--oldpsms ${cleaned_oldpsms}" : ''}
+  sed 's/\\#SpecFile/SpectraFile/' -i psmsrefined
+  ${params.hirief && td == 'target' ? "echo \'${groovy.json.JsonOutput.toJson(params.strips)}\' >> strip.json && peptide_pi_annotator.py -i $trainingpep -p psmsrefined --o $outpsms --stripcolpattern Strip --pepcolpattern Peptide --fraccolpattern Fraction --stripdef strip.json --ignoremods \'*\'": "mv psmsrefined ${outpsms}"} 
   msstitch split -i ${outpsms} --splitcol bioset
   ${setnames.collect() { "test -f '${it}.tsv' || echo 'No ${td} PSMs found for set ${it}' >> warnings" }.join(' && ') }
   """
@@ -1005,7 +1093,7 @@ featqc_extra_peptide_samples
 
 plain_feats
   .mix(dqms_out)
-  .merge(setnames_featqc)
+  .combine(setnames_featqc)
   .combine(featqc_peptides_samples)
   .set { featqcinput }
 
