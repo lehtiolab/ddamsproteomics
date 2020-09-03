@@ -25,28 +25,28 @@ and processes data using the following steps:
 * [DEqMS](#deqms) - Differential expression analysis
 
 ## MSGF+
-[MSGF+](https://omics.pnl.gov/software/ms-gf) (aka MSGF+ or MSGFPlus) performs peptide identification by scoring MS/MS spectra against peptides derived from a protein sequence database.
+[MSGF+](https://omics.pnl.gov/software/ms-gf) (aka MSGF+ or MSGFPlus) performs peptide identification by scoring MS/MS spectra against peptides derived from a protein sequence database. [PMID 25358478](https://pubmed.ncbi.nlm.nih.gov/25358478/)
 
 
 ## Percolator
-[Percolator](http://percolator.ms/) is a semi-supervised machine learning program to better separate target vs decoy peptide scoring.
+[Percolator](http://percolator.ms/) is a semi-supervised machine learning program to better separate target vs decoy peptide scoring. [PMID ](https://pubmed.ncbi.nlm.nih.gov/17952086/)
 
 
 ## OpenMS
-[OpenMS](http://www.openms.de/) is a library that contains a large amount of tools for MS data analysis. This workflow uses its isobaric quantification program to extract peak intenstities for isobaric multiplex samples.
+[OpenMS](http://www.openms.de/) is a library that contains a large amount of tools for MS data analysis. This workflow uses its isobaric quantification program to extract peak intenstities for isobaric multiplex samples. [PMID 27575624](https://pubmed.ncbi.nlm.nih.gov/27575624/)
 
 
 ## Dinosaur
-[Dinosaur](https://github.com/fickludd/dinosaur) identifies peptide features in MS1 data and is an improved reimplementation of the MaxQuant algorithm.
+[Dinosaur](https://github.com/fickludd/dinosaur) identifies peptide features in MS1 data and is an improved reimplementation of the MaxQuant algorithm. [PMID 27224449](https://pubmed.ncbi.nlm.nih.gov/27224449/)
 
 
 ## Luciphor2
-[Luciphor2](https://github.com/dfermin/lucxor) is a site localization tool for generic post-translational modifications, and yields false localization rates for peptide PTM configurations.
+[Luciphor2](https://github.com/dfermin/lucxor) is a site localization tool for generic post-translational modifications, and yields false localization rates for peptide PTM configurations. [PMID 25429062](https://pubmed.ncbi.nlm.nih.gov/25429062/)
 
 
 ## Msstitch
-[Msstitch](https://github.com/glormph/msstitch) is a package to merge identification and quantification PSM data, reporting PSM, peptide, protein and gene tables, adding q-values, quantitfications, protein groups, etc.
+[Msstitch](https://github.com/lehtiolab/msstitch) is a software package to merge identification and quantification PSM data, reporting PSM, peptide, protein and gene tables, adding q-values, quantifications, protein groups, etc. 
 
 
 ## DEqMS
-[DEqMS](https://github.com/yafeng/deqms) is an R package for testing differential protein expression in quantitative proteomic analysis, built on top of the Limma package.
+[DEqMS](https://github.com/yafeng/deqms) is an R package for testing differential protein expression in quantitative proteomic analysis, built on top of the Limma package. [PMID 32205417](https://pubmed.ncbi.nlm.nih.gov/32205417/)
