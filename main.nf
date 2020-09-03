@@ -506,10 +506,8 @@ if (complementary_run) {
 }
 
 // Set names are first item in input lists, collect them for PSM tables and QC purposes
-allsetnames
-  .tap { setnames_psms; setnames_psmqc }
-  .toList()
-  .set { setnames_featqc }
+allsetnames 
+  .into { setnames_featqc; setnames_psms; setnames_psmqc }
 
 
 // Collect all MS1 kronik output for quant lookup building process
@@ -1093,7 +1091,6 @@ featqc_extra_peptide_samples
 
 plain_feats
   .mix(dqms_out)
-  .combine(setnames_featqc)
   .combine(featqc_peptides_samples)
   .set { featqcinput }
 
@@ -1102,7 +1099,8 @@ process featQC {
   publishDir "${params.outdir}", mode: 'copy', overwrite: true, saveAs: {it == "feats" ? "${acctype}_table.txt": null}
 
   input:
-  set val(acctype), file('feats'), file(normfacs), val(setnames), file(peptable), file(sampletable) from featqcinput
+  set val(acctype), file('feats'), file(normfacs), file(peptable), file(sampletable) from featqcinput
+  val(setnames) from setnames_featqc
 
   output:
   file('feats') into featsout
