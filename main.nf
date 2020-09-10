@@ -76,7 +76,9 @@ def helpMessage() {
       --decoypsmlookup FILE         As for --targetpsmlookup, but filled with earlier run decoy PSMs
       --targetpsms FILE             In a complementary run, this passes the old target PSM table. If the new set has the 
                                     same name as an old set, the old set will be removed prior to adding new data.
-      --decoypsms FILE              In a complmentary run, this passes the old decoy PSM table.
+      --decoypsms FILE              In a complementary run, this passes the old decoy PSM table.
+      --ptmpsms FILE                In a complementary run, this optionally passes the old PTM PSM table, if one runs
+                                    with --locptms
       --fastadelim VALUE            FASTA header delimiter in case non-standard FASTA is used, to be used with
                                     --genefield
       --genefield VALUE             Number to determine in which field of the FASTA header (split 
@@ -150,6 +152,7 @@ params.targetpsmlookup = false
 params.decoypsmlookup = false
 params.targetpsms = false
 params.decoypsms = false
+params.ptmpsms = false
 
 // Validate and set file inputs
 fractionation = (params.hirief || params.fractions)
@@ -167,9 +170,9 @@ if (params.targetpsmlookup && params.decoypsmlookup && params.targetpsms && para
   if (params.quantlookup) exit 1, "When specifying a complementary you may not pass --quantlookup"
   complementary_run = true
   prev_results = Channel
-    .fromPath([params.targetpsmlookup, params.decoypsmlookup, params.targetpsms, params.decoypsms])
+    .fromPath([params.targetpsmlookup, params.decoypsmlookup, params.targetpsms, params.decoypsms, params.ptmpsms ? params.ptmpsms : 'NA'])
     .toList()
-} else if (params.targetpsmlookup || params.decoypsmlookup || params.targetpsms || params.decoypsms) {
+} else if (params.targetpsmlookup || params.decoypsmlookup || params.targetpsms || params.decoypsms || params.ptmpsms) {
   exit 1, "When specifying a complementary run you need to pass all of --targetpsmlookup, --decoypsmlookup, --targetpsms, --decoypsms"
 } else {
   complementary_run = false
@@ -453,23 +456,33 @@ process complementSpectraLookupCleanPSMs {
   when: complementary_run
 
   input:
-  set val(setnames), path(mzmlfiles), val(platenames) from mzmlfiles_comp
-  set path(tlup), path(dlup), path(tpsms), path(dpsms) from prev_results
+  set val(in_setnames), path(mzmlfiles), val(platenames) from mzmlfiles_comp
+  set path(tlup), path(dlup), path(tpsms), path(dpsms), path(ptmpsms) from prev_results
 
   output:
   set path('t_cleaned_psms.txt'), path('d_cleaned_psms.txt') into cleaned_psms
   set path('target_db.sqlite'), path('decoy_db.sqlite') into complemented_speclookup 
-  path('all_setnames') into oldnewsets 
+  path 'cleaned_ptmpsms' into cleaned_ptmpsms optional true
+  file('all_setnames') into oldnewsets 
   
   script:
+  setnames = in_setnames.unique(false)
   """
   # If this is an addition to an old lookup, copy it and extract set names
   cp "${tlup}" target_db.sqlite && sqlite3 target_db.sqlite "SELECT set_name FROM biosets" > old_setnames
   cp "${dlup}" decoy_db.sqlite
   # If adding to old lookup: grep new setnames in old and run msstitch deletesets if they match
-  grep -f old_setnames <(echo ${setnames.join('\n')} ) && msstitch deletesets -i "${tpsms}" -o t_cleaned_psms.txt --dbfile target_db.sqlite --setnames ${setnames.join(' ')}
-  grep -f old_setnames <(echo ${setnames.join('\n')} ) && msstitch deletesets -i "${dpsms}" -o d_cleaned_psms.txt --dbfile decoy_db.sqlite --setnames ${setnames.join(' ')}
-  msstitch storespectra --spectra ${mzmlfiles.join(' ')} --setnames ${setnames.join(' ')} --dbfile target_db.sqlite
+  if grep -f old_setnames <(echo ${setnames.join('\n')} )
+    then
+      msstitch deletesets -i "${tpsms}" -o t_cleaned_psms.txt --dbfile target_db.sqlite --setnames "${setnames.join(' ')}"
+      msstitch deletesets -i "${dpsms}" -o d_cleaned_psms.txt --dbfile decoy_db.sqlite --setnames "${setnames.join(' ')}"
+      ${params.ptmpsms ? "msstitch deletesets -i \"${ptmpsms}\" -o cleaned_ptmpsms.txt --setnames ${setnames.join(' ')}" : ''}
+    else
+      mv "${tpsms}" t_cleaned_psms.txt
+      mv "${dpsms}" d_cleaned_psms.txt
+      ${params.ptmpsms ? "mv \"${ptmpsms}\" cleaned_ptmpsms.txt" : ''}
+  fi
+  msstitch storespectra --spectra ${mzmlfiles.join(' ')} --setnames ${in_setnames.join(' ')} --dbfile target_db.sqlite
   copy_spectra.py target_db.sqlite decoy_db.sqlite ${setnames.join(' ')}
   cat old_setnames <(echo ${setnames.join('\n')}) | sort -u > all_setnames
   """
@@ -485,9 +498,10 @@ process createNewSpectraLookup {
 
   output:
   set path('target_db.sqlite'), path('decoy_db.sqlite') into newspeclookup 
-  val(setnames) into allsetnames
+  val(uni_setnames) into allsetnames
 
   script:
+  uni_setnames = setnames.unique(false)
   """
   msstitch storespectra --spectra ${mzmlfiles.join(' ')} --setnames ${setnames.join(' ')} -o target_db.sqlite
   ln -s target_db.sqlite decoy_db.sqlite
@@ -503,6 +517,10 @@ if (complementary_run) {
   cleaned_psms
     .flatMap { it -> [['target', it[0]], ['decoy', it[1]]] }
     .set { td_oldpsms }
+} else {
+  // if not using this youll have a combine on an open channel without
+  // anything from complement cleaner. Will not run createPTMLookup then
+  cleaned_ptmpsms = Channel.value('NA')
 }
 
 // Set names are first item in input lists, collect them for PSM tables and QC purposes
@@ -542,7 +560,7 @@ if (params.noquant && !params.quantlookup) {
     .tap { specquant_lookups }
     .filter { it[1] == 'target' }
     .map { it -> it[0] }
-    .tap { ptm_lookup_in; countlookup }
+    .into { ptm_lookup_in; countlookup }
 } 
 
 
@@ -802,20 +820,19 @@ mzml_luciphor
 
 process luciphorPTMLocalizationScoring {
 
-  cpus = config.poolSize < 4 ? config.poolSize : 4
+  cpus = availProcessors < 4 ? availProcessors : 4
   when: params.locptms
 
   input:
   set val(setname), file(mzmls), file('psms') from psm_luciphor
 
   output:
-  set val(setname), file('ptms.txt'), file(peptable) into luciphor_all
+  set val(setname), file('ptms.txt') into luciphor_all
 
   script:
   denom = !params.noquant && setdenoms ? setdenoms[setname] : false
   specialdenom = denom && (denom[0] == 'sweep' || denom[0] == 'intensity')
   isobtype = setisobaric && setisobaric[setname] ? setisobaric[setname] : ''
-  peptable = "${setname}_ptm_peptides.txt"
   """
   export MZML_PATH=\$(pwd)
   export MINPSMS=${params.minpsms_luciphor}
@@ -829,44 +846,98 @@ process luciphorPTMLocalizationScoring {
   luciphor_prep.py psms lucinput.txt "${params.msgfmods}" "${params.mods}${isobtype ? ";${isobtype}" : ''}" "${params.locptms}" luciphor.out
   luciphor2 luciphor_config.txt
   luciphor_parse.py ${params.ptm_minscore_high} ptms.txt "${params.msgfmods}" "${params.locptms};${params.mods}"
-  # Generate PTM peptide table
-  msstitch peptides -i "ptms.txt" -o "${peptable}" --scorecolpattern svm --spectracol 1 \
-    ${!params.noquant ? "--ms1quantcolpattern area ${setisobaric && setisobaric[setname] ? '--isobquantcolpattern plex --minint 0.1' : ''}" : ''} \
-    ${denom && denom[0] == 'sweep' ? '--mediansweep --logquantratios': ''} \
-    ${denom && denom[0] == 'intensity' ? '--medianintensity' : ''} \
-    ${denom && !specialdenom ? "--logquantratios --denompatterns ${setdenoms[setname].join(' ')}": ''}
   """
 }
 
 // Sort to be able to resume
 luciphor_all
   .toList()
-  .map { it.sort( {a, b -> a[0] <=> b[0]}) }
+  .map { it.sort( {a, b -> a[0] <=> b[0]}) } // sort on setname
   .transpose()
   .toList()
+  .combine(cleaned_ptmpsms)
   .set { lucptmfiles_to_lup }
 
 
 process createPTMLookup {
-  publishDir "${params.outdir}", mode: 'copy', overwrite: true
+  publishDir "${params.outdir}", mode: 'copy', overwrite: true, saveAs: {it == ptmtable ? ptmtable: null}
 
   when: params.locptms
 
   input:
-  tuple val(setnames), file('ptms?'), file(peptides) from lucptmfiles_to_lup
+  tuple val(setnames), file('ptms?'), file(cleaned_oldptms) from lucptmfiles_to_lup
   file(ptmlup) from ptm_lookup_in
 
   output:
-  tuple path(ptmtable), path('ptm_peptidetable.txt') into features_out
+  path(ptmtable) into features_out
+  path 'ptmlup.sql' into ptmlup
+  path({setnames.collect() { "${it}.tsv" }}) optional true into setptmtables
+  //set val(setnames), file({setnames.collect() { "${it}.tsv" }}) optional true into setptmtables
+  path 'warnings' optional true into ptmwarnings
 
   script:
   ptmtable = "ptm_psmtable.txt"
   """
   msstitch concat -i ptms* -o "${ptmtable}"
   cat "${ptmlup}" > ptmlup.sql
-  msstitch psmtable -i "${ptmtable}" --dbfile ptmlup.sql -o ptmtable_read --spectracol 1
+  msstitch psmtable -i "${ptmtable}" --dbfile ptmlup.sql -o ptmtable_read \
+    ${complementary_run ? "--oldpsms ${cleaned_oldpsms}" : ''} --spectracol 1
+  msstitch split -i "${ptmtable}" --splitcol bioset
+  ${setnames.collect() { "test -f '${it}.tsv' || echo 'No PTMs found for set ${it}' >> warnings" }.join(' && ') }
+  """
+}
 
-  msstitch merge -i ${peptides.join(' ')} --setnames ${setnames.join(' ')} --dbfile ptmlup.sql -o mergedtable --no-group-annotation \
+
+setptmtables
+  .map { it -> listify(it) }
+  .map{ it -> [it.collect() { it.baseName.replaceFirst(/\.tsv$/, "") }, it]} // setname from file setA.tsv
+  .transpose()
+  .set { ptm2peps }
+
+
+process PTMPeptides {
+
+  input:
+  tuple val(setname), path('ptms.txt') from ptm2peps
+
+  output:
+  tuple val(setname), path(peptable) into ptmpeps
+
+  script:
+  denom = !params.noquant && setdenoms ? setdenoms[setname] : false
+  specialdenom = denom && (denom[0] == 'sweep' || denom[0] == 'intensity')
+  peptable = "${setname}_ptm_peptides.txt"
+  """
+  msstitch peptides -i "ptms.txt" -o "${peptable}" --scorecolpattern svm --spectracol 1 \
+    ${!params.noquant ? "--ms1quantcolpattern area ${setisobaric && setisobaric[setname] ? '--isobquantcolpattern plex --minint 0.1' : ''}" : ''} \
+    ${denom && denom[0] == 'sweep' ? '--mediansweep --logisoquant': ''} \
+    ${denom && denom[0] == 'intensity' ? '--medianintensity' : ''} \
+    ${denom && !specialdenom ? "--logisoquant --denompatterns ${setdenoms[setname].join(' ')}": ''}
+  """
+}
+
+ptmpeps
+  .toList()
+  .map { it.sort( {a, b -> a[0] <=> b[0]}) } // sort on setname
+  .transpose()
+  .toList()
+  .combine(ptmlup)
+  .set { ptmpeps2merge }
+  
+
+process mergePTMPeps {
+  publishDir "${params.outdir}", mode: 'copy', overwrite: true
+
+  input:
+  tuple val(setnames), path(peptides), path('ptmlup.sql') from ptmpeps2merge
+
+  output:
+  file 'ptm_peptidetable.txt'
+
+  script:
+  """
+  cat ptmlup.sql > pepptmlup.sql
+  msstitch merge -i ${peptides.join(' ')} --setnames ${setnames.join(' ')} --dbfile pepptmlup.sql -o mergedtable --no-group-annotation \
     --fdrcolpattern 'FLR\$' \
     ${!params.noquant ? "--ms1quantcolpattern area" : ''} \
     ${!params.noquant && setisobaric ? "--isobquantcolpattern plex" : ''}
@@ -874,7 +945,6 @@ process createPTMLookup {
   tail -n+2 mergedtable | sort -k1b,1 >> ptm_peptidetable.txt
   """
 }
-
 
 process makePeptides {
   input:
