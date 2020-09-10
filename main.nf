@@ -968,7 +968,8 @@ process makePeptides {
     ${denom && denom[0] == 'sweep' ? '--mediansweep' : ''} \
     ${denom && denom[0] == 'intensity' ? '--medianintensity' : ''} \
     ${denom && !specialdenom ? "--denompatterns ${setdenoms[setname].join(' ')}" : ''} \
-    ${quant && normalize ? "--median-normalize --logquantratios | grep plex | sed 's/^/$setname'\$'\t/' > $normfactors": ''}
+    ${quant && normalize ? "--median-normalize --logisoquant" : ''}
+    ${quant && normalize ? "sed 's/^/$setname'\$'\t/' < normalization_factors_psms > $normfactors" : ''}
   """
 }
 
@@ -1027,7 +1028,8 @@ process proteinGeneSymbolTableFDR {
     ${denom && denom[0] == 'sweep' ? '--mediansweep' : ''} \
     ${denom && denom[0] == 'intensity' ? '--medianintensity' : ''} \
     ${denom && !specialdenom ? "--denompatterns ${setdenoms[setname].join(' ')}" : ''} \
-    ${normalize ? "--median-normalize --logquantratios | grep plex | sed 's/^/$setname'\$'\t/' > $normfactors": ''}
+    ${normalize ? "--median-normalize --logisoquant" : ''}
+    ${normalize ? "sed 's/^/$setname'\$'\t/' < normalization_factors_tpsms > $normfactors" : ''}
   """
 }
     
