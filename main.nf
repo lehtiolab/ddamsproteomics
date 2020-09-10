@@ -195,6 +195,7 @@ if (params.onlypeptides) {
   }
 }
 
+availProcessors = Runtime.runtime.availableProcessors()
 
 // parse inputs that combine to form values or are otherwise more complex.
 
@@ -658,7 +659,7 @@ if (fractionation) {
 */
 
 process msgfPlus {
-  cpus = config.poolSize < 4 ? config.poolSize : 4
+  cpus = availProcessors < 4 ? availProcessors : 4
 
   input:
   set val(setname), val(sample), file(x), val(instrument), val(platename), val(fraction), file(db) from mzml_msgf
