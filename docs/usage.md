@@ -126,12 +126,52 @@ concatenated database (T-TDC)
 
 
 ### `--mods`
-Modifications file for MSGF+, contains the peptide modifications allowed by the search engine. Two examples
-can be found in the `assets` folder.
+Modifications as in UNIMOD, although only a selected number are available by name. You can extend this list
+by adding entries to `assets/msgfmods.txt`
 
 ```bash
---mods /path/to/assets/tmtmods.txt
+--mods Carbamidomethylation;Oxidation
 ```
+
+### Output types
+The pipeline will produce by default PSM, peptide, and protein tables. You may pass FASTA databases that contain mixtures of ENSEMBL, Uniprot, or other types of entries. Use `--genes` and `--ensg` to output a gene(name)-centric table and an ENSG-centric table. If you rather have less output, use `--onlypeptides` to not output a protein table.
+
+
+### Quantitation
+Isobaric data can be specified as such `--isobaric 'set1:tmt10plex:127N:128N set2:tmtpro:sweep set3:itraq8plex:intensity'`. Here PSMs will be quantified for 3 different isobaric sample sets in a somewhat contrived example with different chemistries. Isobaric quantitation will be summarized from PSM to peptide/protein/gene by taking median PSM values per feature. Prior to this, they can be log2-transformed and normalized to e.g. an internal standard using denominator channels as above in `set1`, or median sweep (i.e. use median PSM value as denominator for each PSM in `set2`) to generate log2(ratios). A possibility shown in `set3` is also to output non-normalized median PSM intensity per protein. When result tables have been summarized these can be median-centered, which is passed using `--normalize`.
+
+MS1 quantitation is done using Dinosaur and its features are aligned to PSMs using msstitch, using summed intensity of a feature. To not output any MS1 or isobaric data, use `--noquant`.
+
+### Differential expression analysis
+DEqMS is used for DE analysis using `--deqms` and it needs to know your sample group names. For this, you can pass a TSV file with sample names to `--sampletable`, it should contain a line for each channel/set combination with channel, set, sample, sample group e.g.:
+
+```
+126    setA   DMSO1  CTRL
+127N   setA   ABC1   TREAT 
+127C   setA   DMSO2  CTRL 
+128N   setA   ABC2   TREAT
+129N   setA   pool   X__POOL
+...
+```
+
+For DE analysis, sample groups represent internal standard can be called X__POOL so they will be filtered out.
+Even when not using DEqMS you can provide a sample table for annotation of your quant output.
+
+
+### PTM analysis
+PTMS reported by the search engine can be scored using Luciphor2, which will output the best scoring PTM localization and a false localization rate. Note that this is only beneficial for labile PTMs. Aside from that if any high-scoring PTMs are found by luciphor the pipeline will report these as well. All of this will end up in a separate PTM PSM table and a PTM peptide table.
+
+
+### Reusing data
+If you have finished a rather large analysis and wish to rerun a part of it due to e.g. new MS data, you may do so by passing
+
+```
+  --targetpsms oldpsmtable.txt --decoypsms old_decoy_psms.txt \
+  --targetpsmlookup old_target_psmlookup.sql \
+  --decoypsmlookup old_decoy_lookup.sqlite \
+  --ptmpsms old_ptm_psmtable.txt # Optional of course
+```
+Now you can run a single sample set and combine the output with the previous run, which if it has an identical set name, will be cleaned first (the set will be removed from old output). Make sure to use the same parameters to get the same result for the old data, which will be regenerated from the PSM table.
 
 
 ## Job Resources
@@ -197,6 +237,3 @@ Should be a string in the format integer-unit. eg. `--max_cpus 1`
 
 ### `--plaintext_email`
 Set to receive plain-text e-mails instead of HTML formatted.
-
-### `--multiqc_config`
-Specify a path to a custom MultiQC configuration file.

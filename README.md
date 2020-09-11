@@ -11,9 +11,8 @@
 https://img.shields.io/badge/singularity-available-7E4C74.svg)
 
 ### Introduction
-This workflow identifies peptides in mzML input data using [MSGF+](https://github.com/MSGFPlus/msgfplus), and [Percolator](https://github.com/percolator/percolator/), quantifies isobarically labeled samples with [OpenMS](https://github.com/openms/openms), and precursor peptides with [Dinosaur](https://github.com/fickludd/dinosaur), and processes that output to formatted peptide and protein/gene tables using [Msstitch](https://github.com/lehtiolab/msstitch). Optional PTM data is analyzed by [Luciphor2](https://github.com/dfermin/lucxor), and differential expression analyses can be performed using [DEqMS](https://github.com/yafeng/deqms)
+This workflow identifies peptides in mzML input data using [MSGF+](https://github.com/MSGFPlus/msgfplus), and [Percolator](https://github.com/percolator/percolator/), quantifies isobarically labeled samples with [OpenMS](https://github.com/openms/openms), and precursor peptides with [Dinosaur](https://github.com/fickludd/dinosaur), and processes that output to formatted peptide and protein/gene tables using [Msstitch](https://github.com/lehtiolab/msstitch). Optional PTM data is analyzed by [Luciphor2](https://github.com/dfermin/lucxor), and differential expression analyses can be performed using [DEqMS](https://github.com/yafeng/deqms). 
 
-  
 The pipeline is built using [Nextflow](https://www.nextflow.io), a workflow tool to run tasks across multiple compute infrastructures in a very portable manner. It comes with docker / singularity containers making installation trivial and results highly reproducible.
 
 
@@ -38,6 +37,8 @@ The lehtiolab/ddamsproteomics pipeline comes with documentation about the pipeli
 - [Running the pipeline](docs/usage.md)
 - [Output and how to interpret the results](docs/output.md)
 - [Troubleshooting](https://nf-co.re/usage/troubleshooting)
+
+There is more extensive documentation on the options inside the main.nf file.
 
 The pipeline takes multiple mzML files as input and performs identification and quantification to output results and a QC report ([an example can be found here](docs/example_qc.html)) 
 

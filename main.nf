@@ -33,40 +33,51 @@ def helpMessage() {
       --instrument                  If not using --mzmldef, use this to specify instrument type.
                                     Currently supporting 'qe' or 'velos'
 
+      --fractions                   Fractionated samples, changes input of mzml definition and QC output
       --mods                        Modifications specified by their UNIMOD name. e.g. --mods 'oxidation;carbamidomethyl'
                                     Note that there are a limited number of modifications available, but that
-                                    this list can easily be expanded
+                                    this list can easily be expanded in assets/msgfmods.txt
       --locptms                     As for --mods, but pipeline will output false localization rate e.g. --locptms 'methyl;dimethyl'  or --locptms 'phospho'
-      --phospho                     Flag to pass in case of using phospho-enriched samples, changes MSGF protocol
-      --isobaric VALUE              In case of isobaric, specify per set the type and possible denominators/sweep/none.
+      --isobaric VALUE              In case of isobaric, specify per set the type and possible denominators/sweep/intensity.
+                                    In case of intensity, no ratios will be output but instead the raw PSM intensities will be
+                                    median-summarized to the output features (e.g. proteins).
                                     Available types are tmt10plex, tmt6plex, itraq8plex, itraq4plex
                                     E.g. --isobaric 'set1:tmt10plex:126:127N set2:tmtpro:127C:131 set3:tmt10plex:sweep'
+      --activation VALUE            Specify activation protocol for isobaric quantitation (NOT for identification):
+                                    choose from hcd (DEFAULT), cid, etd 
+      --fastadelim VALUE            FASTA header delimiter in case non-standard FASTA is used, to be used with
+                                    --genefield
+      --genefield VALUE             Number to determine in which field of the FASTA header (split 
+                                    by --fastadelim) the gene name can be found.
 
+      SEARCH ENGINE DETAILED PARAMETERS
       --prectol                     Precursor error for search engine (default 10ppm)
       --iso_err                     Isotope error for search engine (default -1,2)
       --frag                        Fragmentation method for search engine (default 'auto')
       --enzyme                      Enzyme used, default trypsin, pick from:
                                     unspecific, trypsin, chymotrypsin, lysc, lysn, gluc, argc, aspn, no_enzyme
       --terminicleaved              Allow only 'full', 'semi' or 'non' cleaved peptides
+      --phospho                     Flag to pass in case of using phospho-enriched samples, changes MSGF protocol
       --maxmiscleav		    Maximum allowed amount of missed cleavages for MSGF+
-      --minpeplen                   Minimum peptide length to search
-      --maxpeplen                   Maximum peptide length to search
-      --mincharge                   Minimum peptide charge search
-      --maxcharge                   Maximum peptide charge search
-      --activation VALUE            Specify activation protocol: hcd (DEFAULT), cid, etd for isobaric 
-                                    quantification. Not necessary for other functionality.
+      --minpeplen                   Minimum peptide length to search, default 7
+      --maxpeplen                   Maximum peptide length to search, default 50
+      --mincharge                   Minimum peptide charge search, default 2
+      --maxcharge                   Maximum peptide charge search, default 6
+
+      OUTPUT AND QUANT PARAMETERS
       --normalize                   Normalize isobaric values by median centering on channels of protein table
       --sampletable                 Path to sample annotation table in case of isobaric analysis
       --deqms                       Perform DEqMS differential expression analysis using sampletable
       --genes                       Produce gene table (i.e. gene names from Swissprot or ENSEMBL)
       --ensg                        Produce ENSG stable ID table (when using ENSEMBL db)
-      --fractions                   Fractionated samples, 
       --hirief                      File containing peptide sequences and their isoelectric points.
                                     An example can be found here:
                                     https://github.com/nf-core/test-datasets/blob/ddamsproteomics/testdata/formatted_known_peptides_ENSUniRefseq_TMT_predpi_20150825.txt
                                     For IEF fractionated samples, implies --fractions, enables delta pI calculation
       --onlypeptides                Do not produce protein or gene level data
       --noquant                     Do not produce isobaric or MS1 quantification data
+
+      REUSING PREVIOUS DATA
       --quantlookup FILE            Use previously generated SQLite lookup database containing spectra 
                                     quantification data when e.g. re-running. Need to match exactly to the
                                     mzML files of the current run
@@ -79,10 +90,6 @@ def helpMessage() {
       --decoypsms FILE              In a complementary run, this passes the old decoy PSM table.
       --ptmpsms FILE                In a complementary run, this optionally passes the old PTM PSM table, if one runs
                                     with --locptms
-      --fastadelim VALUE            FASTA header delimiter in case non-standard FASTA is used, to be used with
-                                    --genefield
-      --genefield VALUE             Number to determine in which field of the FASTA header (split 
-                                    by --fastadelim) the gene name can be found.
 
 
     Other options:
@@ -199,7 +206,7 @@ availProcessors = Runtime.runtime.availableProcessors()
 
 // parse inputs that combine to form values or are otherwise more complex.
 
-// Isobaric input example: --isobaric 'set1:tmt10plex:127N:128N set2:tmtpro:sweep'
+// Isobaric input example: --isobaric 'set1:tmt10plex:127N:128N set2:tmtpro:sweep set3:itraq8plex:intensity'
 isop = params.isobaric ? params.isobaric.tokenize(' ') : false
 setisobaric = isop ? isop.collect() {
   y -> y.tokenize(':')
@@ -216,8 +223,6 @@ setdenoms = isop ? isop.collect() {
 luciphor_ptms = params.locptms ? params.locptms.tokenize(';') : false
 
 normalize = (!params.noquant && (params.normalize || params.deqms) && params.isobaric)
-rawisoquant = (!params.noquant && !normalize && params.isobaric)
-
 
 // AWSBatch sanity checking
 if(workflow.profile == 'awsbatch'){
@@ -680,7 +685,6 @@ process msgfPlus {
   ntt = [full: 2, semi: 1, non: 0][params.terminicleaved]
 
   """
-  echo ${setname}
   create_modfile.py ${params.maxvarmods} "${params.msgfmods}" "${params.mods}${isobtype ? ";${isobtype}" : ''}${params.locptms ? ";${params.locptms}" : ''}"
   msgf_plus -Xmx8G -d $db -s $x -o "${sample}.mzid" -thread ${task.cpus * params.threadspercore} -mod "mods.txt" -tda 0 -maxMissedCleavages $params.maxmiscleav -t ${params.prectol}  -ti ${params.iso_err} -m ${fragmeth} -inst ${msgfinstrument} -e ${enzyme} -protocol ${msgfprotocol} -ntt ${ntt} -minLength ${params.minpeplen} -maxLength ${params.maxpeplen} -minCharge ${params.mincharge} -maxCharge ${params.maxcharge} -n 1 -addFeatures 1
   msgf_plus -Xmx3500M edu.ucsd.msjava.ui.MzIDToTsv -i "${sample}.mzid" -o out.tsv
@@ -1142,14 +1146,12 @@ process psmQC {
   for graph in psm-scans missing-tmt miscleav
     do
     [[ -e \$graph ]] && echo "<div class=\\"chunk\\" id=\\"\${graph}\\"> \$(sed "s/id=\\"/id=\\"\${graph}/g;s/\\#/\\#\${graph}/g" <\$graph) </div>" >> psmqc.html
-#paste -d \\\\0  <(echo "<div class=\\"chunk\\" id=\\"\${graph}\\"><img src=\\"data:image/png;base64,") <(base64 -w 0 \$graph) <(echo '"></div>') >> psmqc.html
     done 
   for graph in retentiontime precerror fwhm fryield msgfscore
     do
     for plateid in ${plates.join(' ')}
       do
       plate="PLATE___\${plateid}___\${graph}"
-    #  [[ -e \$plate ]] && paste -d \\\\0  <(echo "<div class=\\"chunk \$plateid\\" id=\\"\${graph}\\"><img src=\\"data:image/png;base64,") <(base64 -w 0 \$plate) <(echo '"></div>') >> psmqc.html
     [[ -e \$plate ]] && echo "<div class=\\"chunk \$plateid\\" id=\\"\${graph}\\"> \$(sed "s/id=\\"/id=\\"\${plate}/g;s/\\#/\\#\${plate}/g" < \$plate) </div>" >> psmqc.html
       done 
     done

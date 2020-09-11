@@ -36,7 +36,6 @@ amount_id = melt(amount_id, measure.vars=c(mscol, psmcol))
 procents = dcast(amount_id, get(xcol)~variable, value.var=ycol)
 procents$p = procents$`PSMs IDed` / procents$`MS2 scans`
 svg('psm-scans', width=width, height=nrsets + 2) 
-#, width=width, height=(3 * nrsets + 2) * 72)
 print(ggplot(amount_id) +
   geom_bar(aes_string(x=xcol, y=ycol, fill='variable'), stat='identity', position='dodge') + coord_flip() +
     ylab('Amount') + theme_bw() + theme(axis.title.x=element_text(size=15), axis.text=element_text(size=10), axis.title.y=element_blank(), legend.position="top", legend.text=element_text(size=10), legend.title=element_blank()) +
