@@ -1101,27 +1101,10 @@ process proteinPeptideSetMerge {
     'sed -i  "s/[^A-Za-z0-9_\\t]/_/g" sampletable ; \
     while read line ; do read -a arr <<< $line ; sed -i "s/${arr[1]}_\\([a-z0-9]*plex\\)_${arr[0]}/${arr[3]}_${arr[2]}_${arr[1]}_\\1_${arr[0]}/" header ; done < sampletable' \
   : ''}
-  cat header <(tail -n+2 mergedtable) > proteintable
+  cat header <(tail -n+2 mergedtable) > feats
+  ${params.deqms ? "deqms.R && mv deqms_output proteintable" : 'mv feats proteintable'}
   """
 }
-
-(plain_feats, dqms_feats) = ( params.deqms ? [Channel.empty(), merged_feats] : [merged_feats, Channel.empty()])
-
-process calculateDEqMS {
-
-  input:
-  set val(acctype), file('feats'), file(normfacs) from dqms_feats 
-  file('sampletable') from Channel.from(sampletable).first()
-
-  output:
-  set val(acctype), file('deqms_output'), file(normfacs) into dqms_out 
-
-  script:
-  """
-  deqms.R 
-  """
-}
-
 
 
 psm_result
@@ -1164,8 +1147,7 @@ featqc_extra_peptide_samples
   .map { it -> [it[1], it[2]] }
   .set { featqc_peptides_samples }
 
-plain_feats
-  .mix(dqms_out)
+merged_feats
   .combine(featqc_peptides_samples)
   .set { featqcinput }
 
