@@ -76,6 +76,8 @@ def helpMessage() {
                                     For IEF fractionated samples, implies --fractions, enables delta pI calculation
       --onlypeptides                Do not produce protein or gene level data
       --noquant                     Do not produce isobaric or MS1 quantification data
+      --noms1quant                  Do not produce MS1 quantification data
+      --hardklor                    Use hardklör/krönik instead of dinosaur for MS1 quant
 
       REUSING PREVIOUS DATA
       --quantlookup FILE            Use previously generated SQLite lookup database containing spectra 
@@ -153,6 +155,8 @@ params.fractions = false
 params.hirief = false
 params.onlypeptides = false
 params.noquant = false
+params.noms1quant = false
+params.hardklor = false
 params.sampletable = false
 params.deqms = false
 params.targetpsmlookup = false
@@ -352,7 +356,9 @@ process get_software_versions {
     echo $workflow.nextflow.version > v_nextflow.txt
     msgf_plus | head -n2 | grep Release > v_msgf.txt
     dinosaur | head -n2 | grep Dinosaur > v_dino.txt || true
-    luciphor2 |& grep Version > v_luci.txt # incorrect version from binary (2014), echo below
+    hardklor | head -n1 > v_hk.txt || true
+    kronik | head -n2 | tr -cd '[:alnum:]._-' > v_kr.txt
+    #luciphor2 |& grep Version > v_luci.txt # incorrect version from binary (2014), echo below
     echo Version: 2020_04_03 > v_luci.txt # deprecate when binary is correct
     percolator -h |& head -n1 > v_perco.txt || true
     msstitch --version > v_mss.txt
@@ -425,9 +431,11 @@ process quantifySpectra {
 
   input:
   set val(setname), val(sample), file(infile), val(instr), val(platename), val(fraction) from mzml_quant
+  file(hkconf) from Channel.fromPath("$baseDir/assets/hardklor.conf").first()
 
   output:
-  set val(sample), file("${infile.baseName}.features.tsv"), val(infile.name) into dino_out 
+  set val(sample), file("${infile.baseName}.features.tsv"), val(infile.name) optional true into dino_out 
+  set val(sample), file("${sample}.kr"), val(infile.name) optional true into kronik_out 
   set val(sample), file("${infile}.consensusXML") optional true into isobaricxml
 
   script:
@@ -437,7 +445,11 @@ process quantifySpectra {
   plextype = isobtype ? isobtype.replaceFirst(/[0-9]+plex/, "") : 'false'
   massshift = [tmt:0.0013, itraq:0.00125, false:0][plextype]
   """
-  dinosaur --concurrency=${task.cpus * params.threadspercore} "${infile}"
+  # Dinosaur is first choice for MS1 quant
+  ${!params.noms1quant && !params.hardklor ? "dinosaur --concurrency=${task.cpus * params.threadspercore} \"${infile}\"" : ''}
+  # Hardklor/Kronik can be used as a backup, using --hardklor
+  ${!params.noms1quant && params.hardklor ? "hardklor <(cat $hkconf <(echo \"$infile\" hardklor.out)) && kronik -c 5 -d 3 -g 1 -m 8000 -n 600 -p 10 hardklor.out ${sample}.kr" : ''}
+
   ${isobtype ? "IsobaricAnalyzer -type $isobtype -in $infile -out \"${infile}.consensusXML\" -extraction:select_activation \"$activationtype\" -extraction:reporter_mass_shift $massshift -extraction:min_precursor_intensity 1.0 -extraction:keep_unannotated_precursor true -quantification:isotope_correction true" : ''}
   """
 }
@@ -534,8 +546,9 @@ allsetnames
   .into { setnames_featqc; setnames_psms; setnames_psmqc }
 
 
-// Collect all MS1 kronik output for quant lookup building process
+// Collect all MS1 dinosaur/kronik output for quant lookup building process
 dino_out
+  .concat(kronik_out)
   .ifEmpty(['NA', 'NA'])
   .join(isobaricxml, remainder: true)
   .toList()
@@ -572,13 +585,13 @@ if (params.noquant && !params.quantlookup) {
 
 process quantLookup {
 
-  publishDir "${params.outdir}", mode: 'copy', overwrite: true, saveAs: {it == 'db.sqlite' ? 'quant_lookup.sql' : null }
+  publishDir "${params.outdir}", mode: 'copy', overwrite: true, saveAs: {it == 'target.sqlite' ? 'quant_lookup.sql' : null }
 
   when: !params.quantlookup && !params.noquant
 
   input:
   set path(tlookup), path(dlookup) from spectoquant
-  set val(samples), file(dinofns), val(mzmlnames), file(isofns) from dinofiles_sets
+  set val(samples), file(ms1fns), val(mzmlnames), file(isofns) from dinofiles_sets
 
   output:
   set path('target.sqlite'), path(dlookup) into newquantlookup
@@ -587,7 +600,9 @@ process quantLookup {
   """
   # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
   cat $tlookup > target.sqlite
-  msstitch storequant --dbfile target.sqlite ${params.isobaric ? "--isobaric ${isofns.join(' ')}" : ''} --dinosaur ${dinofns.join(' ')} --spectra ${mzmlnames.join(' ')} --mztol 20.0 --mztoltype ppm --rttol 5.0 
+  msstitch storequant --dbfile target.sqlite --spectra ${mzmlnames.join(' ')}  \
+    ${!params.noms1quant ? "--mztol 20.0 --mztoltype ppm --rttol 5.0 ${params.hardklor ? "--kronik ${ms1fns.join(' ')}" : "--dinosaur ${ms1fns.join(' ')}"}" : ''} \
+    ${params.isobaric ? "--isobaric ${isofns.join(' ')}" : ''}
   """
 }
 
@@ -793,7 +808,7 @@ process createPSMTable {
   sed 's/\\#SpecFile/SpectraFile/' -i psms.txt
   msstitch psmtable -i psms.txt --dbfile $psmlookup --addmiscleav -o psmsrefined --spectracol 1 \
     ${params.onlypeptides ? '' : "--fasta \"${td == 'target' ? "${tdb}" : "${ddb}"}\" --genes"} \
-    ${quant ? "--ms1quant ${params.isobaric ? '--isobaric' : ''}" : ''} \
+    ${quant ? "${!params.noms1quant ? '--ms1quant' : ''} ${params.isobaric ? '--isobaric' : ''}" : ''} \
     ${!params.onlypeptides ? '--proteingroup' : ''} \
     ${complementary_run ? "--oldpsms ${cleaned_oldpsms}" : ''}
   sed 's/\\#SpecFile/SpectraFile/' -i psmsrefined
@@ -914,7 +929,7 @@ process PTMPeptides {
   peptable = "${setname}_ptm_peptides.txt"
   """
   msstitch peptides -i "ptms.txt" -o "${peptable}" --scorecolpattern svm --spectracol 1 \
-    ${!params.noquant ? "--ms1quantcolpattern area ${setisobaric && setisobaric[setname] ? '--isobquantcolpattern plex --minint 0.1' : ''}" : ''} \
+    ${!params.noquant ? "${!params.noms1quant ? '--ms1quantcolpattern area' : ''} ${setisobaric && setisobaric[setname] ? '--isobquantcolpattern plex --minint 0.1' : ''}" : ''} \
     ${denom && denom[0] == 'sweep' ? '--mediansweep --logisoquant': ''} \
     ${denom && denom[0] == 'intensity' ? '--medianintensity' : ''} \
     ${denom && !specialdenom ? "--logisoquant --denompatterns ${setdenoms[setname].join(' ')}": ''}
@@ -944,7 +959,7 @@ process mergePTMPeps {
   cat ptmlup.sql > pepptmlup.sql
   msstitch merge -i ${peptides.join(' ')} --setnames ${setnames.join(' ')} --dbfile pepptmlup.sql -o mergedtable --no-group-annotation \
     --fdrcolpattern 'FLR\$' \
-    ${!params.noquant ? "--ms1quantcolpattern area" : ''} \
+    ${!params.noquant && !params.noms1quant ? "--ms1quantcolpattern area" : ''} \
     ${!params.noquant && setisobaric ? "--isobquantcolpattern plex" : ''}
   head -n1 mergedtable | sed 's/q-value/FLR/g' > ptm_peptidetable.txt
   tail -n+2 mergedtable | sort -k1b,1 >> ptm_peptidetable.txt
@@ -969,7 +984,7 @@ process makePeptides {
   """
   # Create peptide table from PSM table, picking best scoring unique peptides
   msstitch peptides -i psms -o "${setname}_peptides" --scorecolpattern svm --spectracol 1 --modelqvals \
-    ${quant ? "--ms1quantcolpattern area ${setisobaric && setisobaric[setname] ? '--isobquantcolpattern plex --minint 0.1' : ''}" : ''} \
+    ${quant ? "${!params.noms1quant ? '--ms1quantcolpattern area' : ''} ${setisobaric && setisobaric[setname] ? '--isobquantcolpattern plex --minint 0.1' : ''}" : ''} \
     ${denom && denom[0] == 'sweep' ? '--mediansweep' : ''} \
     ${denom && denom[0] == 'intensity' ? '--medianintensity' : ''} \
     ${denom && !specialdenom ? "--denompatterns ${setdenoms[setname].join(' ')}" : ''} \
@@ -1029,7 +1044,7 @@ process proteinGeneSymbolTableFDR {
   fi
   msstitch ${acctype} -i tpeptides --decoyfn dpeptides -o "${setname}_protfdr" --scorecolpattern "\$scpat" \$logflag \
     ${acctype != 'proteins' ? "--targetfasta '$tfasta' --decoyfasta '$dfasta' ${params.fastadelim ? "--fastadelim '${params.fastadelim}' --genefield '${params.genefield}'": ''}" : ''} \
-    ${!params.noquant ? "--ms1quant --psmtable tpsms ${setisobaric && setisobaric[setname] ? '--isobquantcolpattern plex --minint 0.1' : ''}" : ''} \
+    ${!params.noquant ? "${!params.noms1quant ? '--ms1quant --psmtable tpsms' : ''} ${setisobaric && setisobaric[setname] ? '--isobquantcolpattern plex --minint 0.1' : ''}" : ''} \
     ${denom && denom[0] == 'sweep' ? '--mediansweep' : ''} \
     ${denom && denom[0] == 'intensity' ? '--medianintensity' : ''} \
     ${denom && !specialdenom ? "--denompatterns ${setdenoms[setname].join(' ')}" : ''} \
@@ -1090,7 +1105,7 @@ process proteinPeptideSetMerge {
   cat $lookup > db.sqlite
   msstitch merge -i ${tables.join(' ')} --setnames ${setnames.join(' ')} --dbfile db.sqlite -o mergedtable \
     --fdrcolpattern '^q-value\$' ${acctype != 'peptides' ? '--mergecutoff 0.01' : ''} \
-    ${!params.noquant ? "--ms1quantcolpattern area" : ''} \
+    ${!params.noquant && !params.noms1quant ? "--ms1quantcolpattern area" : ''} \
     ${!params.noquant && setisobaric ? "--isobquantcolpattern plex" : ''} \
     ${params.onlypeptides ? "--no-group-annotation" : ''}
    

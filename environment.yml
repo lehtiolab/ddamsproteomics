@@ -5,6 +5,8 @@ channels:
   - defaults
 dependencies:
   - bioconda::msgf_plus=2020.03.14
+  - bioconda::hardklor=2.3.0
+  - bioconda::kronik=2.20
   - bioconda::dinosaur=1.2.0
   - bioconda::openms=2.5.0
   - bioconda::msstitch=3.3

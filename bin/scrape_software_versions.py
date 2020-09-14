@@ -8,6 +8,8 @@ regexes = {
     'Nextflow': ['v_nextflow.txt', r"(\S+)"],
     'MSGF+': ['v_msgf.txt', r"v(20[0-9\.]+)"],
     'Dinosaur': ['v_dino.txt', r"([0-9\.]+[0-9])"],
+    'Hardklor': ['v_hk.txt', r"([0-9\.]+)"],
+    'Kronik': ['v_kr.txt', r"([0-9\.]+)"],
     'Luciphor2': ['v_luci.txt', r"Version\: (.+)"],
     'Percolator': ['v_perco.txt', r"([0-9\.]+)"],
     'msstitch': ['v_mss.txt', r"(\S+)"],
