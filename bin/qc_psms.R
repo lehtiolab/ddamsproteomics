@@ -92,20 +92,22 @@ for (plateid in plateids) {
   }
   for (ptype in names(ptypes)) {
     fn = paste('PLATE', plateid, ptype, sep="___")
-    if (ptype == 'fryield') {
-      plotdata = aggregate(as.formula(fryield_form), subfeats, length)
-      p = ggplot(plotdata) + geom_bar(aes_string(x=xcol, y=ptypes[[ptype]][1]), stat='identity')
-    } else {
-      plotdata = subfeats
-      p = ggplot(plotdata, aes_string(x=xcol, y=ptypes[[ptype]][1])) + geom_violin(trim=F) 
+    if (ptypes[[ptype]][1] %in% colnames(subfeats)) {
+      if (ptype == 'fryield') {
+        plotdata = aggregate(as.formula(fryield_form), subfeats, length)
+        p = ggplot(plotdata) + geom_bar(aes_string(x=xcol, y=ptypes[[ptype]][1]), stat='identity')
+      } else {
+        plotdata = subfeats
+        p = ggplot(plotdata, aes_string(x=xcol, y=ptypes[[ptype]][1])) + geom_violin(trim=F) 
+      }
+      if (ptype == 'precerror') {
+        p = p + geom_hline(yintercept=0, size=2)
+      }
+      svg(fn, height=h, width=w)
+      p = p + ylab(ptypes[[ptype]][2]) + theme_bw() + theme(axis.title=element_text(size=15), axis.text=element_text(size=10))
+      if(!has_fractions) p = p + xlab('Sample') + coord_flip()
+      print(p)
+      dev.off()
     }
-    if (ptype == 'precerror') {
-      p = p + geom_hline(yintercept=0, size=2)
-    }
-    svg(fn, height=h, width=w)
-    p = p + ylab(ptypes[[ptype]][2]) + theme_bw() + theme(axis.title=element_text(size=15), axis.text=element_text(size=10))
-    if(!has_fractions) p = p + xlab('Sample') + coord_flip()
-    print(p)
-    dev.off()
   }
 }

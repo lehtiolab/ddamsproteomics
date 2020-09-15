@@ -416,7 +416,7 @@ bothdbs.into { psmdbs; fdrdbs }
 // Set platename to samplename if not specified. 
 // Set fraction name to NA if not specified
 mzml_in
-  .tap { mzmlfiles_counter } // for counting, so config can set time limit
+  .tap { mzmlfiles_counter; mzmlfiles_qlup_sets } // for counting-> timelimits; getting sets from supplied lookup
   .map { it -> [it[2], file(it[0]).baseName, file(it[0]), it[1], (it.size() > 3 ? it[3] : it[2]), or_na(it, 4)] }
   .tap { mzmlfiles; mzml_luciphor; mzml_quant }
   .combine(concatdb)
@@ -434,8 +434,9 @@ process quantifySpectra {
   file(hkconf) from Channel.fromPath("$baseDir/assets/hardklor.conf").first()
 
   output:
-  set val(sample), file("${infile.baseName}.features.tsv"), val(infile.name) optional true into dino_out 
-  set val(sample), file("${sample}.kr"), val(infile.name) optional true into kronik_out 
+  set val(sample), val(infile.name) into sample_mzmlfn
+  set val(sample), file("${infile.baseName}.features.tsv") optional true into dino_out 
+  set val(sample), file("${sample}.kr") optional true into kronik_out 
   set val(sample), file("${infile}.consensusXML") optional true into isobaricxml
 
   script:
@@ -541,38 +542,38 @@ if (complementary_run) {
   cleaned_ptmpsms = Channel.value('NA')
 }
 
-// Set names are first item in input lists, collect them for PSM tables and QC purposes
-allsetnames 
-  .into { setnames_featqc; setnames_psms; setnames_psmqc }
-
-
 // Collect all MS1 dinosaur/kronik output for quant lookup building process
 dino_out
   .concat(kronik_out)
-  .ifEmpty(['NA', 'NA'])
+  .set { ms1_out }
+
+sample_mzmlfn
+  .join(ms1_out, remainder: true)
   .join(isobaricxml, remainder: true)
   .toList()
   .map { it.sort({a, b -> a[0] <=> b[0]}) }
   .transpose()
   .toList()
-  .set { dinofiles_sets }
+  .set { quantfiles_sets }
 
 
 // Need to populate channels depending on if a pre-made quant lookup has been passed
 // even if not needing quant (--noquant) this is necessary or NF will error
 newspeclookup
   .concat(complemented_speclookup)
-  .tap { spectoquant }
+  .tap { prespectoquant }
   .map { it -> it[0] } // get only target lookup
   .into { ptm_lookup_in; countlookup }
 
 if (params.noquant && !params.quantlookup) {
   // Noquant, fresh spectra lookup scenario
-  spectoquant
+  prespectoquant
     .flatMap { it -> [[it[0], 'target'], [it[1], 'decoy']] }
     .set { specquant_lookups }
+   spectoquant = Channel.empty()
 } else if (params.quantlookup) {
   // Runs with a premade quant lookup eg from previous search
+  spectoquant = Channel.empty()
   Channel
     .fromPath(params.quantlookup)
     .flatMap { it -> [[it, 'target'], [it, 'decoy']] }
@@ -580,7 +581,19 @@ if (params.noquant && !params.quantlookup) {
     .filter { it[1] == 'target' }
     .map { it -> it[0] }
     .into { ptm_lookup_in; countlookup }
-} 
+  mzmlfiles_qlup_sets
+    .map { it -> it[2] } 
+    .unique()
+    .toList()
+    .set { allsetnames }
+} else {
+  prespectoquant.set { spectoquant }
+}
+
+
+// Set names are first item in input lists, collect them for PSM tables and QC purposes
+allsetnames 
+  .into { setnames_featqc; setnames_psms; setnames_psmqc }
 
 
 process quantLookup {
@@ -591,7 +604,7 @@ process quantLookup {
 
   input:
   set path(tlookup), path(dlookup) from spectoquant
-  set val(samples), file(ms1fns), val(mzmlnames), file(isofns) from dinofiles_sets
+  set val(samples), val(mzmlnames), file(ms1fns), file(isofns) from quantfiles_sets
 
   output:
   set path('target.sqlite'), path(dlookup) into newquantlookup
@@ -1029,6 +1042,7 @@ process proteinGeneSymbolTableFDR {
   denom = !params.noquant && setdenoms ? setdenoms[setname] : false
   specialdenom = denom && (denom[0] == 'sweep' || denom[0] == 'intensity')
   normfactors = "${setname}_normfacs"
+  quant = !params.noquant && (!params.noms1quant || params.isobaric)
   """
   # score col is linearmodel_qval or q-value, but if the column only contains 0.0 or NA (no linear modeling possible due to only q<10e-04), we use svm instead
   tscol=\$(head -1 tpeptides| tr '\\t' '\\n' | grep -n "${scorecolpat}" | cut -f 1 -d':')
@@ -1044,7 +1058,8 @@ process proteinGeneSymbolTableFDR {
   fi
   msstitch ${acctype} -i tpeptides --decoyfn dpeptides -o "${setname}_protfdr" --scorecolpattern "\$scpat" \$logflag \
     ${acctype != 'proteins' ? "--targetfasta '$tfasta' --decoyfasta '$dfasta' ${params.fastadelim ? "--fastadelim '${params.fastadelim}' --genefield '${params.genefield}'": ''}" : ''} \
-    ${!params.noquant ? "${!params.noms1quant ? '--ms1quant --psmtable tpsms' : ''} ${setisobaric && setisobaric[setname] ? '--isobquantcolpattern plex --minint 0.1' : ''}" : ''} \
+    ${!params.noquant ? "${!params.noms1quant ? '--ms1quant' : ''} ${setisobaric && setisobaric[setname] ? '--isobquantcolpattern plex --minint 0.1' : ''}" : ''} \
+    ${quant ? '--psmtable tpsms' : ''} \
     ${denom && denom[0] == 'sweep' ? '--mediansweep' : ''} \
     ${denom && denom[0] == 'intensity' ? '--medianintensity' : ''} \
     ${denom && !specialdenom ? "--denompatterns ${setdenoms[setname].join(' ')}" : ''} \
