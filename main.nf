@@ -698,8 +698,7 @@ process msgfPlus {
   set val(setname), val(sample), file(x), val(instrument), val(platename), val(fraction), file(db) from mzml_msgf
 
   output:
-  set val(setname), val(sample), file("${sample}.mzid") into mzids
-  set val(setname), file("${sample}.mzid"), file("${sample}.mzid.tsv") into mzidtsvs
+  set val(setname), val(sample), file("${sample}.mzid"), file("${sample}.mzid.tsv") into mzids
   
   script:
   isobtype = setisobaric && setisobaric[setname] ? setisobaric[setname] : false
@@ -732,42 +731,21 @@ mzids
 process percolator {
 
   input:
-  set val(setname), val(samples), file('mzid?') from mzids_2pin
+  set val(setname), val(samples), file(mzids), file(tsvs) from mzids_2pin
   val(mzmlcount) from mzmlcount_percolator
 
   output:
-  set val(setname), file('perco.xml') into percolated
-
-  script:
-  """
-  mkdir mzids
-  count=1;for sam in ${samples.join(' ')}; do ln -s `pwd`/mzid\$count mzids/\${sam}.mzid; echo mzids/\${sam}.mzid >> metafile; ((count++));done
-  msgf2pin -o percoin.tsv -e ${params.enzyme} -P "decoy_" metafile
-  percolator -j percoin.tsv -X perco.xml -N 500000 --decoy-xml-output
-  """
-}
-
-
-mzidtsvs
-  .groupTuple()
-  .join(percolated)
-  .set { mzperco }
-
-
-process fdrToTSV {
-
-  input:
-  set val(setname), file(mzids), file(tsvs), file(perco) from mzperco
-
-  output:
+  //set val(setname), file('perco.xml') into percolated
   set path('target.tsv'), val('target') into tmzidtsv_perco
   set path('decoy.tsv'), val('decoy') into dmzidtsv_perco
 
   script:
-  if (params.fdrmethod == 'tdconcat')
   """
+  ${mzids.collect() { "echo $it >> metafile" }.join('&&')}
+  msgf2pin -o percoin.tsv -e ${params.enzyme} -P "decoy_" metafile
+  percolator -j percoin.tsv -X perco.xml -N 500000 --decoy-xml-output
   mkdir outtables
-  msstitch perco2psm --perco $perco -d outtables -i ${tsvs.collect() { "'$it'" }.join(' ')} --mzids ${mzids.collect() { "'$it'" }.join(' ')} --filtpsm 0.01 --filtpep 0.01
+  msstitch perco2psm --perco perco.xml -d outtables -i ${tsvs.collect() { "'$it'" }.join(' ')} --mzids ${mzids.collect() { "'$it'" }.join(' ')} --filtpsm ${params.psmconflvl} --filtpep ${params.pepconflvl}
   msstitch concat -i outtables/* -o psms
   msstitch split -i psms --splitcol \$(head -n1 psms | tr '\t' '\n' | grep -n ^TD\$ | cut -f 1 -d':')
   """
