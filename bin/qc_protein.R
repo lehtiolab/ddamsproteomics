@@ -14,9 +14,10 @@ parser$add_argument('--sampletable', type='character', default=FALSE)
 parser$add_argument('--normtable', type='character', default=FALSE)
 opt = parser$parse_args()
 
-#args = commandArgs(trailingOnly=TRUE)
 nrsets = length(opt$sets)
 setnames = opt$sets
+setnames = gsub('[^a-zA-Z0-9_]', '.', setnames)
+setnames = sub('^([0-9])', 'X\\1', setnames)
 feattype = opt$feattype
 peptable = opt$peptable
 sampletable = opt$sampletable
@@ -25,6 +26,7 @@ feats = read.table("feats", header=T, sep="\t", comment.char = "", quote = "")
 featcol = list(peptides='Peptide.sequence', proteins='Protein.ID', genes='Gene.Name', ensg='Gene.ID')[[feattype]]
 
 if (length(grep('plex', names(feats)))) {
+  tmtcols = colnames(feats)[setdiff(grep('plex', colnames(feats)), grep('quanted', colnames(feats)))]
   nrpsmscols = colnames(feats)[grep('_Amount.fully.quanted.PSMs', colnames(feats))]
 }
 
@@ -96,7 +98,6 @@ if (feattype == 'peptides') {
   am_prots = rbind(am_prots, missing_df)
   if (length(grep('plex', names(feats)))) {
     # if isobaric, then show summary table of feats 1%FDR AND quant
-    tmtcols = colnames(feats)[setdiff(grep('plex', colnames(feats)), grep('quanted', colnames(feats)))]
     not_fullna = feats[rowSums(is.na(feats[,tmtcols])) != length(tmtcols),]
     sum_prots = melt(not_fullna, id.vars=featcol, measure.vars=qcols)
     sum_prots = sum_prots[!is.na(sum_prots$value),]
@@ -137,20 +138,20 @@ if (is.character(sampletable)) {
   use_sampletable = TRUE
   sampletable = read.table(sampletable, header=F, sep='\t', comment.char='', quote='', colClasses=c('character'))
   colnames(sampletable) = c('ch', 'set', 'sample', 'group')
-  lookup = sampletable$set
+  setlookup = sampletable$set
   rownames(sampletable) = apply(sampletable[c('group', 'sample', 'set', 'ch')], 1, paste, collapse='_')
-  names(lookup) = apply(sampletable[c('group', 'sample', 'set', 'ch')], 1, paste, collapse='_')
-  names(lookup) = gsub('[^a-zA-Z0-9_-]', '_', names(lookup))
+  rownames(sampletable) = gsub('[^a-zA-Z0-9_]', '_', rownames(sampletable))
+  rownames(sampletable) = sub('^([0-9])', 'X\\1', rownames(sampletable))
+  names(setlookup) = rownames(sampletable)
 }
 
 if (length(grep('plex', names(feats)))) {
   # First produce the boxplots
-  tmtcols = colnames(feats)[setdiff(grep('plex', colnames(feats)), grep('quanted', colnames(feats)))]
   overlap = na.exclude(feats[c(tmtcols, qcols)])
   overlap = dim(overlap[apply(overlap[qcols], 1, function(x) any(x<0.01)),])[1]
   tmt = melt(feats, id.vars=featcol, measure.vars = tmtcols)
   if (use_sampletable) {
-    tmt$Set = apply(tmt, 1, function(x) { key = sub('_[a-z0-9]*plex', '', x[["variable"]]); return (lookup[[key]]) })
+    tmt$Set = apply(tmt, 1, function(x) { key = sub('_[a-z0-9]*plex', '', x[["variable"]]); return (setlookup[[key]]) })
   } else { 
     tmt$Set = sub('_[a-z0-9]*plex.*', '', tmt$variable)
   }
@@ -184,7 +185,6 @@ if (length(grep('plex', names(feats)))) {
 #nrpsmsoverlapping
 if (length(grep('plex', names(feats)))) {
   qcols = colnames(feats)[grep('_q.value', colnames(feats))]
-  tmtcols = colnames(feats)[grep('plex', colnames(feats))]
   overlap = na.exclude(feats[c(featcol, tmtcols, qcols, nrpsmscols)])
   overlap = overlap[apply(overlap[qcols], 1, function(x) any(x<0.01)),]
   if (nrow(overlap) > 0) {
@@ -259,6 +259,7 @@ deqFC_cols = grep('_logFC$', names(feats))
 names(feats)[1] = 'feat'
 if (length(deqpval_cols)) {
   s_table = unique(sampletable[sampletable$group != 'X__POOL', 'group'])
+  s_table = sub('^([0-9])', 'X\\1', s_table)
   cartprod = expand.grid(s_table, s_table)
   cartprod = cartprod[cartprod$Var1 != cartprod$Var2,]
   for (comparison in paste(cartprod$Var1, cartprod$Var2, sep='.')) {
@@ -299,7 +300,6 @@ if (use_sampletable) {
     #Scree plot
     contributions <- data.frame(contrib=round(summary(pca_ana)$importance[2,] * 100, 2)[1:20])
     contributions$pc = sub('PC', '', rownames(contributions))
-    print(contributions)
     svg('scree', width=width, height=height)
     print(ggplot(data=contributions, aes(x=reorder(pc, -contrib), y=contrib)) +
       geom_bar(stat='identity') +
@@ -307,7 +307,7 @@ if (use_sampletable) {
       ylab("Contribution (%)") + xlab('PC (ranked by contribution)'))
     dev.off()
     svg('pca', width=width, height=height)
-    print(ggplot(data=score.df, aes(x =PC1, y =PC2, label=rownames(score.df), colour=type)) +
+    print(ggplot(data=score.df, aes(x=PC1, y=PC2, label=rownames(score.df), colour=type)) +
       geom_hline(yintercept = 0, colour = "gray65") +
       geom_vline(xintercept = 0, colour = "gray65") +
       geom_point(size=4) +

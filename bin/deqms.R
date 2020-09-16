@@ -4,9 +4,10 @@ library(DEqMS)
 library(reshape2)
 library(matrixStats)
 
-# args = commandArgs(trailingOnly=TRUE)
 sampletable = read.table('sampletable', header=F, sep='\t', comment.char='', quote='', colClasses=c('character'))
+# Add an X to sample groups that start with a number because R does that to header fields of input feats
 colnames(sampletable) = c('ch', 'set', 'sample', 'group')
+sampletable$group = sub('^([0-9])', 'X\\1', sampletable$group)
 lookup = sampletable$group
 names(lookup) = apply(cbind(sampletable[c('group', 'sample', 'set', 'ch')]), 1, paste, collapse='_')
 names(lookup) = gsub('[^a-zA-Z0-9_]', '_', names(lookup))
