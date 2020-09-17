@@ -68,12 +68,14 @@ def main():
             barepep += modpep[start:]
             ptm[TOPPTM] = ';'.join(['{}:{}'.format(name, ','.join(resmods)) for 
                     name, resmods in modresidues.items() if len(resmods)])
-            # Get other highscorering permutations
+            # Get other highscoring permutations
             extrapeps = []
-            if scorepep['specId'] == specid and scorepep['curPermutation'] != line['predictedPep1'] and float(scorepep['score']) > minscore_high:
-                extrapeps.append('{}:{}'.format(','.join(['{}{}'.format(x.group().upper(), x.start())
-                            for x in re.finditer('[a-z]', scorepep['curPermutation'])]),
-                            scorepep['score']))
+            if scorepep['specId'] == specid:
+                line['likeScoredPep'] = re.sub(r'([A-Z])\[[0-9]+\]', lambda x: x.group(1).lower(), line['predictedPep1'])
+                if scorepep['curPermutation'] != line['likeScoredPep'] and float(scorepep['score']) > minscore_high:
+                    extrapeps.append('{}:{}'.format(','.join(['{}{}'.format(x.group().upper(), x.start() + 1)
+                                for x in re.finditer('[a-z]', scorepep['curPermutation'])]),
+                                scorepep['score']))
             for scorepep in scorefp:
                 scorepep = scorepep.strip('\n').split('\t')
                 scorepep = {k: v for k,v in zip(scoreheader, scorepep)}
@@ -81,8 +83,9 @@ def main():
                     continue
                 if scorepep['specId'] != specid:
                     break
-                if scorepep['curPermutation'] != line['predictedPep1'] and float(scorepep['score']) > minscore_high:
-                    extrapeps.append('{}:{}'.format(','.join(['{}{}'.format(x.group().upper(), x.start())
+                line['likeScoredPep'] = re.sub(r'([A-Z])\[[0-9]+\]', lambda x: x.group(1).lower(), line['predictedPep1'])
+                if scorepep['curPermutation'] != line['likeScoredPep'] and float(scorepep['score']) > minscore_high:
+                    extrapeps.append('{}:{}'.format(','.join(['{}{}'.format(x.group().upper(), x.start() + 1)
                             for x in re.finditer('[a-z]', scorepep['curPermutation'])]),
                             scorepep['score']))
                 if len(extrapeps):
