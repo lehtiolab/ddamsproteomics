@@ -79,6 +79,9 @@ def helpMessage() {
       --noquant                     Do not produce isobaric or MS1 quantification data
       --noms1quant                  Do not produce MS1 quantification data
       --hardklor                    Use hardklör/krönik instead of dinosaur for MS1 quant
+      --keepnapsmsquant             By default the pipeline does not use PSMs with NA in any channel for isobaric 
+                                    quant summarization. Use this flag and it will keep the 
+                                    (potentially more noisy) PSMs in the analysis.
 
       REUSING PREVIOUS DATA
       --quantlookup FILE            Use previously generated SQLite lookup database containing spectra 
@@ -922,6 +925,7 @@ process PTMPeptides {
   """
   msstitch peptides -i "ptms.txt" -o "${peptable}" --scorecolpattern svm --spectracol 1 \
     ${!params.noquant ? "${!params.noms1quant ? '--ms1quantcolpattern area' : ''} ${setisobaric && setisobaric[setname] ? '--isobquantcolpattern plex --minint 0.1' : ''}" : ''} \
+    ${!params.noquant && setisobaric && setisobaric[setname] && params.keepnapsmsquant ? '--keep-psms-na-quant' : ''} \
     ${denom && denom[0] == 'sweep' ? '--mediansweep --logisoquant': ''} \
     ${denom && denom[0] == 'intensity' ? '--medianintensity' : ''} \
     ${denom && !specialdenom ? "--logisoquant --denompatterns ${setdenoms[setname].join(' ')}": ''}
@@ -977,10 +981,11 @@ process makePeptides {
   # Create peptide table from PSM table, picking best scoring unique peptides
   msstitch peptides -i psms -o "${setname}_peptides" --scorecolpattern svm --spectracol 1 --modelqvals \
     ${quant ? "${!params.noms1quant ? '--ms1quantcolpattern area' : ''} ${setisobaric && setisobaric[setname] ? '--isobquantcolpattern plex --minint 0.1' : ''}" : ''} \
-    ${denom && denom[0] == 'sweep' ? '--mediansweep' : ''} \
+    ${quant && setisobaric && setisobaric[setname] && params.keepnapsmsquant ? '--keep-psms-na-quant' : ''} \
+    ${denom && denom[0] == 'sweep' ? '--mediansweep --logisoquant' : ''} \
     ${denom && denom[0] == 'intensity' ? '--medianintensity' : ''} \
-    ${denom && !specialdenom ? "--denompatterns ${setdenoms[setname].join(' ')}" : ''} \
-    ${quant && normalize ? "--median-normalize --logisoquant" : ''}
+    ${denom && !specialdenom ? "--logisoquant --denompatterns ${setdenoms[setname].join(' ')}" : ''} \
+    ${quant && normalize ? "--median-normalize" : ''}
     ${quant && normalize ? "sed 's/^/$setname'\$'\t/' < normalization_factors_psms > $normfactors" : ''}
   """
 }
@@ -1039,10 +1044,11 @@ process proteinGeneSymbolTableFDR {
     ${acctype != 'proteins' ? "--targetfasta '$tfasta' --decoyfasta '$dfasta' ${params.fastadelim ? "--fastadelim '${params.fastadelim}' --genefield '${params.genefield}'": ''}" : ''} \
     ${!params.noquant ? "${!params.noms1quant ? '--ms1quant' : ''} ${setisobaric && setisobaric[setname] ? '--isobquantcolpattern plex --minint 0.1' : ''}" : ''} \
     ${quant ? '--psmtable tpsms' : ''} \
-    ${denom && denom[0] == 'sweep' ? '--mediansweep' : ''} \
+    ${quant && setisobaric && setisobaric[setname] && params.keepnapsmsquant ? '--keep-psms-na-quant' : ''} \
+    ${denom && denom[0] == 'sweep' ? '--mediansweep --logisoquant' : ''} \
     ${denom && denom[0] == 'intensity' ? '--medianintensity' : ''} \
-    ${denom && !specialdenom ? "--denompatterns ${setdenoms[setname].join(' ')}" : ''} \
-    ${normalize ? "--median-normalize --logisoquant" : ''}
+    ${denom && !specialdenom ? "--denompatterns ${setdenoms[setname].join(' ')} --logisoquant" : ''} \
+    ${normalize ? "--median-normalize" : ''}
     ${normalize ? "sed 's/^/$setname'\$'\t/' < normalization_factors_tpsms > $normfactors" : ''}
   """
 }
