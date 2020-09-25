@@ -37,7 +37,8 @@ def helpMessage() {
       --mods                        Modifications specified by their UNIMOD name. e.g. --mods 'oxidation;carbamidomethyl'
                                     Note that there are a limited number of modifications available, but that
                                     this list can easily be expanded in assets/msgfmods.txt
-      --locptms                     As for --mods, but pipeline will output false localization rate e.g. --locptms 'methyl;dimethyl'  or --locptms 'phospho'
+      --locptms                     As for --mods, but specify labile mods, pipeline will output false localization rate e.g.
+                                    --locptms 'phospho'
       --isobaric VALUE              In case of isobaric, specify per set the type and possible denominators/sweep/intensity.
                                     In case of intensity, no ratios will be output but instead the raw PSM intensities will be
                                     median-summarized to the output features (e.g. proteins).

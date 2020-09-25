@@ -33,7 +33,7 @@ if (length(grep('plex', names(feats)))) {
 width = 4
 height = 4
 
-# nrpsms
+# nrpsms used for isobaric quant
 if (length(grep('plex', names(feats)))) {
   nrpsms = melt(feats, id.vars=featcol, measure.vars = nrpsmscols)
   nrpsms$Set = sub('_Amount.fully.quanted.PSMs', '', nrpsms$variable)
@@ -50,6 +50,7 @@ if (length(grep('plex', names(feats)))) {
     dev.off()
 }
 
+# Amount of features
 qcols = colnames(feats)[grep('_q.value', colnames(feats))]
 overlap = na.exclude(feats[qcols])
 overlap = dim(overlap[apply(overlap, 1, function(x) any(x<0.01)),])[1]

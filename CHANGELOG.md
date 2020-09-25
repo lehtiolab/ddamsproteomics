@@ -1,5 +1,13 @@
 # lehtiolab/ddamsproteomics: Changelog
 
+## Version 2.3 [2020-09-25]
+- Possible to re-run analysis with a new sample set only, then add to existing data
+- More isobaric quant summarizing/normalization options by moving to msstitch 3.5
+- Fix bug where all sets' "number of (unique) PSMs" were the same (msstitch 3.5)
+- Consistent protein groups, bugfixed MS1 aligning in msstitch 3.5
+- SVG output in QC, makes QC HTML lighter and also does not crash the QC by exceeding png size limit on many sets
+- More documentation
+
 ## Version 2.2 [2020-07-24]
 - Fix MS1 quant bug by upgrading to msstitch 3.3
 - Switch MS1 quantification to Dinosaur from Hardklor/Kronik to include showing FWHM

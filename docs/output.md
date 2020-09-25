@@ -2,7 +2,7 @@
 
 This document describes the output produced by the pipeline. 
 
-## Output
+## Output files
 The output is a number of text, SQLite and HTML files. Depending somewhat on inputs, the following can be obtained from the output directory:
 
 * target/decoy PSM tables (TSV files)
@@ -12,7 +12,51 @@ The output is a number of text, SQLite and HTML files. Depending somewhat on inp
 * a QC report (HTML)
 
 
-## Pipeline overview
+## File columns
+The PSM tables are essentially an (https://msgfplus.github.io/msgfplus/)[MSGF TSV table], with a number of extra fields for each PSM. By default the
+table is filtered on a PSM and peptide FDR of 0.01.
+
+* Retention time(min)
+* Ion injection time(ms)
+* Ion mobility(Vs/cm2)
+* missed_cleavage (amount)
+* Master protein(s) (protein grouping using maximum parsimony is used for protein tables)
+* Protein group(s) content (Protein groups have members which can be explained by the representative protein)
+* Amount of matching proteins in group (Those proteins in the group that this PSM matches to)
+* Gene ID, Gene Name, Description (gene identity and protein description information from fasta)
+* percolator svm-score
+* PSM q-value (calculated from percolator scores as T-TDC)
+* peptide q-value (as PSM q-value but for peptides)
+* TD (target or decoy)
+* Biological set (sample or sample set name)
+* Strip (when fractionating samples you can supply an e.g. high-pH or HiRIEF strip name)
+* Fraction (when fractionating samples)
+* MS1 area (summed MS1 intensity from Dinosaur detected feature aligned to a PSM)
+* FWHM (as MS1 intensity but the full width at half max of the feature)
+* ...plex channels (isobaric reporter intensity)
+* Experimental, Predicted and Delta pI (isoelectric point data for HiRIEF samples)
+
+
+The `peptides_table.txt` is a merged multi-set peptide table derived from the PSMs. Peptide identifications are interpreted as the best scoring PSM. Then per sample (set) the following fields are given:
+
+* Amount PSMs
+* q-value (same as PSM table peptide q-value for best PSM)
+* MS1 area (shows the highest area aka summed intenstiy of all filtered PSMs for the peptide)
+* ...plex channels, which are summarized isobaric data, described in (docs/usage.md)[the usage documentation]
+* Amount fully quanted PSMs (for each peptide, how many PSMs without any missing isobaric value)
+* Amount quanted PSMs (how many PSMs with isobaric value in each channel)
+
+
+Proteins and genes tables are like peptide tables, and contain similar fields. Of course there are differences:
+
+* Amount peptides, Amount unique peptides (the number of peptides for a protein/gene and number of peptides that uniquely match this protein group/gene)
+* q-value (calculated using the picked FDR method from (https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4563723/)[Savitski et al., 2015]
+* MS1 precursor area (calculated using the top-3 highest intensity peptide for a protein/gene)
+* ...plex channels are as in peptide tables
+* logFC, count, sca.P.Value, sca.adj.pval are output from (https://github.com/yafeng/DEqMS/)[DEqMS] analysis
+
+
+## Pipeline and tools 
 The pipeline is built using [Nextflow](https://www.nextflow.io/)
 and processes data using the following steps:
 
