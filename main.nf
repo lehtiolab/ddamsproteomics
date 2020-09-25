@@ -42,7 +42,7 @@ def helpMessage() {
       --isobaric VALUE              In case of isobaric, specify per set the type and possible denominators/sweep/intensity.
                                     In case of intensity, no ratios will be output but instead the raw PSM intensities will be
                                     median-summarized to the output features (e.g. proteins).
-                                    Available types are tmt10plex, tmt6plex, itraq8plex, itraq4plex
+                                    Available types are tmtpro, tmt10plex, tmt6plex, itraq8plex, itraq4plex
                                     E.g. --isobaric 'set1:tmt10plex:126:127N set2:tmtpro:127C:131 set3:tmt10plex:sweep'
       --activation VALUE            Specify activation protocol for isobaric quantitation (NOT for identification):
                                     choose from hcd (DEFAULT), cid, etd 
@@ -161,6 +161,7 @@ params.onlypeptides = false
 params.noquant = false
 params.noms1quant = false
 params.hardklor = false
+params.keepnapsmsquant = false
 params.sampletable = false
 params.deqms = false
 params.targetpsmlookup = false
