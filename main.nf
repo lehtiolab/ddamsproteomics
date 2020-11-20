@@ -414,7 +414,7 @@ process createTargetDecoyFasta {
   """
 }
 
-bothdbs.into { psmdbs; fdrdbs }
+bothdbs.into { psmdbs; fdrdbs; ptmdbs }
 
 // Parse mzML input to get files and sample names etc
 // get setname, sample name (baseName), input mzML file. 
@@ -824,7 +824,8 @@ setpsmtables
   .transpose()
   .tap { psm_pep }
   .filter { it -> it[0] == 'target' }
-  .map { it -> it[1..2] }
+  .merge(ptmdbs)
+  .map { it -> it[1..3] }
   .set { psm_ptm }
 
 mzml_luciphor
@@ -840,7 +841,7 @@ process luciphorPTMLocalizationScoring {
   when: params.locptms
 
   input:
-  set val(setname), file(mzmls), file('psms') from psm_luciphor
+  set val(setname), file(mzmls), file('psms'), file(tdb) from psm_luciphor
 
   output:
   set val(setname), file('ptms.txt') into luciphor_all
@@ -861,7 +862,7 @@ process luciphorPTMLocalizationScoring {
   cat "$baseDir/assets/luciphor2_input_template.txt" | envsubst > lucinput.txt
   luciphor_prep.py psms lucinput.txt "${params.msgfmods}" "${params.mods}${isobtype ? ";${isobtype}" : ''}" "${params.locptms}" luciphor.out
   luciphor2 luciphor_config.txt
-  luciphor_parse.py ${params.ptm_minscore_high} ptms.txt "${params.msgfmods}" "${params.locptms};${params.mods}"
+  luciphor_parse.py ${params.ptm_minscore_high} ptms.txt "${params.msgfmods}" "${params.locptms};${params.mods}" "${tdb}"
   """
 }
 

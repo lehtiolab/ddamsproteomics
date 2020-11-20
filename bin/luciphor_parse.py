@@ -3,6 +3,7 @@
 import sys
 import os
 import re
+from Bio import SeqIO
 
 from luciphor_prep import aa_weights_monoiso
 from create_modfile import get_msgfmods, categorize_mod, parse_cmd_mod, modpos
@@ -11,6 +12,7 @@ minscore_high = float(sys.argv[1])
 outfile = sys.argv[2]
 modfile = sys.argv[3]
 ptms = sys.argv[4]
+fasta = sys.argv[5]
 
 # PTM input/output header fields
 TOPPTM = 'Top luciphor PTM'
@@ -19,6 +21,7 @@ TOPSCORE = 'Top PTM score'
 OTHERPTMS = 'High-scoring PTMs'
 SE_PEPTIDE = 'SearchEnginePeptide'
 PEPTIDE = 'Peptide'
+PROTEIN = 'Master protein(s)'
 
 def main():
     # First prepare a residue + PTM weight -> PTM name dict for naming mods
@@ -37,6 +40,9 @@ def main():
                     mass = aa_weights_monoiso[res] + float(modline[0])
                     ptmmasses[int(round(mass, 0))] = ptmname
     lucpsms = []
+    # load sequences
+    tdb = SeqIO.index(fasta, 'fasta')
+    # Now go through scores, luciphor and PSM table
     with open('all_scores.debug') as scorefp, open('luciphor.out') as fp, open('psms') as psms, open(outfile, 'w') as wfp:
         header = next(fp).strip('\n').split('\t')
         scoreheader = next(scorefp).strip('\n').split('\t')
@@ -64,9 +70,9 @@ def main():
                 else:
                     barepep += modpep[start:x.start()]
                 start = x.end()
-                modresidues[ptmmasses[int(x.group(2))]].append('{}{}'.format(x.group(1), len(barepep)))
+                modresidues[ptmmasses[int(x.group(2))]].append((x.group(1), len(barepep)))
             barepep += modpep[start:]
-            ptm[TOPPTM] = ';'.join(['{}:{}'.format(name, ','.join(resmods)) for 
+            ptm[TOPPTM] = ';'.join(['{}:{}'.format(name, ','.join(['{}{}'.format(x[0], x[1]) for x in resmods])) for 
                     name, resmods in modresidues.items() if len(resmods)])
             # Get other highscoring permutations
             extrapeps = []
@@ -93,8 +99,18 @@ def main():
             for psm in psms:
                 psm = psm.strip('\n').split('\t')
                 psm = {k: v for k,v in zip(psmheader, psm)}
+                proteins = psm[PROTEIN].split(';')
                 psmid = '{}.{}.{}.{}'.format(os.path.splitext(psm['SpectraFile'])[0], psm['ScanNum'], psm['ScanNum'], psm['Charge'])
                 if specid == psmid:
+                    proteins = {p: tdb[p].seq.find(barepep) for p in proteins}
+                    proteins_loc = {p: [] for p, peploc in proteins.items() if peploc > -1}
+                    for p, peploc in proteins.items():
+                        for ptmname, ptmlocs in modresidues.items():
+                            protptms = []
+                            for res_loc in ptmlocs:
+                                protptms.append('{}{}'.format(res_loc[0], res_loc[1] + peploc))
+                                proteins_loc[p].append('{}_{}'.format(ptmname, ','.join(protptms)))
+                    psm[PROTEIN] = ';'.join(['{}:{}'.format(p, ':'.join(ptmloc)) for p, ptmloc in proteins_loc.items()])
                     outpsm = {k: v for k,v in psm.items()}
                     outpsm.update(ptm)
                     assert re.sub('[0-9.\[\]+-]', '', psm['Peptide']) == barepep
