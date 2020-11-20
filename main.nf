@@ -408,7 +408,7 @@ process createTargetDecoyFasta {
 
   script:
   """
-  cat ${tdb.join(' ')} > tdb
+  cat ${tdb.collect() { "\"${it}\"" }.join(' ')} > tdb
   msstitch makedecoy -i tdb -o decoy.fa --scramble tryp_rev --ignore-target-hits
   cat tdb decoy.fa > db.fa
   """
