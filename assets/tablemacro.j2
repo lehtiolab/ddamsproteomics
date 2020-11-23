@@ -1,0 +1,21 @@
+{% macro table(table) -%}
+<table class="table is-striped is-narrow is-hoverable">
+<thead>
+<tr>
+{% for field in table['_fields'] %}
+<th>{{ tablefieldtitles[field] }}</th>
+{% endfor %}
+</tr>
+</thead>
+<tbody>
+{% for sampleset in table['_rows'] %}
+<tr>
+{% for field in table['_fields'] %}
+<td>{{ table['_rows'][sampleset][field] }}</td>
+{% endfor %}
+</tr>
+{% endfor %}
+</tbody>
+</table>
+{%- endmacro %}
+

@@ -1,24 +1,5 @@
 <!DOCTYPE html>
-{% macro table(table) -%}
-<table class="table is-striped is-narrow is-hoverable">
-<thead>
-<tr>
-{% for field in table['_fields'] %}
-<th>{{ tablefieldtitles[field] }}</th>
-{% endfor %}
-</tr>
-</thead>
-<tbody>
-{% for sampleset in table['_rows'] %}
-<tr>
-{% for field in table['_fields'] %}
-<td>{{ table['_rows'][sampleset][field] }}</td>
-{% endfor %}
-</tr>
-{% endfor %}
-</tbody>
-</table>
-{%- endmacro %}
+{% import 'tablemacro.j2' as tm %}
 
 <html lang="en">
 <head>
@@ -56,14 +37,14 @@
   <hr>
   <h3 class="title is-3">Protein/peptide level QC</h3>
   <h4 class="title is-4">Summary</h4>
-  {{ table(sumtable) }}
+  {{ tm.table(sumtable) }}
   <hr>
   <h4 class="title is-4">Overlap</h4>
   <div class="columns">
   {% for feat in overlap %}
   <div class="column">
   <h5 class="title is-5">{{ featnames[feat] }}</h5>
-  {{ table(overlap[feat]) }}
+  {{ tm.table(overlap[feat]) }}
   </div>
   {% endfor %}
   </div>
