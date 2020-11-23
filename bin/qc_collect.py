@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from jinja2 import Template
+from jinja2 import Environment, FileSystemLoader
 from lxml.html import parse, tostring
 import sys
 from collections import OrderedDict
@@ -12,11 +12,13 @@ ppsms = {}
 template = sys.argv[1]
 searchname = sys.argv[2]
 frac = sys.argv[3]
-plateids = sys.argv[4:] 
+has_ptms = sys.argv[4]
+plateids = sys.argv[5:] 
 
 templatetype = os.path.splitext(os.path.basename(template))[0]
+templatedir = os.path.split(template)[0]
 with open(template) as fp: 
-    main = Template(fp.read())
+    main = Environment(loader=FileSystemLoader(templatedir)).from_string(fp.read())
 with open('psms.html') as fp:
     psmsel = parse(fp).find('body').findall('div')
 with open('sw_ver_cut') as fp:
@@ -111,6 +113,15 @@ for feat in feattypes[templatetype]:
     except IOError as e:
         print(feat, e)
 
+ptms = {}
+if has_ptms:
+    try:
+        with open('ptmqc') as fp:
+            ptms = {x.attrib['id']: tostring(x, encoding='unicode') for x in parse(fp).find('body').findall('div') if 'class' in x.attrib and x.attrib['class'] == 'chunk'}
+    except IOError:
+        raise
+        pass
+
 def parse_table(fn):
     table = {'_rows': {}}
     with open(fn) as fp:
@@ -136,4 +147,4 @@ if templatetype == 'qc_light' and 'genes' in overlaptables:
     overlaptables.pop('proteins')
     
 with open('{}.html'.format(templatetype), 'w') as fp:
-    fp.write(main.render(sumtable=sumtable, overlap=overlaptables, tablefieldtitles=tablefieldtitles, frac=frac, searchname=searchname, titles=titles, featnames=featnames[templatetype], psms=psms, firstplate=sorted(ppsms.keys())[0], ppsms=ppsms, features=graphs, software=sw_ver_template.format('\n'.join(sw_vers)), warnings=warnings, completedate=datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S')))
+    fp.write(main.render(sumtable=sumtable, overlap=overlaptables, tablefieldtitles=tablefieldtitles, frac=frac, searchname=searchname, titles=titles, featnames=featnames[templatetype], psms=psms, firstplate=sorted(ppsms.keys())[0], ppsms=ppsms, features=graphs, ptms=ptms, software=sw_ver_template.format('\n'.join(sw_vers)), warnings=warnings, completedate=datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S')))

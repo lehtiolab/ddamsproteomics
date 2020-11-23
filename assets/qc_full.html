@@ -93,6 +93,12 @@
 </div>
 <hr>
 {% endif %}
+
+{% if ptms|length %}
+{%include 'ptmqc.j2' %}
+{% endif %}
+
+
 <div class="container">
   <h3 class="title is-3">PSM level QC</h3>
   {% if frac == 'frac' %}

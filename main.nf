@@ -886,10 +886,9 @@ process createPTMLookup {
   file(ptmlup) from ptm_lookup_in
 
   output:
-  path(ptmtable) into features_out
+  path ptmtable into features_out, ptmpsmqc
   path 'ptmlup.sql' into ptmlup
   path({setnames.collect() { "${it}.tsv" }}) optional true into setptmtables
-  //set val(setnames), file({setnames.collect() { "${it}.tsv" }}) optional true into setptmtables
   path 'warnings' optional true into ptmwarnings
 
   script:
@@ -940,6 +939,7 @@ ptmpeps
   .transpose()
   .toList()
   .combine(ptmlup)
+  .combine(ptmpsmqc)
   .set { ptmpeps2merge }
   
 
@@ -947,20 +947,29 @@ process mergePTMPeps {
   publishDir "${params.outdir}", mode: 'copy', overwrite: true
 
   input:
-  tuple val(setnames), path(peptides), path('ptmlup.sql') from ptmpeps2merge
+  tuple val(setnames), path(peptides), path('ptmlup.sql'), path('ptmpsms.txt') from ptmpeps2merge
 
   output:
-  file 'ptm_peptidetable.txt'
+  path peptable
+  path "ptmqc.html" into ptmqc
 
   script:
+  peptable = 'ptm_peptidetable.txt'
   """
   cat ptmlup.sql > pepptmlup.sql
   msstitch merge -i ${peptides.join(' ')} --setnames ${setnames.join(' ')} --dbfile pepptmlup.sql -o mergedtable --no-group-annotation \
     --fdrcolpattern 'FLR\$' \
     ${!params.noquant && !params.noms1quant ? "--ms1quantcolpattern area" : ''} \
     ${!params.noquant && setisobaric ? "--isobquantcolpattern plex" : ''}
-  head -n1 mergedtable | sed 's/q-value/FLR/g' > ptm_peptidetable.txt
-  tail -n+2 mergedtable | sort -k1b,1 >> ptm_peptidetable.txt
+  head -n1 mergedtable | sed 's/q-value/FLR/g' > "${peptable}"
+  tail -n+2 mergedtable | sort -k1b,1 >> "${peptable}"
+  qc_ptms.R "${setnames.size()}" "${params.locptms}" ptmpsms.txt "${peptable}"
+  echo "<html><body>" > ptmqc.html
+  for graph in ptmpsmfeats ptmpepfeats ptmprotfeats psmptmresidues pepptmresidues;
+    do
+    [ -e \$graph ] && echo "<div class=\\"chunk\\" id=\\"\${graph}\\"> \$(sed "s/id=\\"/id=\\"ptm-\${graph}/g;s/\\#/\\#ptm-\${graph}/g" <\$graph) </div>" >> ptmqc.html
+    done 
+  echo "</body></html>" >> ptmqc.html
   """
 }
 
@@ -1233,10 +1242,13 @@ process featQC {
   """
 }
 
+ptmqcout = params.locptms ? ptmqc : Channel.from('NA')
+
 qccollect
   .concat(psmqccollect)
   .toList()
   .map { it -> [it.collect() { it[0] }, it.collect() { it[1] }, it.collect() { it[2] }, it.collect() { it[3] }] }
+  .merge(ptmqcout)
   .set { collected_feats_qc }
 
 
@@ -1245,7 +1257,7 @@ process collectQC {
   publishDir "${params.outdir}", mode: 'copy', overwrite: true
 
   input:
-  set val(acctypes), file('feat?'), file('summary?'), file('overlap?') from collected_feats_qc
+  set val(acctypes), file('feat?'), file('summary?'), file('overlap?'), file('ptmqc') from collected_feats_qc
   val(plates) from qcplates
   file('sw_ver') from software_versions_qc
   file('warnings??') from warnings
@@ -1274,8 +1286,8 @@ process collectQC {
   # merge warnings
   ls warnings* && cat warnings* > warnings.txt
   # collect and generate HTML report
-  qc_collect.py $baseDir/assets/qc_full.html $params.name ${fractionation ? "frac" : "nofrac"} ${plates.join(' ')}
-  qc_collect.py $baseDir/assets/qc_light.html $params.name ${fractionation ? "frac" : "nofrac"} ${plates.join(' ')}
+  qc_collect.py $baseDir/assets/qc_full.html $params.name ${fractionation ? "frac" : "nofrac"} ${params.locptms ? 'ptmqc' : 'noptm'} ${plates.join(' ')}
+  qc_collect.py $baseDir/assets/qc_light.html $params.name ${fractionation ? "frac" : "nofrac"} ${params.locptms ? 'ptmqc': 'noptm'} ${plates.join(' ')}
   """
 }
 
