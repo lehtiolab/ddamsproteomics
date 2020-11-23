@@ -75,7 +75,7 @@ titles = {'psm-scans': '# PSMs and scans', 'miscleav': 'Missed cleavages',
 }
 featnames = {
         'qc_light': {'peptides': 'Peptides', 'proteins': 'Proteins', 'genes': 'Proteins (genecentric)'},
-        'qc_full': {'assoc': 'Gene symbols', 'peptides': 'Peptides', 'proteins': 'Proteins', 'genes': 'Genes'},
+        'qc_full': {'ensg': 'ENSGs', 'peptides': 'Peptides', 'proteins': 'Proteins', 'genes': 'Gene names'},
         }
 # FIXME  use this for ppsms!
 #PSMs/protein for quant (median)
@@ -103,7 +103,7 @@ field_order = {x: field_order.index(x) for x in field_order}
 graphs = OrderedDict()
 feattypes = {
     'qc_light': ['peptides', 'proteins', 'genes'],
-    'qc_full': ['peptides', 'proteins', 'genes', 'assoc'],
+    'qc_full': ['peptides', 'proteins', 'genes', 'ensg'],
     }
 
 for feat in feattypes[templatetype]:
