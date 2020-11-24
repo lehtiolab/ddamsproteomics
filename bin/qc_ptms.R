@@ -6,7 +6,7 @@ library(stringr)
 
 args = commandArgs(trailingOnly=TRUE)
 nrsets = as.numeric(args[1])
-ptms = args[2]
+labileptms = unlist(strsplit(args[2], ';'))
 psmfn = args[3]
 pepfn = args[4]
 
@@ -44,7 +44,7 @@ if ('Master.protein.s.' %in% names(psms)) {
     svg('ptmprotfeats', width=width, height=nrsets+2)
       print(ggplot(set_amount_prots) +
         geom_bar(aes(Biological.set, y=Master.protein.s.), stat='identity') +
-        coord_flip() + ylab('# proteins with PTM') + theme_bw() + theme(axis.title=element_text(size=15), axis.text=element_text(size=10), axis.title.y=element_blank(), legend.text=element_text(size=10), legend.title=element_blank(), legend.position='top', plot.title=element_text(size=15))
+        coord_flip() + ylab('# proteins with labile PTM') + theme_bw() + theme(axis.title=element_text(size=15), axis.text=element_text(size=10), axis.title.y=element_blank(), legend.text=element_text(size=10), legend.title=element_blank(), legend.position='top', plot.title=element_text(size=15))
       )
     dev.off()
 }
@@ -59,6 +59,7 @@ sites = data.frame(site=unlist(multisites),
                    bioset=rep(sites[,1], sapply(multisites, FUN=length)),
                    ptm=rep(sites[,2], sapply(multisites, FUN=length))
                    )
+sites = subset(sites, ptm %in% labileptms)
 sites$site = sub('[0-9]+', '', sites$site)
 sites$value=1
 sites$site = paste(sites$ptm, sites$site)
@@ -80,6 +81,7 @@ sites = data.frame(site=unlist(multisites),
                    bioset=rep(sites[,1], sapply(multisites, FUN=length)),
                    ptm=rep(sites[,2], sapply(multisites, FUN=length))
                    )
+sites = subset(sites, ptm %in% labileptms)
 sites$site = sub('[0-9]+', '', sites$site)
 sites$value=1
 sites$site = paste(sites$ptm, sites$site)
