@@ -1,9 +1,9 @@
-{% macro table(table) -%}
+{% macro table(table, titles) -%}
 <table class="table is-striped is-narrow is-hoverable">
 <thead>
 <tr>
 {% for field in table['_fields'] %}
-<th>{{ tablefieldtitles[field] }}</th>
+<th>{{ titles[field] }}</th>
 {% endfor %}
 </tr>
 </thead>
