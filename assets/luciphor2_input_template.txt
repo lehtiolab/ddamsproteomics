@@ -90,12 +90,14 @@ MAX_NUM_PERM = 16384 ## the maximum number of permutations a sequence can have
 
 SELECTION_METHOD = 2   ## 0 = Peptide Prophet probability (default)
                        ## 1 = Mascot Ion Score
-                       ## 2 = -log(E-value)
+                       ## 2 = -log(E-value) # -log is done internally
                        ## 3 = X!Tandem Hyperscore
                        ## 4 = Sequest Xcorr
 
-MODELING_SCORE_THRESHOLD = 8 # Currently doing -log10 on SpecE-val to work around a bug in luciphor
-SCORING_THRESHOLD = 1   ## PSMs below this value will be discarded
+# Modeling score filters out bad PSMs, but according to dfermin on luciphor mailing list we need
+# to filter all PSMs here and not BEFORE running luciphor
+MODELING_SCORE_THRESHOLD = 0.01 #  (q-value 0.01)
+SCORING_THRESHOLD = 0.2 ## PSMs below this value will be discarded
 MIN_NUM_PSMS_MODEL = ${MINPSMS}  ## The minimum number of PSMs you need for any charge state in order to build a model for it
 
 MOD_PEP_REP = 1 ## 0 = show single character modifications, 1 = show TPP-formatted modifications

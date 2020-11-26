@@ -3,7 +3,6 @@
 import sys
 import re
 from os import environ
-from math import log
 
 from jinja2 import Template
 
@@ -160,7 +159,7 @@ def main():
         spfile = header.index('SpectraFile')
         charge = header.index('Charge')
         scan = header.index('ScanNum')
-        evalue = header.index('SpecEValue')
+        evalue = header.index('PSM q-value')
         wfp.write('srcFile\tscanNum\tcharge\tPSMscore\tpeptide\tmodSites')
         for line in fp:
             ptm_in_seq = False

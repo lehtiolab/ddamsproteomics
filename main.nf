@@ -740,9 +740,9 @@ process percolator {
   val(mzmlcount) from mzmlcount_percolator
 
   output:
-  //set val(setname), file('perco.xml') into percolated
   set path('target.tsv'), val('target') into tmzidtsv_perco
   set path('decoy.tsv'), val('decoy') into dmzidtsv_perco
+  set val(setname), file('allpsms') optional true into unfiltered_psms
 
   script:
   """
@@ -750,8 +750,13 @@ process percolator {
   msgf2pin -o percoin.tsv -e ${params.enzyme} -P "decoy_" metafile
   percolator -j percoin.tsv -X perco.xml -N 500000 --decoy-xml-output
   mkdir outtables
-  msstitch perco2psm --perco perco.xml -d outtables -i ${tsvs.collect() { "'$it'" }.join(' ')} --mzids ${mzids.collect() { "'$it'" }.join(' ')} --filtpsm ${params.psmconflvl} --filtpep ${params.pepconflvl}
-  msstitch concat -i outtables/* -o psms
+  ${params.locptms ? 
+    "msstitch perco2psm --perco perco.xml -d outtables -i ${tsvs.collect() { "'$it'" }.join(' ')} --mzids ${mzids.collect() { "'$it'" }.join(' ')}" : 
+    "msstitch perco2psm --perco perco.xml -d outtables -i ${tsvs.collect() { "'$it'" }.join(' ')} --mzids ${mzids.collect() { "'$it'" }.join(' ')} --filtpsm ${params.psmconflvl} --filtpep ${params.pepconflvl}"}
+  msstitch concat -i outtables/* -o allpsms
+  ${params.locptms ? 
+    "msstitch conffilt -i allpsms -o filtpsm --confcolpattern 'PSM q-value' --confidence-lvl ${params.psmconflvl} --confidence-better lower && \
+    msstitch conffilt -i filtpsm -o psms --confcolpattern 'peptide q-value' --confidence-lvl ${params.pepconflvl} --confidence-better lower" : 'mv allpsms psms'}
   msstitch split -i psms --splitcol \$(head -n1 psms | tr '\t' '\n' | grep -n ^TD\$ | cut -f 1 -d':')
   """
 }
@@ -801,7 +806,7 @@ process createPSMTable {
   tail -n+2 psms.txt | grep . || (echo "No ${td} PSMs made the combined PSM / peptide FDR cutoff (${params.psmconflvl} / ${params.pepconflvl})" && exit 1)
   # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
   cat lookup > $psmlookup
-  sed 's/\\#SpecFile/SpectraFile/' -i psms.txt
+  sed '0,/\\#SpecFile/s//SpectraFile/' -i psms.txt
   msstitch psmtable -i psms.txt --dbfile $psmlookup --addmiscleav -o psmsrefined --spectracol 1 \
     ${params.onlypeptides ? '' : "--fasta \"${td == 'target' ? "${tdb}" : "${ddb}"}\" --genes"} \
     ${quant ? "${!params.noms1quant ? '--ms1quant' : ''} ${params.isobaric ? '--isobaric' : ''}" : ''} \
@@ -832,6 +837,7 @@ mzml_luciphor
   .map { it -> [it[0], it[2]] } // only need setname and mzml
   .groupTuple()
   .join(psm_ptm)
+  .join(unfiltered_psms)
   .set { psm_luciphor }
 
 
@@ -841,16 +847,19 @@ process luciphorPTMLocalizationScoring {
   when: params.locptms
 
   input:
-  set val(setname), file(mzmls), file('psms'), file(tdb) from psm_luciphor
+  set val(setname), path(mzmls), path('psms'), path(tdb), path('allpsms') from psm_luciphor
 
   output:
-  set val(setname), file('ptms.txt') into luciphor_all
+  set val(setname), path('ptms.txt') into luciphor_all
 
   script:
   denom = !params.noquant && setdenoms ? setdenoms[setname] : false
   specialdenom = denom && (denom[0] == 'sweep' || denom[0] == 'intensity')
   isobtype = setisobaric && setisobaric[setname] ? setisobaric[setname] : ''
   """
+  # Split allpsms to get target PSMs
+  sed '0,/\\#SpecFile/s//SpectraFile/' -i allpsms
+  msstitch split -i allpsms --splitcol \$(head -n1 allpsms | tr '\t' '\n' | grep -n ^TD\$ | cut -f 1 -d':')
   export MZML_PATH=\$(pwd)
   export MINPSMS=${params.minpsms_luciphor}
   export ALGO=${params.activation == 'hcd' ? '1' : '0'}
@@ -860,9 +869,9 @@ process luciphorPTMLocalizationScoring {
   export MS2TOLVALUE=0.025
   export MS2TOLTYPE=Da
   cat "$baseDir/assets/luciphor2_input_template.txt" | envsubst > lucinput.txt
-  luciphor_prep.py psms lucinput.txt "${params.msgfmods}" "${params.mods}${isobtype ? ";${isobtype}" : ''}" "${params.locptms}" luciphor.out
+  luciphor_prep.py target.tsv lucinput.txt "${params.msgfmods}" "${params.mods}${isobtype ? ";${isobtype}" : ''}" "${params.locptms}" luciphor.out
   luciphor2 luciphor_config.txt
-  luciphor_parse.py ${params.ptm_minscore_high} ptms.txt "${params.msgfmods}" "${params.locptms};${params.mods}" "${tdb}"
+  luciphor_parse.py ${params.ptm_minscore_high} ptms.txt "${params.msgfmods}" "${params.locptms}" "${params.mods}" "${tdb}"
   """
 }
 
