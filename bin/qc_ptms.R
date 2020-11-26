@@ -25,7 +25,7 @@ svg('ptmpsmfeats', width=width, height=nrsets+2)
 dev.off()
 
 # nr peptides with PTMs
-qcols = colnames(peptides)[grep('_FLR', colnames(peptides))]
+qcols = colnames(peptides)[grep('_FLR', colnames(peptides), fixed=T)]
 set_amount_pep = melt(peptides, id.vars='Peptide.sequence', measure.vars=qcols)
 set_amount_pep = set_amount_pep[!is.na(set_amount_pep$value),]
 set_amount_pep$variable = sub('_FLR', '', set_amount_pep$variable)
@@ -40,7 +40,9 @@ dev.off()
 # nr. proteins with PTMs
 if ('Master.protein.s.' %in% names(psms)) {
     prots = psms[c('Master.protein.s.', 'Biological.set')]
-    set_amount_prots = aggregate(Master.protein.s.~Biological.set, prots[grep(';', prots[,1], invert=T),], length)
+    prots = subset(prots, !grepl(';', Master.protein.s., fixed=T))
+    prots = prots[!duplicated(prots),]
+    set_amount_prots = aggregate(Master.protein.s.~Biological.set, prots, length)
     svg('ptmprotfeats', width=width, height=nrsets+2)
       print(ggplot(set_amount_prots) +
         geom_bar(aes(Biological.set, y=Master.protein.s.), stat='identity') +
