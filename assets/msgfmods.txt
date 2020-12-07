@@ -10,11 +10,14 @@
 304.205360,K,fix,any,iTRAQ8plex
 144.102063,*,fix,N-term,iTRAQ4plex
 144.102063,K,fix,any,iTRAQ4plex
+
 # Variable mods
 15.994915,M,opt,any,Oxidation
+
 # PTMs
 42.010565,K,opt,any,Acetyl
 79.966331,STY,opt,any,Phospho
 14.015650,K,opt,any,Methyl
 28.031300,K,opt,any,Dimethyl
 42.046950,K,opt,any,Trimethyl
+114.042927,K,opt,any,GG
