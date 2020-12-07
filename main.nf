@@ -488,7 +488,7 @@ process complementSpectraLookupCleanPSMs {
   output:
   set path('t_cleaned_psms.txt'), path('d_cleaned_psms.txt') into cleaned_psms
   set path('target_db.sqlite'), path('decoy_db.sqlite') into complemented_speclookup 
-  path 'cleaned_ptmpsms' into cleaned_ptmpsms optional true
+  path 'cleaned_ptmpsms.txt' into cleaned_ptmpsms optional true
   file('all_setnames') into oldnewsets 
   
   script:
@@ -912,6 +912,7 @@ if (params.locptms) {
 }
 
 stabileptms
+  .ifEmpty('NA')
   .toList()
   .set { allstabileptms }
     
@@ -942,7 +943,7 @@ process createPTMLookup {
   msstitch concat -i ${params.ptms ? "'${stabileptms}'" : ''} ${params.locptms ? "ptms*" : ''} -o "${ptmtable}"
   cat "${ptmlup}" > ptmlup.sql
   msstitch psmtable -i "${ptmtable}" --dbfile ptmlup.sql -o ptmtable_read \
-    ${complementary_run ? "--oldpsms ${cleaned_oldpsms}" : ''} --spectracol 1
+    ${complementary_run ? "--oldpsms ${cleaned_oldptms}" : ''} --spectracol 1
   msstitch split -i "${ptmtable}" --splitcol bioset
   ${setnames.collect() { "test -f '${it}.tsv' || echo 'No PTMs found for set ${it}' >> warnings" }.join(' && ') }
   """
