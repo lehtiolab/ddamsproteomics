@@ -127,6 +127,7 @@ params.plaintext_email = false
 params.mzmls = false
 params.mods = false
 params.locptms = false
+params.ptms = false
 // 50 is the minimum score for "good PTM" in HCD acc. to luciphor2 paper
 // TODO evaluate if we need to set it higher
 params.ptm_minscore_high = 50
@@ -272,7 +273,8 @@ summary['mzMLs']        = params.mzmls
 summary['Target DB']    = params.tdb
 summary['Sample annotations'] = params.sampletable
 summary['Modifications'] = params.mods
-summary['PTMs'] = params.locptms
+summary['Labile PTMs'] = params.locptms
+summary['PTMs'] = params.ptms
 summary['Phospho enriched'] = params.phospho
 summary['Instrument'] = params.mzmldef ? 'Set per mzML file in mzml definition file' : params.instrument
 summary['Precursor tolerance'] = params.prectol
@@ -598,7 +600,7 @@ if (params.noquant && !params.quantlookup) {
 
 // Set names are first item in input lists, collect them for PSM tables and QC purposes
 allsetnames 
-  .into { setnames_featqc; setnames_psms; setnames_psmqc }
+  .into { setnames_featqc; setnames_psms; setnames_psmqc; setnames_ptms }
 
 
 process quantLookup {
@@ -717,7 +719,7 @@ process msgfPlus {
   ntt = [full: 2, semi: 1, non: 0][params.terminicleaved]
 
   """
-  create_modfile.py ${params.maxvarmods} "${params.msgfmods}" "${params.mods}${isobtype ? ";${isobtype}" : ''}${params.locptms ? ";${params.locptms}" : ''}"
+  create_modfile.py ${params.maxvarmods} "${params.msgfmods}" "${params.mods}${isobtype ? ";${isobtype}" : ''}${params.ptms ? ";${params.ptms}" : ''}${params.locptms ? ";${params.locptms}" : ''}"
   msgf_plus -Xmx8G -d $db -s $x -o "${sample}.mzid" -thread ${task.cpus * params.threadspercore} -mod "mods.txt" -tda 0 -maxMissedCleavages $params.maxmiscleav -t ${params.prectol}  -ti ${params.iso_err} -m ${fragmeth} -inst ${msgfinstrument} -e ${enzyme} -protocol ${msgfprotocol} -ntt ${ntt} -minLength ${params.minpeplen} -maxLength ${params.maxpeplen} -minCharge ${params.mincharge} -maxCharge ${params.maxcharge} -n 1 -addFeatures 1
   msgf_plus -Xmx3500M edu.ucsd.msjava.ui.MzIDToTsv -i "${sample}.mzid" -o out.tsv
   awk -F \$'\\t' '{OFS=FS ; print \$0, "Biological set" ${fractionation ? ', "Strip", "Fraction"' : ''}}' <( head -n+1 out.tsv) > "${sample}.mzid.tsv"
@@ -829,9 +831,9 @@ setpsmtables
   .transpose()
   .tap { psm_pep }
   .filter { it -> it[0] == 'target' }
-  .merge(ptmdbs)
+  .combine(ptmdbs)
   .map { it -> it[1..3] }
-  .set { psm_ptm }
+  .into { psm_ptm; stabileptm_prep }
 
 mzml_luciphor
   .map { it -> [it[0], it[2]] } // only need setname and mzml
@@ -850,7 +852,7 @@ process luciphorPTMLocalizationScoring {
   set val(setname), path(mzmls), path('psms'), path(tdb), path('allpsms') from psm_luciphor
 
   output:
-  set val(setname), path('ptms.txt') into luciphor_all
+  set val(setname), path('labileptms.txt') into luciphor_all
 
   script:
   denom = !params.noquant && setdenoms ? setdenoms[setname] : false
@@ -869,18 +871,52 @@ process luciphorPTMLocalizationScoring {
   export MS2TOLVALUE=0.025
   export MS2TOLTYPE=Da
   cat "$baseDir/assets/luciphor2_input_template.txt" | envsubst > lucinput.txt
-  luciphor_prep.py target.tsv lucinput.txt "${params.msgfmods}" "${params.mods}${isobtype ? ";${isobtype}" : ''}" "${params.locptms}" luciphor.out
+  luciphor_prep.py target.tsv lucinput.txt "${params.msgfmods}" "${params.mods}${isobtype ? ";${isobtype}" : ''}${params.ptms ? ";${params.ptms}" : ''}" "${params.locptms}" luciphor.out
   luciphor2 luciphor_config.txt
-  luciphor_parse.py ${params.ptm_minscore_high} ptms.txt "${params.msgfmods}" "${params.locptms}" "${params.mods}" "${tdb}"
+  luciphor_parse.py ${params.ptm_minscore_high} labileptms.txt "${params.msgfmods}" "${params.locptms}" "${params.mods}${params.ptms ? ";${params.ptms}" : ''}" "${tdb}"
+  """
+}
+// FIXME msgfmods is false? oxidation so probably never.
+
+
+process stabilePTMPrep {
+
+  when: params.ptms
+  
+  input:
+  set val(setname), path('psms'), path(tdb) from stabileptm_prep
+  
+  output:
+  path('stabileptms.txt') into stabileptms
+  
+  script:
+  isobtype = setisobaric && setisobaric[setname] ? setisobaric[setname] : ''
+  """
+  nonlabile_ptm_columns.py psms stabileptms.txt "${params.msgfmods}" "$params.ptms" "${params.locptms ? "$params.locptms" : ""}" "${params.mods}${isobtype ? ";${isobtype}" : ''}" "${tdb}"
   """
 }
 
+
 // Sort to be able to resume
-luciphor_all
+if (params.locptms) {
+  luciphor_all
+    .toList()
+    .map { it.sort( {a, b -> a[0] <=> b[0]}) } // sort on setname
+    .transpose()
+    .toList()
+    .set { ptm_allsets }
+} else {
+  setnames_ptms 
+    .map { it -> [it, 'NA'] }
+    .set { ptm_allsets }
+}
+
+stabileptms
   .toList()
-  .map { it.sort( {a, b -> a[0] <=> b[0]}) } // sort on setname
-  .transpose()
-  .toList()
+  .set { allstabileptms }
+    
+ptm_allsets
+  .combine(allstabileptms)
   .combine(cleaned_ptmpsms)
   .set { lucptmfiles_to_lup }
 
@@ -888,10 +924,10 @@ luciphor_all
 process createPTMLookup {
   publishDir "${params.outdir}", mode: 'copy', overwrite: true, saveAs: {it == ptmtable ? ptmtable: null}
 
-  when: params.locptms
+  when: params.locptms || params.ptms
 
   input:
-  tuple val(setnames), file('ptms?'), file(cleaned_oldptms) from lucptmfiles_to_lup
+  tuple val(setnames), file('ptms?'), file(stabileptms), file(cleaned_oldptms) from lucptmfiles_to_lup
   file(ptmlup) from ptm_lookup_in
 
   output:
@@ -903,7 +939,7 @@ process createPTMLookup {
   script:
   ptmtable = "ptm_psmtable.txt"
   """
-  msstitch concat -i ptms* -o "${ptmtable}"
+  msstitch concat -i ${params.ptms ? "'${stabileptms}'" : ''} ${params.locptms ? "ptms*" : ''} -o "${ptmtable}"
   cat "${ptmlup}" > ptmlup.sql
   msstitch psmtable -i "${ptmtable}" --dbfile ptmlup.sql -o ptmtable_read \
     ${complementary_run ? "--oldpsms ${cleaned_oldpsms}" : ''} --spectracol 1
@@ -933,12 +969,18 @@ process PTMPeptides {
   specialdenom = denom && (denom[0] == 'sweep' || denom[0] == 'intensity')
   peptable = "${setname}_ptm_peptides.txt"
   """
-  msstitch peptides -i "ptms.txt" -o "${peptable}" --scorecolpattern svm --spectracol 1 \
+  msstitch peptides -i "ptms.txt" -o peps --scorecolpattern svm --spectracol 1 \
     ${!params.noquant ? "${!params.noms1quant ? '--ms1quantcolpattern area' : ''} ${setisobaric && setisobaric[setname] ? '--isobquantcolpattern plex --minint 0.1' : ''}" : ''} \
     ${!params.noquant && setisobaric && setisobaric[setname] && params.keepnapsmsquant ? '--keep-psms-na-quant' : ''} \
     ${denom && denom[0] == 'sweep' ? '--mediansweep --logisoquant': ''} \
     ${denom && denom[0] == 'intensity' ? '--medianintensity' : ''} \
     ${denom && !specialdenom ? "--logisoquant --denompatterns ${setdenoms[setname].join(' ')}": ''}
+  # merge columns FLR/q-val to make a combined column (FLR if not NA)
+  # FIXME check if ALL luciphor peps get FLR? No NAs?
+  # Get columns with FLR and q-values and before/after columns for matching to something with tab front/behind
+  qcols=\$(head -n1 peps |tr '\\t' '\\n'|grep -A1 -B1 -En '(^q-value|FLR)' | grep -v '^[^1-9]' | sed 's/^\\([0-9]\\+\\)-/\\1:/' | cut -f 1 -d ':' |tr '\\n' ',' | sed 's/\\,\$//')
+  paste <(head -n1 peps) <(echo "q-value-or-FLR") > "${peptable}"
+  paste <(tail -n+2 peps) <(tail -n+2 peps | cut -f\$qcols | sed \$'s/.*\\t\\([0-9][\\.]*[0-9e\\-]*\\)\\t.*/\\\\1/') >> "${peptable}"
   """
 }
 
@@ -967,12 +1009,14 @@ process mergePTMPeps {
   """
   cat ptmlup.sql > pepptmlup.sql
   msstitch merge -i ${peptides.join(' ')} --setnames ${setnames.join(' ')} --dbfile pepptmlup.sql -o mergedtable --no-group-annotation \
-    --fdrcolpattern 'FLR\$' \
+    --fdrcolpattern 'q-value-or-FLR' \
     ${!params.noquant && !params.noms1quant ? "--ms1quantcolpattern area" : ''} \
     ${!params.noquant && setisobaric ? "--isobquantcolpattern plex" : ''}
-  head -n1 mergedtable | sed 's/q-value/FLR/g' > "${peptable}"
+  head -n1 mergedtable | sed 's/q-value/q-value-or-FLR/g' > "${peptable}"
   tail -n+2 mergedtable | sort -k1b,1 >> "${peptable}"
-  qc_ptms.R "${setnames.size()}" "${params.locptms}" ptmpsms.txt "${peptable}"
+  # FIXME add params.ptms to the QC tables, need slice of table first
+  # and in that slice we need to add the site name of the PTM as "Phospho:S3,T45" etc.
+  qc_ptms.R "${setnames.size()}" "${params.locptms ? params.locptms : ''}${params.ptms ? ";${params.ptms}": ''}" ptmpsms.txt "${peptable}"
   echo "<html><body>" > ptmqc.html
   for graph in ptmpsmfeats ptmpepfeats ptmprotfeats psmptmresidues pepptmresidues;
     do
@@ -1251,7 +1295,7 @@ process featQC {
   """
 }
 
-ptmqcout = params.locptms ? ptmqc : Channel.from('NA')
+ptmqcout = params.ptms || params.locptms ? ptmqc : Channel.from('NA')
 
 qccollect
   .concat(psmqccollect)

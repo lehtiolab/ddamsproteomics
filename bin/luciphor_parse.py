@@ -6,7 +6,7 @@ import re
 from Bio import SeqIO
 
 from luciphor_prep import aa_weights_monoiso
-from create_modfile import get_msgfmods, categorize_mod, parse_cmd_mod, modpos
+from create_modfile import get_msgfmods
 
 
 # PTM input/output header fields
@@ -17,6 +17,7 @@ OTHERPTMS = 'High-scoring PTMs'
 SE_PEPTIDE = 'SearchEnginePeptide'
 PEPTIDE = 'Peptide'
 PROTEIN = 'Master protein(s)'
+PTMFIELDS = [SE_PEPTIDE, TOPPTM, TOPSCORE, TOPFLR, OTHERPTMS]
 
 def main():
     minscore_high = float(sys.argv[1])
@@ -50,7 +51,7 @@ def main():
         scoreheader = next(scorefp).strip('\n').split('\t')
         psmheader = next(psms).strip('\n').split('\t')
         scorepep = {'specId': False}
-        outheader = psmheader + [SE_PEPTIDE, TOPPTM, TOPSCORE, TOPFLR, OTHERPTMS]
+        outheader = psmheader + PTMFIELDS
         wfp.write('\t'.join(outheader))
         lucptms = {}
         for line in fp:

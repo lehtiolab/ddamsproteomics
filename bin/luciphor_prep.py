@@ -86,7 +86,6 @@ def main():
             fixmass = sum([float(x[0]) for x in fixedmods[modpos(mod)]])
             mod[0] = str(round(-(fixmass - float(mod[0])), 5))
         add_mods_translationtable(mod, massconversion_msgf)
-        print(cmdmod, mod, massconversion_msgf)
 
     # Prep fixed mods for luciphor template
     for mod in [x for fm in fixedmods.values() for x in fm]:
@@ -171,7 +170,6 @@ def main():
             #for mod in re.finditer('[\+\-0-9]+.[0-9]+', seq):
             for mod in re.finditer('[\+\-0-9]+.[\+\-.0-9]+', seq):
                 modtxt = mod.group()
-                #print(seq, modtxt)
                 if modtxt.count('+') + modtxt.count('-') > 1:
                     # multi mod on single residue
                     multimods = re.findall('[\+\-][0-9.]+', modtxt)
@@ -194,7 +192,6 @@ def main():
                     aamass = modmass
                 else:
                     aamass = round(aa_weights_monoiso[pep[-1]] + modmass, 5)
-                print(start, modtxt, aamass, modmass)
                 sites.append([len(pep)- 1, aamass])
                 start = mod.end()
             if not ptm_in_seq:
