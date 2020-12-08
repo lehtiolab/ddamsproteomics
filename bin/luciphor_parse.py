@@ -17,7 +17,8 @@ OTHERPTMS = 'High-scoring PTMs'
 SE_PEPTIDE = 'SearchEnginePeptide'
 PEPTIDE = 'Peptide'
 PROTEIN = 'Master protein(s)'
-PTMFIELDS = [SE_PEPTIDE, TOPPTM, TOPSCORE, TOPFLR, OTHERPTMS]
+PTM_PROTEIN = 'PTM-Master protein(s)'
+PTMFIELDS = [PTM_PROTEIN, SE_PEPTIDE, TOPPTM, TOPSCORE, TOPFLR, OTHERPTMS]
 
 def main():
     minscore_high = float(sys.argv[1])
@@ -120,7 +121,7 @@ def main():
                         for res_loc in ptmlocs:
                             protptms.append('{}{}'.format(res_loc[0], res_loc[1] + peploc))
                             proteins_loc[p].append('{}_{}'.format(ptmname, ','.join(protptms)))
-                psm[PROTEIN] = ';'.join(['{}:{}'.format(p, ':'.join(ptmloc)) for p, ptmloc in proteins_loc.items()])
+                psm[PTM_PROTEIN] = ';'.join(['{}:{}'.format(p, ':'.join(ptmloc)) for p, ptmloc in proteins_loc.items()])
                 outpsm = {k: v for k,v in psm.items()}
                 outpsm.update(ptm)
                 assert re.sub('[0-9.\[\]+-]', '', psm['Peptide']) == ptm['barepep']

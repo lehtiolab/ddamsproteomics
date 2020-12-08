@@ -128,6 +128,7 @@ params.mzmls = false
 params.mods = false
 params.locptms = false
 params.ptms = false
+params.totalproteomepsms = false
 // 50 is the minimum score for "good PTM" in HCD acc. to luciphor2 paper
 // TODO evaluate if we need to set it higher
 params.ptm_minscore_high = 50
@@ -763,15 +764,20 @@ process percolator {
   """
 }
 
+totalproteomepsms = params.totalproteomepsms ? Channel.fromPath(params.totalproteomepsms) : Channel.from('NA')
+
 // Collect percolator data of target/decoy and feed into PSM table creation
 tmzidtsv_perco
   .concat(dmzidtsv_perco)
   .groupTuple(by: 1) // group by TD
   .join(specquant_lookups, by: 1) // join on TD
   .combine(psmdbs)
+  .combine(totalproteomepsms)
   .set { psmswithout_oldpsms }
 if (complementary_run) {
-  psmswithout_oldpsms.join(td_oldpsms).set { prepsm }
+  psmswithout_oldpsms
+    .join(td_oldpsms)
+    .set { prepsm }
 } else {
   psmswithout_oldpsms.set { prepsm }
 }
@@ -787,7 +793,7 @@ process createPSMTable {
   publishDir "${params.outdir}", mode: 'copy', overwrite: true, saveAs: {["target_psmlookup.sql", "decoy_psmlookup.sql", "target_psmtable.txt", "decoy_psmtable.txt"].contains(it) ? it : null}
 
   input:
-  set val(td), path('psms?'), path('lookup'), path(tdb), path(ddb), file(cleaned_oldpsms) from prepsm
+  set val(td), path('psms?'), path('lookup'), path(tdb), path(ddb), file(totalproteomepsms), file(cleaned_oldpsms) from prepsm
   file(trainingpep) from hiriefpep
   val(mzmlcount) from mzmlcount_psm
   val(setnames) from setnames_psms
@@ -795,6 +801,7 @@ process createPSMTable {
   output:
   set val(td), file("${outpsms}") into psm_result
   set val(td), file({setnames.collect() { "${it}.tsv" }}) optional true into setpsmtables
+  set file({setnames.collect() { "tppsms/${it}.tsv" }}) optional true into totalprotpsms_allsets
   set val(td), file("${psmlookup}") into psmlookup
   file('warnings') optional true into psmwarnings
 
@@ -818,6 +825,9 @@ process createPSMTable {
   ${params.hirief && td == 'target' ? "echo \'${groovy.json.JsonOutput.toJson(params.strips)}\' >> strip.json && peptide_pi_annotator.py -i $trainingpep -p psmsrefined --o $outpsms --stripcolpattern Strip --pepcolpattern Peptide --fraccolpattern Fraction --stripdef strip.json --ignoremods \'*\'": "mv psmsrefined ${outpsms}"} 
   msstitch split -i ${outpsms} --splitcol bioset
   ${setnames.collect() { "test -f '${it}.tsv' || echo 'No ${td} PSMs found for set ${it}' >> warnings" }.join(' && ') }
+  # In decoy PSM table process, also split the target total proteome normalizer table if necessary.
+  # Doing it in decoy saves time, since target is usally largest table and slower
+  ${params.totalproteomepsms && td == 'decoy' ? "mkdir tppsms && msstitch split -i ${totalproteomepsms} -d tppsms --splitcol bioset" : ''}
   """
 }
 
@@ -949,18 +959,30 @@ process createPTMLookup {
   """
 }
 
+totalprotpsms_allsets
+  .map { it -> listify(it) }
+  .map{ it -> [it.collect() { it.baseName.replaceFirst(/\.tsv$/, "") }, it]} // setname from file setA.tsv
+  .transpose()
+  .set { totalprot_setpsms }
 
 setptmtables
   .map { it -> listify(it) }
   .map{ it -> [it.collect() { it.baseName.replaceFirst(/\.tsv$/, "") }, it]} // setname from file setA.tsv
   .transpose()
-  .set { ptm2peps }
+  .set { preptmpeps }
 
+if (params.totalproteomepsms) {
+  preptmpeps.join(totalprot_setpsms)
+    .set { ptm2peps }
+} else {
+  preptmpeps.set { ptm2peps }
+}
+  
 
 process PTMPeptides {
 
   input:
-  tuple val(setname), path('ptms.txt') from ptm2peps
+  tuple val(setname), path('ptms.txt'), file('totalproteomepsms') from ptm2peps
 
   output:
   tuple val(setname), path(peptable) into ptmpeps
@@ -970,11 +992,19 @@ process PTMPeptides {
   specialdenom = denom && (denom[0] == 'sweep' || denom[0] == 'intensity')
   peptable = "${setname}_ptm_peptides.txt"
   """
+  # If there is a total proteome PSMs file, prepare proteins from it for peptide normalization purposes
+  ${params.totalproteomepsms && denom ? "msstitch isosummarize -i totalproteomepsms -o tp_prots --isobquantcolpattern plex \
+    --denompatterns ${setdenoms[setname].join(' ')} --minint 0.1 --logisoquant \
+    --featcol \$(head -n1 totalproteomepsms | tr '\t' '\n' | grep -n '^Master protein' | cut -f 1 -d':') \
+    && sed -i '0,/Master protein(s)/s//Protein ID/' tp_prots" : ''}
+# FIXME do not median normalize? --median-normalize
+
   msstitch peptides -i "ptms.txt" -o peps --scorecolpattern svm --spectracol 1 \
     ${!params.noquant ? "${!params.noms1quant ? '--ms1quantcolpattern area' : ''} ${setisobaric && setisobaric[setname] ? '--isobquantcolpattern plex --minint 0.1' : ''}" : ''} \
     ${!params.noquant && setisobaric && setisobaric[setname] && params.keepnapsmsquant ? '--keep-psms-na-quant' : ''} \
     ${denom && denom[0] == 'sweep' ? '--mediansweep --logisoquant': ''} \
     ${denom && denom[0] == 'intensity' ? '--medianintensity' : ''} \
+    ${denom && params.totalproteomepsms ? "--totalproteome tp_prots" : ''} \
     ${denom && !specialdenom ? "--logisoquant --denompatterns ${setdenoms[setname].join(' ')}": ''}
   # merge columns FLR/q-val to make a combined column (FLR if not NA)
   # FIXME check if ALL luciphor peps get FLR? No NAs?

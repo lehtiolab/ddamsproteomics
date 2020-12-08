@@ -84,7 +84,7 @@ def main():
                     for res_loc in ptmlocs:
                         protptms.append('{}{}'.format(res_loc[0], res_loc[1] + peploc))
                         proteins_loc[p].append('{}_{}'.format(ptmname, ','.join(protptms)))
-            psm[lucp.PROTEIN] = ';'.join(['{}:{}'.format(p, ':'.join(ptmloc)) for p, ptmloc in proteins_loc.items()])
+            psm[lucp.PTM_PROTEIN] = ';'.join(['{}:{}'.format(p, ':'.join(ptmloc)) for p, ptmloc in proteins_loc.items()])
             #outpsm = {k: v for k,v in psm.items()}
             #outpsm.update(psm)
             assert re.sub('[0-9.\[\]+-]', '', psm['Peptide']) == barepep
