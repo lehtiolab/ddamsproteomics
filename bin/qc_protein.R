@@ -260,6 +260,7 @@ deqFC_cols = grep('_logFC$', names(feats))
 names(feats)[1] = 'feat'
 if (length(deqpval_cols)) {
   s_table = unique(sampletable[sampletable$group != 'X__POOL', 'group'])
+  s_table = sub('[^a-zA-Z0-9_]', '_', s_table)
   s_table = sub('^([0-9])', 'X\\1', s_table)
   cartprod = expand.grid(s_table, s_table)
   cartprod = cartprod[cartprod$Var1 != cartprod$Var2,]
