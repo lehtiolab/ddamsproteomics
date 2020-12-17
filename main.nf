@@ -859,7 +859,7 @@ process luciphorPTMLocalizationScoring {
   when: params.locptms
 
   input:
-  set val(setname), path(mzmls), path('psms'), path(tdb), path('allpsms') from psm_luciphor
+  set val(setname), path(mzmls), path('psms'), path(tdb), path(allpsms) from psm_luciphor
 
   output:
   set val(setname), path('labileptms.txt') into luciphor_all
@@ -870,8 +870,8 @@ process luciphorPTMLocalizationScoring {
   isobtype = setisobaric && setisobaric[setname] ? setisobaric[setname] : ''
   """
   # Split allpsms to get target PSMs
-  sed '0,/\\#SpecFile/s//SpectraFile/' -i allpsms
-  msstitch split -i allpsms --splitcol \$(head -n1 allpsms | tr '\t' '\n' | grep -n ^TD\$ | cut -f 1 -d':')
+  sed '0,/\\#SpecFile/s//SpectraFile/' -i "${allpsms}"
+  msstitch split -i "${allpsms}" --splitcol \$(head -n1 "${allpsms}" | tr '\t' '\n' | grep -n ^TD\$ | cut -f 1 -d':')
   export MZML_PATH=\$(pwd)
   export MINPSMS=${params.minpsms_luciphor}
   export ALGO=${params.activation == 'hcd' ? '1' : '0'}
@@ -882,7 +882,7 @@ process luciphorPTMLocalizationScoring {
   export MS2TOLTYPE=Da
   cat "$baseDir/assets/luciphor2_input_template.txt" | envsubst > lucinput.txt
   luciphor_prep.py target.tsv lucinput.txt "${params.msgfmods}" "${params.mods}${isobtype ? ";${isobtype}" : ''}${params.ptms ? ";${params.ptms}" : ''}" "${params.locptms}" luciphor.out
-  luciphor2 luciphor_config.txt
+  luciphor2 -Xmx${task.memory.toGiga()}G luciphor_config.txt
   luciphor_parse.py ${params.ptm_minscore_high} labileptms.txt "${params.msgfmods}" "${params.locptms}" "${params.mods}${params.ptms ? ";${params.ptms}" : ''}" "${tdb}"
   """
 }
