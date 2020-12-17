@@ -993,9 +993,11 @@ process PTMPeptides {
   peptable = "${setname}_ptm_peptides.txt"
   """
   # If there is a total proteome PSMs file, prepare proteins from it for peptide normalization purposes
-  ${params.totalproteomepsms && denom ? "msstitch isosummarize -i totalproteomepsms -o tp_prots --isobquantcolpattern plex \
-    --denompatterns ${setdenoms[setname].join(' ')} --minint 0.1 --logisoquant \
-    --featcol \$(head -n1 totalproteomepsms | tr '\t' '\n' | grep -n '^Master protein' | cut -f 1 -d':') \
+  ${params.totalproteomepsms && denom ? "msstitch isosummarize -i totalproteomepsms -o tp_prots \
+    --isobquantcolpattern plex --minint 0.1 \
+    ${denom && denom[0] == 'sweep' ? '--mediansweep --logisoquant': ''} \
+    ${denom && !specialdenom ? "--logisoquant --denompatterns ${setdenoms[setname].join(' ')}": ''} \
+    --featcol \$(head -n1 totalproteomepsms | tr '\\t' '\\n' | grep -n '^Master protein' | cut -f 1 -d':') \
     && sed -i '0,/Master protein(s)/s//Protein ID/' tp_prots" : ''}
 # FIXME do not median normalize? --median-normalize
 
