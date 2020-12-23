@@ -1237,6 +1237,7 @@ process psmQC {
   script:
   """
   qc_psms.R ${setnames[0].size()} ${fractionation ? 'TRUE' : 'FALSE'} ${plates.join(' ')}
+  sed -Ei 's/[^A-Za-z0-9_\\t]/./' summary.txt
   echo "<html><body>" > psmqc.html
   for graph in psm-scans missing-tmt miscleav
     do
@@ -1284,6 +1285,8 @@ process featQC {
   # FIXME normalization factor plots should not depend on denoms, can also be sweep when deqms has support for that
   # ... change switch to that here and below: normalize ? --normtable ... 
   qc_protein.R --sets ${setnames.collect() { "'$it'" }.join(' ')} --feattype ${acctype} --peptable $peptable ${params.sampletable ? "--sampletable $sampletable" : ''} ${show_normfactors ? '--normtable allnormfacs' : ''}
+  # Remove X from R's columns if they do not start with [A-Z]
+  sed -Ei 's/^X([^A-Za-z])/\\1/' summary.txt
   echo "<html><body>" > featqc.html
   for graph in featyield precursorarea ${show_normfactors ? 'normfactors': ''} nrpsms nrpsmsoverlapping percentage_onepsm ms1nrpeps;
     do
@@ -1307,7 +1310,6 @@ process featQC {
     [ -e pca ] && echo '</div>' >> featqc.html
 
   echo "</body></html>" >> featqc.html
-  ${acctype == 'peptides' ? 'touch summary.txt' : ''}
 
   # Create overlap table
   qcols=\$(head -n1 feats |tr '\\t' '\\n'|grep -n "_q-value"| tee nrsets | cut -f 1 -d ':' |tr '\\n' ',' | sed 's/\\,\$//')
