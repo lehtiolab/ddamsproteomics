@@ -679,7 +679,8 @@ process countMS2sPerPlate {
   file(oldmzmls) from oldmzmls
 
   output:
-  set file('scans_per_plate'), val(splates) into scans_perplate
+  file('scans_per_plate') into scans_perplate
+  file('allplates') into allplates
 
   script:
   splates = [setnames, platenames].transpose().collect() { "${it[0]}_${it[1]}" }
@@ -708,9 +709,9 @@ process countMS2sPerPlate {
               elif setname not in fileplates[fn]:
                   fileplates[fn][setname] = plate
 
+  with open('allplates', 'w') as fp:
+      fp.write('\\n'.join(platesets))
   platescans = {p: 0 for p in platesets}
-  print(platesets)
-  print(platescans)
   with open('nr_spec_per_file') as fp:
       for line in fp:
           setname, fn, scans = line.strip('\\n').split('|')
@@ -723,7 +724,15 @@ process countMS2sPerPlate {
 }
 
 if (fractionation) {
-  scans_perplate.set { scans_result }
+  allplates
+    .splitText()
+    .map { it -> it.trim() }
+    .toList()
+    .map { it -> [it] }
+    .set { allplates_split }
+  scans_perplate
+    .combine(allplates_split)
+    .set { scans_result }
 }
 
 /*

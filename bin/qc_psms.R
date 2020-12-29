@@ -62,7 +62,8 @@ svg('miscleav', width=width, height=(nrsets + 2))
 mcplot = ggplot(subset(mcl, missed_cleavage %in% c(1,2,3)), aes_string(xcol, 'SpecID')) + geom_bar(aes(fill=missed_cleavage), position='dodge', stat='identity') + coord_flip() + ylab('# PSMs') + theme_bw() + theme(axis.title.x=element_text(size=15), axis.title.y=element_blank(), axis.text=element_text(size=10), legend.position="top", legend.text=element_text(size=10), legend.title=element_blank())
 
 if (nrow(subset(mcl, missed_cleavage == 1))) {
-  procents = subset(mcl, missed_cleavage == 1)$SpecID / sum(mcl$SpecID)
+  mcl_am = merge(subset(mcl, missed_cleavage == 1), amount_psms, by=xcol)
+  procents = mcl_am$SpecID / mcl_am$"PSMs IDed"
   mcplot = mcplot + geom_text(data=subset(mcl, missed_cleavage == 1), aes(x=!!ensym(xcol), y=SpecID/2, label=paste(100*round(procents, 2), '%')), nudge_x=-0.333, colour="white", size=8)
 }
 print(mcplot)
