@@ -171,6 +171,7 @@ params.decoypsmlookup = false
 params.targetpsms = false
 params.decoypsms = false
 params.ptmpsms = false
+params.mzmlplates = false
 
 // Validate and set file inputs
 fractionation = (params.hirief || params.fractions)
@@ -184,9 +185,9 @@ if (params.sampletable) {
   sampletable = 0
 }
 
-if (params.targetpsmlookup && params.decoypsmlookup && params.targetpsms && params.decoypsms) {
+complementary_run = params.targetpsmlookup && params.decoypsmlookup && params.targetpsms && params.decoypsms
+if (complementary_run) {
   if (params.quantlookup) exit 1, "When specifying a complementary you may not pass --quantlookup"
-  complementary_run = true
   prev_results = Channel
     .fromPath([params.targetpsmlookup, params.decoypsmlookup, params.targetpsms, params.decoypsms, params.ptmpsms ? params.ptmpsms : 'NA'])
     .toList()
@@ -649,13 +650,18 @@ process countMS2perFile {
 
   script:
   """
-  sqlite3 $speclookup "SELECT mzmlfilename, COUNT(*) FROM mzml JOIN mzmlfiles USING(mzmlfile_id) JOIN biosets USING(set_id) GROUP BY mzmlfilename" > amount_spectra_files
+  sqlite3 $speclookup "SELECT set_name, mzmlfilename, COUNT(*) FROM mzml JOIN mzmlfiles USING(mzmlfile_id) JOIN biosets USING(set_id) GROUP BY mzmlfile_id" > amount_spectra_files
   """
 }
 
 
+oldmzmls = Channel.from(false)
 if (fractionation) { 
   specfilems2.set { scans_platecount }
+  if (complementary_run && !file(params.mzmlplates).exists()) exit 1, 'Fractionation with complementing run needs an --mzmlplates file'
+  else if (complementary_run) {
+    oldmzmls = Channel.fromPath(params.mzmlplates)
+  } 
 } else {
   specfilems2
     .map { it -> [it[3], ['noplates']] }
@@ -670,6 +676,7 @@ process countMS2sPerPlate {
 
   input:
   set val(setnames), file(mzmlfiles), val(platenames), file('nr_spec_per_file') from scans_platecount
+  file(oldmzmls) from oldmzmls
 
   output:
   set file('scans_per_plate'), val(splates) into scans_perplate
@@ -678,13 +685,37 @@ process countMS2sPerPlate {
   splates = [setnames, platenames].transpose().collect() { "${it[0]}_${it[1]}" }
   """
   #!/usr/bin/env python
+  import os
   platesets = [\"${splates.join('", "')}\"]
+  plates = [\"${platenames.join('", "')}\"]
+  setnames = [\"${setnames.join('", "')}\"]
+  fileplates = {}
+  for fn, setname, plate in zip([\"${mzmlfiles.join('", "')}\"], setnames, plates):
+      try:
+          fileplates[fn][setname] = plate
+      except KeyError:
+          fileplates[fn] = {setname: plate} 
+  if ${complementary_run ? 1 : 0}:
+      with open('$oldmzmls') as oldmzfp:
+          for line in oldmzfp:
+              fpath, inst, setname, plate, fr = line.strip('\\n').split('\\t')
+              fn = os.path.basename(fpath)
+              setplate = '{}_{}'.format(setname, plate)
+              if setplate not in platesets:
+                  platesets.append(setplate)
+              if fn not in fileplates:
+                  fileplates[fn] = {setname: plate}
+              elif setname not in fileplates[fn]:
+                  fileplates[fn][setname] = plate
+
   platescans = {p: 0 for p in platesets}
-  fileplates = {fn: p for fn, p in zip([\"${mzmlfiles.join('", "')}\"], platesets)}
+  print(platesets)
+  print(platescans)
   with open('nr_spec_per_file') as fp:
       for line in fp:
-          fn, scans = line.strip('\\n').split('|')
-          platescans[fileplates[fn]] += int(scans)
+          setname, fn, scans = line.strip('\\n').split('|')
+          setplate = '{}_{}'.format(setname, fileplates[fn][setname])
+          platescans[setplate] += int(scans)
   with open('scans_per_plate', 'w') as fp:
       for plate, scans in platescans.items():
           fp.write('{}\\t{}\\n'.format(plate, scans))
