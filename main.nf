@@ -549,7 +549,7 @@ process createNewSpectraLookup {
 if (complementary_run) {
   oldnewsets
     .splitText()
-    .map { it -> it.replaceAll('\n', '') }
+    .map { it -> it.trim() }
     .toList()
     .set { allsetnames }
   cleaned_psms
@@ -857,7 +857,7 @@ process createPSMTable {
   output:
   set val(td), file("${outpsms}") into psm_result
   set val(td), file({setnames.collect() { "${it}.tsv" }}) optional true into setpsmtables
-  set file({setnames.collect() { "tppsms/${it}.tsv" }}) optional true into totalprotpsms_allsets
+  file({setnames.collect() { "tppsms/${it}.tsv" }}) optional true into totalprotpsms_allsets
   set val(td), file("${psmlookup}") into psmlookup
   file('warnings') optional true into psmwarnings
 
@@ -1265,12 +1265,12 @@ process proteinPeptideSetMerge {
     ${!params.noquant && setisobaric ? "--isobquantcolpattern plex" : ''} \
     ${params.onlypeptides ? "--no-group-annotation" : ''}
    
-  # make a header for sample names, first clean it from #-sign and fix name
-  head -n1 mergedtable | sed 's/\\#/Amount/g;s/\\ \\-\\ Amount\\ fully\\ quanted\\ PSMs/_fully_quanted_psm_count/g' > header
+  # make a header for sample names, first clean it from #-sign
+  head -n1 mergedtable | sed 's/\\#/Amount/g' > header
   # exchange sample names on isobaric fields in header
   ${params.sampletable ? 'sed "s/[^A-Za-z0-9_\\t]/_/g" sampletable > clean_sampletable' : ''}
   ${params.sampletable && setisobaric ?  
-    'while read line ; do read -a arr <<< $line ; sed -i "s/${arr[0]}_\\([a-z0-9]*plex\\)_${arr[1]}/${arr[4]}_${arr[3]}_${arr[2]}_\\1_${arr[1]}/" header ; done < <(paste <(cut -f2 sampletable) clean_sampletable) > rawset_cleansampletable' \
+    'while read line ; do read -a arr <<< $line ; sed -i "s/${arr[0]}_\\([a-z0-9]*plex\\)_${arr[1]}/${arr[4]}_${arr[3]}_${arr[2]}_\\1_${arr[1]}/" header ; done < <(paste <(cut -f2 sampletable) clean_sampletable)' \
   :  ''}
   cat header <(tail -n+2 mergedtable) > feats
   ${params.deqms ? "numfields=\$(head -n1 feats | tr '\t' '\n' | wc -l) && deqms.R && paste <(head -n1 feats) <(head -n1 deqms_output | cut -f \$(( numfields+1 ))-\$(head -n1 deqms_output|wc -w)) > tmpheader && cat tmpheader <(tail -n+2 deqms_output) > proteintable" : 'mv feats proteintable'}
