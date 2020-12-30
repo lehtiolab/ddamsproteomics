@@ -17,7 +17,7 @@ if (has_fractions) {
 } else {
   width = 14
   xcol ='SpectraFile'
-  amount_ms2 = read.table("scans", sep="|", header=F)
+  amount_ms2 = read.table("scans", sep="|", header=F)[,2:3]
 }
 
 
