@@ -491,6 +491,7 @@ process complementSpectraLookupCleanPSMs {
   set path('t_cleaned_psms.txt'), path('d_cleaned_psms.txt') into cleaned_psms
   set path('target_db.sqlite'), path('decoy_db.sqlite') into complemented_speclookup 
   path 'cleaned_ptmpsms.txt' into cleaned_ptmpsms optional true
+  path 'ptms_db.sqlite' into ptm_lookup_old optional true
   file('all_setnames') into oldnewsets 
   
   script:
@@ -511,7 +512,7 @@ process complementSpectraLookupCleanPSMs {
       ${params.ptmpsms ? "mv \"${ptmpsms}\" cleaned_ptmpsms.txt" : ''}
   fi
   msstitch storespectra --spectra ${mzmlfiles.join(' ')} --setnames ${in_setnames.join(' ')} --dbfile target_db.sqlite
-  copy_spectra.py target_db.sqlite decoy_db.sqlite ${setnames.join(' ')}
+  copy_spectra.py target_db.sqlite decoy_db.sqlite ${params.ptmpsms ? 'ptms_db.sqlite' : '0'} ${setnames.join(' ')}
   cat old_setnames <(echo ${setnames.join('\n')}) | sort -u > all_setnames
   """
 }
@@ -526,6 +527,7 @@ process createNewSpectraLookup {
 
   output:
   set path('target_db.sqlite'), path('decoy_db.sqlite') into newspeclookup 
+  path 'target_db.sqlite' into ptm_lookup_new
   val(uni_setnames) into allsetnames
 
   script:
@@ -572,7 +574,7 @@ newspeclookup
   .concat(complemented_speclookup)
   .tap { prespectoquant }
   .map { it -> it[0] } // get only target lookup
-  .into { ptm_lookup_in; countlookup }
+  .into { countlookup }
 
 if (params.noquant && !params.quantlookup) {
   // Noquant, fresh spectra lookup scenario
@@ -597,6 +599,12 @@ if (params.noquant && !params.quantlookup) {
     .set { allsetnames }
 } else {
   prespectoquant.set { spectoquant }
+}
+
+if (!params.quantlookup) {
+  ptm_lookup_old
+    .concat(ptm_lookup_new)
+    .set { ptm_lookup_in }
 }
 
 
@@ -954,6 +962,8 @@ if (params.locptms) {
     .map { it.sort( {a, b -> a[0] <=> b[0]}) } // sort on setname
     .transpose()
     .toList()
+    .combine(setnames_ptms)
+    .map { it -> [(it[0] + it[2..-1]).unique(), it[1]] }
     .set { ptm_allsets }
 } else {
   setnames_ptms 
@@ -979,7 +989,7 @@ process createPTMLookup {
 
   input:
   tuple val(setnames), file('ptms?'), file(stabileptms), file(cleaned_oldptms) from lucptmfiles_to_lup
-  file(ptmlup) from ptm_lookup_in
+  file('speclup.sql') from ptm_lookup_in
 
   output:
   path ptmtable into features_out, ptmpsmqc
@@ -990,10 +1000,11 @@ process createPTMLookup {
   script:
   ptmtable = "ptm_psmtable.txt"
   """
-  msstitch concat -i ${params.ptms ? "'${stabileptms}'" : ''} ${params.locptms ? "ptms*" : ''} -o "${ptmtable}"
-  cat "${ptmlup}" > ptmlup.sql
-  msstitch psmtable -i "${ptmtable}" --dbfile ptmlup.sql -o ptmtable_read \
-    ${complementary_run ? "--oldpsms ${cleaned_oldptms}" : ''} --spectracol 1
+  # Concat all the PTM PSM tables (labile, stabile, previous) and load into DB
+  cat speclup.sql > ptmlup.sql
+  msstitch concat -i ${params.ptms ? "'${stabileptms}'" : ''} ${params.locptms ? "ptms*" : ''} ${complementary_run ? "'${cleaned_oldptms}'" : ''} -o concatptmpsms
+  msstitch psmtable -i concatptmpsms --dbfile ptmlup.sql -o "${ptmtable}" \
+    --spectracol 1
   msstitch split -i "${ptmtable}" --splitcol bioset
   ${setnames.collect() { "test -f '${it}.tsv' || echo 'No PTMs found for set ${it}' >> warnings" }.join(' && ') }
   """

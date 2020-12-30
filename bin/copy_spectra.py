@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 
 import sys
+import shutil
 import sqlite3
 
 target = sys.argv[1]
 decoy = sys.argv[2]
-setnames = sys.argv[3:]
+ptm = sys.argv[3]
+setnames = sys.argv[4:]
 
 
 con = sqlite3.Connection(decoy)
@@ -30,3 +32,12 @@ if con.execute('SELECT COUNT(*) FROM target.ionmob').fetchone()[0]:
     recs = con.execute('SELECT * FROM target.ionmob WHERE rowid>?', (maxionrow,))
     con.executemany('INSERT INTO main.ionmob VALUES(?, ?)', recs)
 con.commit()
+
+if ptm and ptm != '0':
+    shutil.copy(target, ptm)
+    con = sqlite3.Connection(ptm)
+    tables = ['psms', 'psmrows', 'peptide_sequences', 'fastafn', 'proteins', 'protein_evidence',
+            'protein_seq', 'prot_desc', 'protein_psm', 'genes', 'associated_ids', 'ensg_proteins', 'genename_proteins']
+    for table in tables:
+        con.execute('DROP TABLE IF EXISTS {}'.format(table))
+    con.commit()
