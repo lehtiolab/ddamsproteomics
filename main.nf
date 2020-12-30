@@ -103,7 +103,7 @@ def helpMessage() {
       --decoypsms FILE              In a complementary run, this passes the old decoy PSM table.
       --ptmpsms FILE                In a complementary run, this optionally passes the old PTM PSM table, if one runs
                                     with --locptms
-      --mzmlplates FILE             An --mzmldef file of the run you want to reuse and complement. Will be stripped of
+      --oldmzmldef FILE             An --mzmldef type file of a previous run you want to reuse and complement. Will be stripped of
                                     its set data for the new set that will be analyzed. Needed for --fractionation runs.
 
     Other options:
@@ -179,7 +179,7 @@ params.decoypsmlookup = false
 params.targetpsms = false
 params.decoypsms = false
 params.ptmpsms = false
-params.mzmlplates = false
+params.oldmzmldef = false
 
 // Validate and set file inputs
 fractionation = (params.hirief || params.fractions)
@@ -582,7 +582,7 @@ newspeclookup
   .concat(complemented_speclookup)
   .tap { prespectoquant }
   .map { it -> it[0] } // get only target lookup
-  .into { countlookup }
+  .set { countlookup }
 
 if (params.noquant && !params.quantlookup) {
   // Noquant, fresh spectra lookup scenario
@@ -674,9 +674,9 @@ process countMS2perFile {
 oldmzmls = Channel.from(false)
 if (fractionation) { 
   specfilems2.set { scans_platecount }
-  if (complementary_run && !file(params.mzmlplates).exists()) exit 1, 'Fractionation with complementing run needs an --mzmlplates file'
+  if (complementary_run && (!params.oldmzmldef || !file(params.oldmzmldef).exists())) exit 1, 'Fractionation with complementing run needs an --oldmzmldef file'
   else if (complementary_run) {
-    oldmzmls = Channel.fromPath(params.mzmlplates)
+    oldmzmls = Channel.fromPath(params.oldmzmldef)
   } 
 } else {
   specfilems2
