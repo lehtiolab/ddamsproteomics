@@ -43,7 +43,7 @@ NXF_OPTS='-Xms1g -Xmx4g'
 ## Running the pipeline
 The typical command for running the pipeline is as follows:
 ```bash
-nextflow run lehtiolab/ddamsproteomics --mzmls '*.mzML' --tdb swissprot_20181011.fa --mods assets/tmtmods.txt -profile standard,docker
+nextflow run lehtiolab/ddamsproteomics --mzmls '/path/to/*.mzML' --tdb /path/to/proteins.fa --mods 'oxidation;carbamidomethylation' -profile standard,docker
 ```
 
 This will launch the pipeline with the `docker` configuration profile. See below for more information about profiles.
@@ -126,13 +126,24 @@ concatenated database (T-TDC)
 ```
 
 
-### `--mods`
+### `--mods`, `--locptms`, `--ptms`
 Modifications as in UNIMOD, although only a selected number are available by name. You can extend this list
-by adding entries to `assets/msgfmods.txt`
+by adding entries to `assets/msgfmods.txt`. `--ptms` and `--locptms` are for stable/labile PTMs respectively,
+and they can optionally get isobaric quantification normalization (below).
 
 ```bash
---mods Carbamidomethylation;Oxidation
+--mods "Carbamidomethylation;Oxidation" --ptms Acetyl --locptms Phoshpo
 ```
+
+
+### `--totalproteomepsms`
+This passes a PSM table of a previously done matching search of the global (non-PTM) proteome. The PSMs will we converted to proteins,
+which will be used for normalization of PTM peptide isobaric quantification.
+
+```bash
+--totalproteomepsms /path/to/global_target_psmtable.txt
+```
+
 
 ### Output types
 The pipeline will produce by default PSM, peptide, and protein tables. You may pass FASTA databases that contain mixtures of ENSEMBL, Uniprot, or other types of entries. Use `--genes` and `--ensg` to output a gene(name)-centric table and an ENSG-centric table. If you rather have less output, use `--onlypeptides` to not output a protein table.
@@ -160,7 +171,7 @@ Even when not using DEqMS you can provide a sample table for annotation of your 
 
 
 ### PTM analysis
-PTMS reported by the search engine can be scored using Luciphor2, which will output the best scoring PTM localization and a false localization rate. Note that this is only beneficial for labile PTMs. Aside from that if any high-scoring PTMs are found by luciphor the pipeline will report these as well. All of this will end up in a separate PTM PSM table and a PTM peptide table.
+As mentioned, labile PTMS reported by the search engine will be scored using Luciphor2, which will output the best scoring PTM localization and a false localization rate. Note that this is only beneficial for labile PTMs. Aside from that if any high-scoring PTMs are found by luciphor the pipeline will report these as well. All of this will end up in a separate PTM PSM table and a PTM peptide table.
 
 
 ### Reusing data

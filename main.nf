@@ -37,13 +37,20 @@ def helpMessage() {
       --mods                        Modifications specified by their UNIMOD name. e.g. --mods 'oxidation;carbamidomethyl'
                                     Note that there are a limited number of modifications available, but that
                                     this list can easily be expanded in assets/msgfmods.txt
-      --locptms                     As for --mods, but specify labile mods, pipeline will output false localization rate e.g.
-                                    --locptms 'phospho'
+      --locptms                     As for --mods, but specify labile mods, pipeline will output false localization rate,
+                                    output QC plots and if handed total proteome PSMs also output a normalized peptide table
+                                    for deciding if PTM peptide expression deviates from respective protein expression
+                                    e.g. --locptms 'phospho'
+      --ptms                        As for --locptms but without false localization rate, for non-labile PTMs 
+                                    e.g. --ptms 'acetyl'
+      --totalproteomepsms           A PSM table of a global (total) proteome search without PTMs, to do a normalization
+                                    of the PTM peptide table against. PTM peptides will be normalized to their matching
+                                    proteins for isobaric quant.
       --isobaric VALUE              In case of isobaric, specify per set the type and possible denominators/sweep/intensity.
                                     In case of intensity, no ratios will be output but instead the raw PSM intensities will be
                                     median-summarized to the output features (e.g. proteins).
                                     Available types are tmtpro, tmt10plex, tmt6plex, itraq8plex, itraq4plex
-                                    E.g. --isobaric 'set1:tmt10plex:126:127N set2:tmtpro:127C:131 set3:tmt10plex:sweep'
+                                    E.g. --isobaric 'set1:tmt10plex:126:127N set2:tmtpro:127C:131 set3:tmt10plex:sweep set4:itraq8plex:intensity'
       --activation VALUE            Specify activation protocol for isobaric quantitation (NOT for identification):
                                     choose from hcd (DEFAULT), cid, etd 
       --fastadelim VALUE            FASTA header delimiter in case non-standard FASTA is used, to be used with
@@ -96,7 +103,8 @@ def helpMessage() {
       --decoypsms FILE              In a complementary run, this passes the old decoy PSM table.
       --ptmpsms FILE                In a complementary run, this optionally passes the old PTM PSM table, if one runs
                                     with --locptms
-
+      --mzmlplates FILE             An --mzmldef file of the run you want to reuse and complement. Will be stripped of
+                                    its set data for the new set that will be analyzed. Needed for --fractionation runs.
 
     Other options:
       --outdir                      The output directory where the results will be saved

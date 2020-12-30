@@ -64,6 +64,7 @@ and processes data using the following steps:
 * [Percolator](#percolator) - Target-decoy scoring
 * [OpenMS](#openms) - Quantification of isobaric tags
 * [Dinosaur](#dinosaur) - Quantification of precursor peptides
+* [Hardklor/Kronik](#hardklor) - Quantification of precursor peptides
 * [Luciphor2](#luciphor2) - False localization rates for PTMs
 * [Msstitch](#msstitch) - Post processing, protein inference
 * [DEqMS](#deqms) - Differential expression analysis
@@ -82,6 +83,10 @@ and processes data using the following steps:
 
 ## Dinosaur
 [Dinosaur](https://github.com/fickludd/dinosaur) identifies peptide features in MS1 data and is an improved reimplementation of the MaxQuant algorithm. [PMID 27224449](https://pubmed.ncbi.nlm.nih.gov/27224449/)
+
+
+## Hardklor/Kronik
+[Hardklor](https://proteome.gs.washington.edu/software/hardklor/) identifies peptide features in MS1 data by reducing isotope distributions to a single monoisotopic mass. It in tandem with its [Kronik](https://github.com/mhoopmann/kronik) utility (which summarizes the Hardklor results from LC/MS data) can be used to quantify MS1 peptide features. This can be used instead of Dinosaur by passing `--hardklor`
 
 
 ## Luciphor2
