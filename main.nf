@@ -103,8 +103,6 @@ def helpMessage() {
       --decoypsms FILE              In a complementary run, this passes the old decoy PSM table.
       --ptmpsms FILE                In a complementary run, this optionally passes the old PTM PSM table, if one runs
                                     with --locptms
-      --oldmzmldef FILE             An --mzmldef type file of a previous run you want to reuse and complement. Will be stripped of
-                                    its set data for the new set that will be analyzed. Needed for --fractionation runs.
 
     Other options:
       --outdir                      The output directory where the results will be saved
@@ -179,7 +177,6 @@ params.decoypsmlookup = false
 params.targetpsms = false
 params.decoypsms = false
 params.ptmpsms = false
-params.oldmzmldef = false
 
 // Validate and set file inputs
 fractionation = (params.hirief || params.fractions)
@@ -501,6 +498,7 @@ process complementSpectraLookupCleanPSMs {
   path 'cleaned_ptmpsms.txt' into cleaned_ptmpsms optional true
   path 'ptms_db.sqlite' into ptm_lookup_old optional true
   file('all_setnames') into oldnewsets 
+  path('oldmzml_plates') into old_filesetstrip optional true
   
   script:
   setnames = in_setnames.unique(false)
@@ -517,8 +515,12 @@ process complementSpectraLookupCleanPSMs {
     else
       mv "${tpsms}" t_cleaned_psms.txt
       mv "${dpsms}" d_cleaned_psms.txt
-      ${params.ptmpsms ? "mv \"${ptmpsms}\" cleaned_ptmpsms.txt" : ''}
+      ${params.ptmpsms ? "mv '${ptmpsms}' cleaned_ptmpsms.txt" : ''}
   fi
+  ${fractionation ? "stripcol=\$(head -n1 t_cleaned_psms.txt | tr '\\t' '\\n' | grep -n '^Strip\$' | cut -f1 -d':')" : ''}
+  ${fractionation ? "setcol=\$(head -n1 t_cleaned_psms.txt | tr '\\t' '\\n' | grep -n '^Biological set\$' | cut -f1 -d':')" : ''}
+  ${fractionation ? "cut -f1,\$setcol,\$stripcol t_cleaned_psms.txt | tail -n+2 | sort -u > oldmzml_plates" : ''}
+  
   msstitch storespectra --spectra ${mzmlfiles.join(' ')} --setnames ${in_setnames.join(' ')} --dbfile target_db.sqlite
   copy_spectra.py target_db.sqlite decoy_db.sqlite ${params.ptmpsms ? 'ptms_db.sqlite' : '0'} ${setnames.join(' ')}
   cat old_setnames <(echo ${setnames.join('\n')}) | sort -u > all_setnames
@@ -671,13 +673,8 @@ process countMS2perFile {
 }
 
 
-oldmzmls = Channel.from(false)
 if (fractionation) { 
   specfilems2.set { scans_platecount }
-  if (complementary_run && (!params.oldmzmldef || !file(params.oldmzmldef).exists())) exit 1, 'Fractionation with complementing run needs an --oldmzmldef file'
-  else if (complementary_run) {
-    oldmzmls = Channel.fromPath(params.oldmzmldef)
-  } 
 } else {
   specfilems2
     .map { it -> [it[3], ['noplates']] }
@@ -692,7 +689,7 @@ process countMS2sPerPlate {
 
   input:
   set val(setnames), file(mzmlfiles), val(platenames), file('nr_spec_per_file') from scans_platecount
-  file(oldmzmls) from oldmzmls
+  file(old_platedef) from old_filesetstrip
 
   output:
   file('scans_per_plate') into scans_perplate
@@ -713,10 +710,10 @@ process countMS2sPerPlate {
       except KeyError:
           fileplates[fn] = {setname: plate} 
   if ${complementary_run ? 1 : 0}:
-      with open('$oldmzmls') as oldmzfp:
+      with open('$old_platedef') as oldmzfp:
           for line in oldmzfp:
-              fpath, inst, setname, plate, fr = line.strip('\\n').split('\\t')
-              fn = os.path.basename(fpath)
+              fn, setname, plate = line.strip('\\n').split('\\t')
+              #fn = os.path.basename(fpath)
               setplate = '{}_{}'.format(setname, plate)
               if setplate not in platesets:
                   platesets.append(setplate)
