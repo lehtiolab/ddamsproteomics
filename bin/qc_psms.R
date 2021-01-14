@@ -12,12 +12,12 @@ if (has_fractions) {
   width = 4
   xcol ='plateID'
   feats$plateID = paste(feats$Biological.set, feats$Strip, sep='_')
-  amount_ms2 = read.table("scans")
+  amount_ms2 = read.table("platescans")
   feats$Fraction = as.factor(feats$Fraction)
 } else {
   width = 14
   xcol ='SpectraFile'
-  amount_ms2 = read.table("scans", sep="|", header=F)[,2:3]
+  amount_ms2 = read.table("filescans", sep="|", header=F)[,2:3]
 }
 
 
@@ -73,21 +73,27 @@ dev.off()
 # Now the per-fraction or per-file stats
 if (has_fractions) {
   xcol = 'Fraction'
+  fryield_form = 'SpecID ~ Fraction + plateID'
+  # plateID not necessary because we take subfeats?
 } else { 
   xcol = 'SpectraFile'
+  fryield_form = 'SpecID ~ SpectraFile'
 }
-  
+
+allfilefractions = read.table("mzmlfrs", header=F)
+colnames(allfilefractions) = c('SpectraFile', 'plateID', 'Fraction')
+
 ptypes = list(retentiontime=c('Retention.time.min.', 'time(min)'), precerror=c('PrecursorError.ppm.', 'Precursor error (ppm)'), 
               fryield=c('SpecID', '# PSMs'), msgfscore=c('MSGFScore', 'MSGF Score'), fwhm=c('FWHM', 'FWHM'))
-fryield_form = paste('SpecID ~', xcol)
 for (plateid in plateids) {
   if (has_fractions) {
     subfeats = subset(feats, plateID==plateid) 
-    fryield_form = paste(fryield_form, '+ plateID')
+    subfiles = subset(allfilefractions, plateID==plateid)
     h = 4
     w = 14
   } else { 
     subfeats = feats
+    subfiles = allfilefractions
     h = nrow(unique(feats[xcol])) + 1
     w = 14
   }
@@ -95,7 +101,8 @@ for (plateid in plateids) {
     fn = paste('PLATE', plateid, ptype, sep="___")
     if (ptypes[[ptype]][1] %in% colnames(subfeats)) {
       if (ptype == 'fryield') {
-        plotdata = aggregate(as.formula(fryield_form), subfeats, length)
+        yieldcounts = aggregate(as.formula(fryield_form), subfeats, length)
+        plotdata = merge(yieldcounts, subfiles[xcol], all.y=T)
         p = ggplot(plotdata) + geom_bar(aes_string(x=xcol, y=ptypes[[ptype]][1]), stat='identity')
       } else {
         plotdata = subfeats

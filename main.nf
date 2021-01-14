@@ -474,7 +474,11 @@ process quantifySpectra {
 mzmlfiles
   .toList()
   .map { it.sort( {a, b -> a[1] <=> b[1]}) } // sort on sample for consistent .sh script in -resume
-  .map { it -> [it.collect() { it[0] }, it.collect() { it[2] }, it.collect() { it[4] } ] } // lists: [sets], [mzmlfiles], [plates]
+  .map { it -> [it.collect() { it[0] }, it.collect() { it[2] }, it.collect() { it[4] }, it.collect() { it[1] }, it.collect() { it[5] } ] } // lists: [sets], [mzmlfiles], [plates], [basenames], [fractions]
+  .into { mzmlfiles_psmqc; mzmlfiles_rest }
+
+mzmlfiles_rest
+  .map { it -> it[0..2] } // remove basenames, fractions
   .into { mzmlfiles_all; mzmlfiles_all_count; mzmlfiles_comp }
 
 mzmlfiles_counter
@@ -673,11 +677,16 @@ process countMS2perFile {
 }
 
 
-if (fractionation) { 
-  specfilems2.set { scans_platecount }
+if (fractionation && complementary_run) { 
+  specfilems2
+    .combine(old_filesetstrip)
+    .set { scans_platecount }
+} else if (fractionation) {
+  specfilems2
+    .set { scans_platecount }
 } else {
   specfilems2
-    .map { it -> [it[3], ['noplates']] }
+    .map { it -> [it[3], 'NA', ['noplates']] }
     .into { scans_platecount; scans_result }
 }
 
@@ -688,11 +697,10 @@ process countMS2sPerPlate {
   when: fractionation
 
   input:
-  set val(setnames), file(mzmlfiles), val(platenames), file('nr_spec_per_file') from scans_platecount
-  file(old_platedef) from old_filesetstrip
+  set val(setnames), file(mzmlfiles), val(platenames), file('nr_spec_per_file'), file(old_platedef) from scans_platecount
 
   output:
-  file('scans_per_plate') into scans_perplate
+  set path('nr_spec_per_file'), path('scans_per_plate') into scans_perplate
   file('allplates') into allplates
 
   script:
@@ -1277,21 +1285,25 @@ process proteinPeptideSetMerge {
 
 psm_result
   .filter { it[0] == 'target' }
-  .merge(scans_result)
-  .map { it -> [it[0], it[1], it[2], it[3].unique()] }
+  .combine(scans_result)
+  .map { it -> [it[0], it[1], it[2], it[3], it[4].unique()] }
   .set { targetpsm_result }
 
 
 process psmQC {
+
   input:
-  set val(td), file('psms'), file('scans'), val(plates) from targetpsm_result
+  set val(td), file('psms'), file('filescans'), file('platescans'), val(plates) from targetpsm_result
   val(setnames) from setnames_psmqc
+  set val(plicate_sets), val(mzmlpaths), val(mzmlplates), val(mzmlbasenames), val(fractions) from mzmlfiles_psmqc
+
   output:
   set val('psms'), file('psmqc.html'), file('summary.txt') into psmqccollect
   val(plates) into qcplates
   // TODO no proteins == no coverage for pep centric
   script:
   """
+  paste <(echo $mzmlbasenames | tr ' ' '\\n') <( echo $plates | tr ' ' '\\n') <(echo $fractions | tr ' ' '\\n') > mzmlfrs
   qc_psms.R ${setnames[0].size()} ${fractionation ? 'TRUE' : 'FALSE'} ${plates.join(' ')}
   sed -Ei 's/[^A-Za-z0-9_\\t]/./' summary.txt
   echo "<html><body>" > psmqc.html
