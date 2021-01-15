@@ -4,7 +4,9 @@ library(reshape2)
 args = commandArgs(trailingOnly=TRUE)
 nrsets = as.numeric(args[1])
 has_fractions = args[2] == TRUE
-plateids = args[3:length(args)]
+oldmzmlfn = args[3]
+oldmzmldef = ifelse(oldmzmlfn == 'nofile', FALSE, TRUE)
+plateids = args[4:length(args)]
 
 feats = read.table("psms", header=T, sep="\t", comment.char = "", quote = "")
 ycol = 'value'
@@ -80,8 +82,15 @@ if (has_fractions) {
   fryield_form = 'SpecID ~ SpectraFile'
 }
 
-allfilefractions = read.table("mzmlfrs", header=F)
-colnames(allfilefractions) = c('SpectraFile', 'plateID', 'Fraction')
+allfilefractions = read.table("mzmlfrs", header=F, sep='\t')
+colnames(allfilefractions) = c('SpectraFile', 'setname', 'strip', 'Fraction')
+if (oldmzmldef) {
+  oldmzmls = read.table(oldmzmlfn, header=F, sep='\t')[,c(1,3,4,5)]
+  colnames(oldmzmls) = c('SpectraFile', 'setname', 'strip', 'Fraction')
+  allfilefractions = rbind(allfilefractions, oldmzmls)
+}
+allfilefractions$plateID = paste(allfilefractions$setname, allfilefractions$strip, sep='_')
+allfilefractions$Fraction = as.factor(allfilefractions$Fraction)
 
 ptypes = list(retentiontime=c('Retention.time.min.', 'time(min)'), precerror=c('PrecursorError.ppm.', 'Precursor error (ppm)'), 
               fryield=c('SpecID', '# PSMs'), msgfscore=c('MSGFScore', 'MSGF Score'), fwhm=c('FWHM', 'FWHM'))

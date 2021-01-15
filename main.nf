@@ -280,6 +280,7 @@ summary['Pipeline Name']  = 'lehtiolab/ddamsproteomics'
 summary['Pipeline Version'] = workflow.manifest.version
 summary['Run Name']     = custom_runName ?: workflow.runName
 summary['mzMLs']        = params.mzmls
+summary['or mzML definition file']        = params.mzmldef
 summary['Target DB']    = params.tdb
 summary['Sample annotations'] = params.sampletable
 summary['Modifications'] = params.mods
@@ -310,6 +311,7 @@ summary['Previous run target results SQLite'] = params.targetpsmlookup
 summary['Previous run decoy results SQLite'] = params.decoypsmlookup
 summary['Previous run target PSMs'] = params.targetpsms
 summary['Previous run decoy PSMs'] = params.decoypsms
+summary['Previous run mzml definition'] = params.oldmzmldef
 summary['Fractionated sample'] = fractionation
 summary['HiRIEF pI peptide data'] = params.hirief 
 summary['Only output peptides'] = params.onlypeptides
@@ -474,6 +476,12 @@ process quantifySpectra {
 
 
 // Collect all mzMLs into single item to pass to lookup builder and spectra counter
+if (params.oldmzmldef) { 
+  oldmzmls = Channel.fromPath(params.oldmzmldef).tap { oldmzmls_psmqc } 
+} else {
+  oldmzmls = Channel.from(false).tap { oldmzmls_psmqc } 
+}
+
 mzmlfiles
   .toList()
   .map { it.sort( {a, b -> a[1] <=> b[1]}) } // sort on sample for consistent .sh script in -resume
@@ -676,12 +684,10 @@ process countMS2perFile {
 }
 
 
-oldmzmls = Channel.from(false)
 if (fractionation && complementary_run) { 
-  if (!params.oldmzmldef || !file(params.oldmzmldef).exists())) exit 1, 'Fractionation with complementing run needs an --oldmzmldef file'
-  oldmzmls = Channel.fromPath(params.oldmzmldef)
+  if (!params.oldmzmldef || !file(params.oldmzmldef).exists()) exit 1, 'Fractionation with complementing run needs an --oldmzmldef file'
   specfilems2
-    .combine(old_mzmldef)
+    .combine(oldmzmls)
     .set { scans_platecount }
 } else if (fractionation) {
   specfilems2
@@ -1292,12 +1298,14 @@ psm_result
   .set { targetpsm_result }
 
 
+mzmlfiles_psmqc.combine(oldmzmls_psmqc).set { mzmlfiles_psmqc_oldmzmls }
+
 process psmQC {
 
   input:
   set val(td), file('psms'), file('filescans'), file('platescans'), val(plates) from targetpsm_result
   val(setnames) from setnames_psmqc
-  set val(plicate_sets), val(mzmlpaths), val(mzmlplates), val(mzmlbasenames), val(fractions) from mzmlfiles_psmqc
+  set val(plicate_sets), val(mzmlpaths), val(mzmlplates), val(mzmlbasenames), val(fractions), file('oldmzmldef') from mzmlfiles_psmqc_oldmzmls
 
   output:
   set val('psms'), file('psmqc.html'), file('summary.txt') into psmqccollect
@@ -1305,8 +1313,8 @@ process psmQC {
   // TODO no proteins == no coverage for pep centric
   script:
   """
-  paste <(echo $mzmlbasenames | tr ' ' '\\n') <( echo $plates | tr ' ' '\\n') <(echo $fractions | tr ' ' '\\n') > mzmlfrs
-  qc_psms.R ${setnames[0].size()} ${fractionation ? 'TRUE' : 'FALSE'} ${plates.join(' ')}
+  paste <(echo ${mzmlbasenames.join(' ')} | tr ' ' '\\n' ) <(echo ${plicate_sets.join(' ')} | tr ' ' '\\n') <( echo ${mzmlplates.join(' ')} | tr ' ' '\\n') <(echo ${fractions.join(' ')} | tr ' ' '\\n') > mzmlfrs
+  qc_psms.R ${setnames[0].size()} ${fractionation ? 'TRUE' : 'FALSE'} ${params.oldmzmldef ? 'oldmzmldef' : 'nofile'} ${plates.join(' ')}
   sed -Ei 's/[^A-Za-z0-9_\\t]/./' summary.txt
   echo "<html><body>" > psmqc.html
   for graph in psm-scans missing-tmt miscleav
