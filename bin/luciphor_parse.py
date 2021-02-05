@@ -16,9 +16,9 @@ TOPSCORE = 'Top PTM score'
 OTHERPTMS = 'High-scoring PTMs'
 SE_PEPTIDE = 'SearchEnginePeptide'
 PEPTIDE = 'Peptide'
-PROTEIN = 'Master protein(s)'
-PTM_PROTEIN = 'PTM-Master protein(s)'
-PTMFIELDS = [PTM_PROTEIN, SE_PEPTIDE, TOPPTM, TOPSCORE, TOPFLR, OTHERPTMS]
+MASTER_PROTEIN = 'Master protein(s)'
+PROTEIN = 'Protein'
+PTMFIELDS = [SE_PEPTIDE, TOPPTM, TOPSCORE, TOPFLR, OTHERPTMS]
 
 def main():
     minscore_high = float(sys.argv[1])
@@ -107,10 +107,11 @@ def main():
         for psm in psms:
             psm = psm.strip('\n').split('\t')
             psm = {k: v for k,v in zip(psmheader, psm)}
-            proteins = psm[PROTEIN].split(';')
+            proteins = psm[MASTER_PROTEIN].split(';')
             psmid = '{}.{}.{}.{}'.format(os.path.splitext(psm['SpectraFile'])[0], psm['ScanNum'], psm['ScanNum'], psm['Charge'])
             if psmid in lucptms:
                 ptm = lucptms[psmid]
+                # Get protein site location of mod
                 proteins = {p: tdb[p].seq.find(ptm['barepep']) for p in proteins}
                 proteins_loc = {p: [] for p, peploc in proteins.items() if peploc > -1}
                 for p, peploc in proteins.items():
@@ -121,7 +122,7 @@ def main():
                         for res_loc in ptmlocs:
                             protptms.append('{}{}'.format(res_loc[0], res_loc[1] + peploc))
                             proteins_loc[p].append('{}_{}'.format(ptmname, ','.join(protptms)))
-                psm[PTM_PROTEIN] = ';'.join(['{}:{}'.format(p, ':'.join(ptmloc)) for p, ptmloc in proteins_loc.items()])
+                psm[PROTEIN] = ';'.join(['{}:{}'.format(p, ':'.join(ptmloc)) for p, ptmloc in proteins_loc.items()])
                 outpsm = {k: v for k,v in psm.items()}
                 outpsm.update(ptm)
                 assert re.sub('[0-9.\[\]+-]', '', psm['Peptide']) == ptm['barepep']
