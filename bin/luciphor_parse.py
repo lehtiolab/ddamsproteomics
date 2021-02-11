@@ -27,6 +27,7 @@ def main():
     ptms = sys.argv[4].split(';')
     mods = sys.argv[5].split(';')
     fasta = sys.argv[6]
+    tp_normalization = sys.argv[7] != 'false'
 
     ptmmods = ptms + mods
     # First prepare a residue + PTM weight -> PTM name dict for naming mods
@@ -125,10 +126,23 @@ def main():
                 psm[PROTEIN] = ';'.join(['{}:{}'.format(p, ':'.join(ptmloc)) for p, ptmloc in proteins_loc.items()])
                 outpsm = {k: v for k,v in psm.items()}
                 outpsm.update(ptm)
-                assert re.sub('[0-9.\[\]+-]', '', psm['Peptide']) == ptm['barepep']
                 outpsm[SE_PEPTIDE] = outpsm.pop(PEPTIDE)
-                outpsm[PEPTIDE] = '{}_{}'.format(ptm['barepep'], ptm[TOPPTM])
-                wfp.write('\n{}'.format('\t'.join([outpsm[k] for k in outheader])))
+                for out in output_psm(ptm[TOPPTM], ptm['barepep'], proteins, tp_normalization):
+                    outpsm.update(out)
+                    wfp.write('\n{}'.format('\t'.join([outpsm[k] for k in outheader])))
+
+
+def output_psm(topptm, barepep, proteins, tp_normalization):
+    out = {}
+    if tp_normalization:
+        # Put protein acc in peptide seq for multi-master normalizing
+        for master in proteins:
+            out[PEPTIDE] = '{}_{}::{}'.format(barepep, topptm, master)
+            out[MASTER_PROTEIN] = master
+            yield out
+    else:
+        out[PEPTIDE] = '{}_{}'.format(barepep, topptm)
+        yield out
 
 
 if __name__ == '__main__':

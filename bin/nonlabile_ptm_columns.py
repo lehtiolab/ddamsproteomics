@@ -69,11 +69,8 @@ def main():
                 # be treated by luciphor)
                 continue
             barepep += psm['Peptide'][start:]
-            #ptm.update({'modres': modresidues})
             psm[lucp.TOPPTM] = ';'.join(['{}:{}'.format(name, ','.join(['{}{}'.format(x[0], x[1]) for x in resmods])) for 
                     name, resmods in modresidues.items() if len(resmods)])
-            #if psmid in lucptms:
-            #    ptm = lucptms[psmid]
             proteins = {p: tdb[p].seq.find(barepep) for p in proteins}
             proteins_loc = {p: [] for p, peploc in proteins.items() if peploc > -1}
             for p, peploc in proteins.items():
@@ -85,12 +82,11 @@ def main():
                         protptms.append('{}{}'.format(res_loc[0], res_loc[1] + peploc))
                         proteins_loc[p].append('{}_{}'.format(ptmname, ','.join(protptms)))
             psm[lucp.PROTEIN] = ';'.join(['{}:{}'.format(p, ':'.join(ptmloc)) for p, ptmloc in proteins_loc.items()])
-            #outpsm = {k: v for k,v in psm.items()}
-            #outpsm.update(psm)
             assert re.sub('[0-9.\[\]+-]', '', psm['Peptide']) == barepep
             psm[lucp.SE_PEPTIDE] = psm.pop(lucp.PEPTIDE)
-            psm[lucp.PEPTIDE] = '{}_{}'.format(barepep, psm[lucp.TOPPTM])
-            wfp.write('\n{}'.format('\t'.join([psm[k] for k in outheader])))
+            for out in lucp.output_psm(psm[lucp.TOPPTM], barepep, proteins, tp_normalization):
+                psm.update(out)
+                wfp.write('\n{}'.format('\t'.join([psm[k] for k in outheader])))
 
 
 if __name__ == '__main__':

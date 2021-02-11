@@ -954,7 +954,7 @@ process luciphorPTMLocalizationScoring {
   cat "$baseDir/assets/luciphor2_input_template.txt" | envsubst > lucinput.txt
   luciphor_prep.py target.tsv lucinput.txt "${params.msgfmods}" "${params.mods}${isobtype ? ";${isobtype}" : ''}${params.ptms ? ";${params.ptms}" : ''}" "${params.locptms}" luciphor.out
   luciphor2 -Xmx${task.memory.toGiga()}G luciphor_config.txt
-  luciphor_parse.py ${params.ptm_minscore_high} labileptms.txt "${params.msgfmods}" "${params.locptms}" "${params.mods}${params.ptms ? ";${params.ptms}" : ''}" "${tdb}"
+  luciphor_parse.py ${params.ptm_minscore_high} labileptms.txt "${params.msgfmods}" "${params.locptms}" "${params.mods}${params.ptms ? ";${params.ptms}" : ''}" "${tdb}" "${params.totalproteomepsms}"
   """
 }
 // FIXME msgfmods is false? oxidation so probably never.
@@ -1024,6 +1024,9 @@ process createPTMLookup {
   ptmtable = "ptm_psmtable.txt"
   """
   # Concat all the PTM PSM tables (labile, stabile, previous) and load into DB
+  # PSM peptide sequences include the PTM site
+  # Totalproteome-to-be-normalized PSMs have a yet weirder sequence inlcuding 
+  # the portein and are multiple per master protein
   cat speclup.sql > ptmlup.sql
   msstitch concat -i ${params.ptms ? "'${stabileptms}'" : ''} ${params.locptms ? "ptms*" : ''} ${complementary_run ? "'${cleaned_oldptms}'" : ''} -o concatptmpsms
   msstitch psmtable -i concatptmpsms --dbfile ptmlup.sql -o "${ptmtable}" \
@@ -1120,9 +1123,9 @@ process mergePTMPeps {
     ${!params.noquant && !params.noms1quant ? "--ms1quantcolpattern area" : ''} \
     ${!params.noquant && setisobaric ? "--isobquantcolpattern plex" : ''}
   head -n1 mergedtable | sed 's/q-value/q-value-or-FLR/g' > "${peptable}"
-  tail -n+2 mergedtable | sort -k1b,1 >> "${peptable}"
-  # FIXME add params.ptms to the QC tables, need slice of table first
-  # and in that slice we need to add the site name of the PTM as "Phospho:S3,T45" etc.
+  # if normalizing to total proteome, add a column, split peptide::protein into that column:
+  ${params.totalproteomepsms ? "sed -i '0,/\\(Peptide sequence\\)/s//\\1'\$'\\tNormalized against/' '${peptable}'" : ''}
+  tail -n+2 mergedtable | sort -k1b,1 ${params.totalproteomepsms ? "| sed 's/::/'\$'\\t/'" : ''} >> "${peptable}"
   qc_ptms.R "${setnames.size()}" "${params.locptms ? params.locptms : ''}${params.ptms ? ";${params.ptms}": ''}" ptmpsms.txt "${peptable}"
   echo "<html><body>" > ptmqc.html
   for graph in ptmpsmfeats ptmpepfeats ptmprotfeats psmptmresidues pepptmresidues;
