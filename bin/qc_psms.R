@@ -92,8 +92,14 @@ if (oldmzmldef) {
 allfilefractions$plateID = paste(allfilefractions$setname, allfilefractions$strip, sep='_')
 allfilefractions$Fraction = as.factor(allfilefractions$Fraction)
 
-ptypes = list(retentiontime=c('Retention.time.min.', 'time(min)'), precerror=c('PrecursorError.ppm.', 'Precursor error (ppm)'), 
-              fryield=c('SpecID', '# PSMs'), msgfscore=c('MSGFScore', 'MSGF Score'), fwhm=c('FWHM', 'FWHM'))
+ptypes = list(
+  retentiontime=c('Retention.time.min.', 'time(min)'),
+  precerror=c('PrecursorError.ppm.', 'Precursor error (ppm)'),
+  fryield=c('SpecID', '# PSMs'),
+  msgfscore=c('MSGFScore', 'MSGF Score'),
+  fwhm=c('FWHM', 'FWHM'),
+  pif=c('Precursor.ion.fraction', 'Precursor/all in window'))
+
 for (plateid in plateids) {
   if (has_fractions) {
     subfeats = subset(feats, plateID==plateid) 

@@ -73,6 +73,10 @@ def helpMessage() {
       --maxcharge                   Maximum peptide charge search, default 6
 
       OUTPUT AND QUANT PARAMETERS
+      --minprecursorpurity          Minimum value of precursor purity (target fraction of precursor in isolation
+                                    window) for assigning isobaric quant to PSMs. PSMs below this value
+                                    get assigned NA. A number between 0 and 1. Default 0 allows all PSMs
+                                    quant values.
       --normalize                   Normalize isobaric values by median centering on channels of protein table
       --sampletable                 Path to sample annotation table in case of isobaric analysis
       --deqms                       Perform DEqMS differential expression analysis using sampletable
@@ -160,6 +164,7 @@ params.fdrmethod = 'tdconcat'
 params.activation = 'hcd' // Only for isobaric quantification
 params.outdir = 'results'
 params.normalize = false
+params.minprecursorpurity = 0
 params.genes = false
 params.ensg = false
 params.fastadelim = false
@@ -889,7 +894,7 @@ process createPSMTable {
   sed '0,/\\#SpecFile/s//SpectraFile/' -i psms.txt
   msstitch psmtable -i psms.txt --dbfile $psmlookup --addmiscleav -o psmsrefined --spectracol 1 \
     ${params.onlypeptides ? '' : "--fasta \"${td == 'target' ? "${tdb}" : "${ddb}"}\" --genes"} \
-    ${quant ? "${!params.noms1quant ? '--ms1quant' : ''} ${params.isobaric ? '--isobaric' : ''}" : ''} \
+    ${quant ? "${!params.noms1quant ? '--ms1quant' : ''} ${params.isobaric ? "--isobaric --min-precursor-purity ${params.minprecursorpurity}" : ''}" : ''} \
     ${!params.onlypeptides ? '--proteingroup' : ''} \
     ${complementary_run ? "--oldpsms ${cleaned_oldpsms}" : ''}
   sed 's/\\#SpecFile/SpectraFile/' -i psmsrefined
@@ -973,7 +978,7 @@ process stabilePTMPrep {
   script:
   isobtype = setisobaric && setisobaric[setname] ? setisobaric[setname] : ''
   """
-  nonlabile_ptm_columns.py psms stabileptms.txt "${params.msgfmods}" "$params.ptms" "${params.locptms ? "$params.locptms" : ""}" "${params.mods}${isobtype ? ";${isobtype}" : ''}" "${tdb}"
+  nonlabile_ptm_columns.py psms stabileptms.txt "${params.msgfmods}" "$params.ptms" "${params.locptms ? "$params.locptms" : ""}" "${params.mods}${isobtype ? ";${isobtype}" : ''}" "${tdb}" "${params.totalproteomepsms}"
   """
 }
 
@@ -1326,7 +1331,7 @@ process psmQC {
     do
     [[ -e \$graph ]] && echo "<div class=\\"chunk\\" id=\\"\${graph}\\"> \$(sed "s/id=\\"/id=\\"\${graph}/g;s/\\#/\\#\${graph}/g" <\$graph) </div>" >> psmqc.html
     done 
-  for graph in retentiontime precerror fwhm fryield msgfscore
+  for graph in retentiontime precerror fwhm fryield msgfscore pif
     do
     for plateid in ${plates.join(' ')}
       do

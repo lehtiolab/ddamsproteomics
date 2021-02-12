@@ -17,6 +17,7 @@ def main():
     locptms = sys.argv[5].split(';') if sys.argv[5] else []
     mods = sys.argv[6].split(';') if sys.argv[6] else []
     fasta = sys.argv[7]
+    tp_normalization = sys.argv[8] != 'false'
 
     msgfmods = get_msgfmods(modfile)
     fixedmods = {}
