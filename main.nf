@@ -698,6 +698,7 @@ if (fractionation && complementary_run) {
     .set { scans_platecount }
 } else if (fractionation) {
   specfilems2
+    .map { it -> it[0..-1] + 'NA' }
     .set { scans_platecount }
 } else {
   specfilems2
@@ -855,7 +856,9 @@ if (complementary_run) {
     .join(td_oldpsms)
     .set { prepsm }
 } else {
-  psmswithout_oldpsms.set { prepsm }
+  psmswithout_oldpsms
+    .map { it -> it[0..-1] + 'NA' }
+    .set { prepsm }
 }
 
 /*
