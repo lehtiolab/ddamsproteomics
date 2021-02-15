@@ -528,7 +528,8 @@ process complementSpectraLookupCleanPSMs {
   cp "${tlup}" target_db.sqlite && sqlite3 target_db.sqlite "SELECT set_name FROM biosets" > old_setnames
   cp "${dlup}" decoy_db.sqlite
   # If adding to old lookup: grep new setnames in old and run msstitch deletesets if they match
-  if grep -f old_setnames <(echo ${setnames.join('\n')} )
+  # use -x for grep since old_setnames must grep whole word
+  if grep -xf old_setnames <(echo ${setnames.join('\n')} )
     then
       msstitch deletesets -i "${tpsms}" -o t_cleaned_psms.txt --dbfile target_db.sqlite --setnames "${setnames.join(' ')}"
       msstitch deletesets -i "${dpsms}" -o d_cleaned_psms.txt --dbfile decoy_db.sqlite --setnames "${setnames.join(' ')}"
