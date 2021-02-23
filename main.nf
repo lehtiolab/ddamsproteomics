@@ -1369,14 +1369,15 @@ process featQC {
   set val(acctype), file('featqc.html'), file('summary.txt'), file('overlap') into qccollect
 
   script:
-  show_normfactors = setdenoms && normalize && !setdenoms.values().flatten().any { it == 'sweep' }
+  show_normfactors = setdenoms && normalize
   """
   # combine multi-set normalization factors
   cat ${normfacs} > allnormfacs
   # Create QC plots and put them base64 into HTML, R also creates summary.txt
-  # FIXME normalization factor plots should not depend on denoms, can also be sweep when deqms has support for that
-  # ... change switch to that here and below: normalize ? --normtable ... 
-  qc_protein.R --sets ${setnames.collect() { "'$it'" }.join(' ')} --feattype ${acctype} --peptable $peptable ${params.sampletable ? "--sampletable $sampletable" : ''} ${show_normfactors ? '--normtable allnormfacs' : ''}
+  qc_protein.R --sets ${setnames.collect() { "'$it'" }.join(' ')} \
+     --feattype ${acctype} --peptable $peptable \
+     ${params.sampletable ? "--sampletable $sampletable" : ''} \
+     ${show_normfactors ? '--normtable allnormfacs' : ''}
   # Remove X from R's columns if they do not start with [A-Z]
   sed -Ei 's/^X([^A-Za-z])/\\1/' summary.txt
   echo "<html><body>" > featqc.html
