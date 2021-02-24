@@ -2,6 +2,11 @@
 
 import sys
 
+# variable mods which do not obstruct a list of fixed mods:
+NON_BLOCKING_MODS = {
+        'GG': ['TMTpro', 'TMT6plex', 'iTRAQ8plex', 'iTRAQ4plex'],
+        }
+
 def get_msgfmods(modfile):
     msgfmods = {}
     with open(modfile) as fp:
@@ -72,9 +77,12 @@ def main():
     # Adjust variable mod weight if competing with fix mods on AA
     # TODO make this selectable, since there are mods which CAN co-occur (e.g. TMT on the mod's amine group)
     for modline in varmods:
-        if modpos(modline) in fixedmods:
-            fixmass = sum([float(x[0]) for x in fixedmods[modpos(modline)]])
-            modline[0] = str(round(-(fixmass - float(modline[0])), 5))
+        mp = modpos(modline)
+        mmass, mres, mfm, mprotpos, mname = modline
+        if mp in fixedmods:
+            nonblocked_fixed = NON_BLOCKING_MODS[mname] if mname in NON_BLOCKING_MODS else []
+            blocked_fixmass = sum([float(x[0]) for x in fixedmods[mp] if x[-1] not in nonblocked_fixed])
+            modline[0] = str(round(-(blocked_fixmass - float(modline[0])), 5))
     with open('mods.txt', 'w') as fp:
         fp.write('NumMods={}'.format(nummods))
         for modline in [*[x for f in fixedmods.values() for x in f], *varmods]:

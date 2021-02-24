@@ -6,7 +6,7 @@ from Bio import SeqIO
 
 from luciphor_prep import aa_weights_monoiso
 import luciphor_parse as lucp
-from create_modfile import get_msgfmods, modpos, categorize_mod, parse_cmd_mod
+from create_modfile import get_msgfmods, modpos, categorize_mod, parse_cmd_mod, NON_BLOCKING_MODS
 
 
 def main():
@@ -29,17 +29,21 @@ def main():
         except Exception:
             sys.stderr.write('Could not identify modification "{}", use one of [{}]\n'.format(passedmod, ', '.join(msgfmods.keys())))
             sys.exit(1)
-    varmods = {x[4]: x for x in varmods}
+    varmods = {x[4].lower(): x for x in varmods}
     ptmmasses = {}
     for ptmname in ptms + locptms:
-        for res in varmods[ptmname][1]:
-            modline = varmods[ptmname][:]
-            modline = [float(modline[0]), res, modline[2], modline[3]]
-            if modpos(modline) in fixedmods:
-                fixmass = sum([float(x[0]) for x in fixedmods[modpos(modline)]])
-                ptmmasses[str(round(-(fixmass - modline[0]), 3))] = ptmname
+        modline = varmods[ptmname.lower()][:]
+        for res in modline[1]:
+            modline = [float(modline[0]), res, modline[2], modline[3], modline[4]]
+            mp = modpos(modline)
+            if mp in fixedmods:
+                mmass, mres, mfm, mprotpos, mname = modline
+                nonblocked_fixed = NON_BLOCKING_MODS[mname] if mname in NON_BLOCKING_MODS else []
+                blocked_fixmass = sum([float(x[0]) for x in fixedmods[mp] if x[-1] not in nonblocked_fixed])
+                ptmmasses[str(round(-(blocked_fixmass - mmass), 3))] = ptmname
             else:
                 ptmmasses[str(round(modline[0], 3))] = ptmname
+
     tdb = SeqIO.index(fasta, 'fasta')
     with open(inpsms) as fp, open(outfile, 'w') as wfp:
         header = next(fp).strip('\n').split('\t')

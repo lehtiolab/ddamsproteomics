@@ -6,7 +6,7 @@ from os import environ
 
 from jinja2 import Template
 
-from create_modfile import get_msgfmods, categorize_mod, parse_cmd_mod, modpos
+from create_modfile import get_msgfmods, categorize_mod, parse_cmd_mod, modpos, NON_BLOCKING_MODS
 
 
 aa_weights_monoiso = { # From ExPASY
@@ -82,9 +82,12 @@ def main():
             add_mods_translationtable(mod, massconversion_msgf)
     for mod in varmods:
         realmodmass = mod[0]
-        if modpos(mod) in fixedmods:
-            fixmass = sum([float(x[0]) for x in fixedmods[modpos(mod)]])
-            mod[0] = str(round(-(fixmass - float(mod[0])), 5))
+        mmass, mres, mfm, mprotpos, mname = mod
+        mp = modpos(mod)
+        if mp in fixedmods:
+            nonblocked_fixed = NON_BLOCKING_MODS[mname] if mname in NON_BLOCKING_MODS else []
+            blocked_fixmass = sum([float(x[0]) for x in fixedmods[mp] if x[-1] not in nonblocked_fixed])
+            mod[0] = str(round(-(blocked_fixmass - float(mod[0])), 5))
         add_mods_translationtable(mod, massconversion_msgf)
 
     # Prep fixed mods for luciphor template
