@@ -963,7 +963,7 @@ process luciphorPTMLocalizationScoring {
   cat "$baseDir/assets/luciphor2_input_template.txt" | envsubst > lucinput.txt
   luciphor_prep.py target.tsv lucinput.txt "${params.msgfmods}" "${params.mods}${isobtype ? ";${isobtype}" : ''}${params.ptms ? ";${params.ptms}" : ''}" "${params.locptms}" luciphor.out
   luciphor2 -Xmx${task.memory.toGiga()}G luciphor_config.txt
-  luciphor_parse.py ${params.ptm_minscore_high} labileptms.txt "${params.msgfmods}" "${params.locptms}" "${params.mods}${params.ptms ? ";${params.ptms}" : ''}" "${tdb}" "${params.totalproteomepsms}"
+  luciphor_parse.py ${params.ptm_minscore_high} labileptms.txt "${params.msgfmods}" "${params.locptms}" "${params.mods}${params.ptms ? ";${params.ptms}" : ''}" "${tdb}"
   """
 }
 // FIXME msgfmods is false? oxidation so probably never.
@@ -1034,8 +1034,6 @@ process createPTMLookup {
   """
   # Concat all the PTM PSM tables (labile, stabile, previous) and load into DB
   # PSM peptide sequences include the PTM site
-  # Totalproteome-to-be-normalized PSMs have a yet weirder sequence inlcuding 
-  # the portein and are multiple per master protein
   cat speclup.sql > ptmlup.sql
   msstitch concat -i ${params.ptms ? "'${stabileptms}'" : ''} ${params.locptms ? "ptms*" : ''} ${complementary_run ? "'${cleaned_oldptms}'" : ''} -o concatptmpsms
   msstitch psmtable -i concatptmpsms --dbfile ptmlup.sql -o "${ptmtable}" \
@@ -1079,27 +1077,22 @@ process PTMPeptides {
   peptable = "${setname}_ptm_peptides.txt"
   """
   # If there is a total proteome PSMs file, prepare proteins from it for peptide normalization purposes
+  # Use msstitch isosummarize here so we dont have to deal with gene FDR and peptide tables etc
   ${params.totalproteomepsms && denom ? "msstitch isosummarize -i totalproteomepsms -o tp_prots \
+    --featcol \$(head -n1 totalproteomepsms | tr '\\t' '\\n' | grep -n '^Gene Name' | cut -f 1 -d':') \
     --isobquantcolpattern plex --minint 0.1 \
+    ${params.isobaric && normalize ? "--median-normalize" : ''} \
     ${denom && denom[0] == 'sweep' ? '--mediansweep --logisoquant': ''} \
     ${denom && !specialdenom ? "--logisoquant --denompatterns ${setdenoms[setname].join(' ')}": ''} \
-    --featcol \$(head -n1 totalproteomepsms | tr '\\t' '\\n' | grep -n '^Master protein' | cut -f 1 -d':') \
-    && sed -i '0,/Master protein(s)/s//Protein ID/' tp_prots" : ''}
-# FIXME do not median normalize? --median-normalize
+" : ''}
 
-  msstitch peptides -i "ptms.txt" -o peps --scorecolpattern svm --spectracol 1 \
+  msstitch peptides -i "ptms.txt" -o "${peptable}" --scorecolpattern svm --spectracol 1 \
     ${!params.noquant ? "${!params.noms1quant ? '--ms1quantcolpattern area' : ''} ${setisobaric && setisobaric[setname] ? '--isobquantcolpattern plex --minint 0.1' : ''}" : ''} \
-    ${!params.noquant && setisobaric && setisobaric[setname] && params.keepnapsmsquant ? '--keep-psms-na-quant' : ''} \
+    ${denom ? '--keep-psms-na-quant' : ''} \
     ${denom && denom[0] == 'sweep' ? '--mediansweep --logisoquant': ''} \
     ${denom && denom[0] == 'intensity' ? '--medianintensity' : ''} \
     ${denom && params.totalproteomepsms ? "--totalproteome tp_prots" : ''} \
     ${denom && !specialdenom ? "--logisoquant --denompatterns ${setdenoms[setname].join(' ')}": ''}
-  # merge columns FLR/q-val to make a combined column (FLR if not NA)
-  # FIXME check if ALL luciphor peps get FLR? No NAs?
-  # Get columns with FLR and q-values and before/after columns for matching to something with tab front/behind
-  qcols=\$(head -n1 peps |tr '\\t' '\\n'|grep -A1 -B1 -En '(^q-value|FLR)' | grep -v '^[^1-9]' | sed 's/^\\([0-9]\\+\\)-/\\1:/' | cut -f 1 -d ':' |tr '\\n' ',' | sed 's/\\,\$//')
-  paste <(head -n1 peps) <(echo "q-value-or-FLR") > "${peptable}"
-  paste <(tail -n+2 peps) <(tail -n+2 peps | cut -f\$qcols | sed \$'s/.*\\t\\([0-9][\\.]*[0-9e\\-]*\\)\\t.*/\\\\1/') >> "${peptable}"
   """
 }
 
@@ -1128,13 +1121,15 @@ process mergePTMPeps {
   """
   cat ptmlup.sql > pepptmlup.sql
   msstitch merge -i ${peptides.join(' ')} --setnames ${setnames.join(' ')} --dbfile pepptmlup.sql -o mergedtable --no-group-annotation \
-    --fdrcolpattern 'q-value-or-FLR' \
+    --fdrcolpattern '^q-value' --flrcolpattern 'FLR' \
     ${!params.noquant && !params.noms1quant ? "--ms1quantcolpattern area" : ''} \
     ${!params.noquant && setisobaric ? "--isobquantcolpattern plex" : ''}
-  head -n1 mergedtable | sed 's/q-value/q-value-or-FLR/g' > "${peptable}"
-  # if normalizing to total proteome, add a column, split peptide::protein into that column:
-  ${params.totalproteomepsms ? "sed -i '0,/\\(Peptide sequence\\)/s//\\1'\$'\\tNormalized against/' '${peptable}'" : ''}
-  tail -n+2 mergedtable | sort -k1b,1 ${params.totalproteomepsms ? "| sed 's/::/'\$'\\t/'" : ''} >> "${peptable}"
+  # Add master/genes/gene count to peptide table, cant store in SQL because cant protein group on small PTM table
+  head -n1 mergedtable | sed 's/q-value/q-value-or-FLR/g;s/Peptide sequence/Peptide sequence'\$'\tMaster Protein\tGene Name\t# matching genes/' > "${peptable}"
+  geneprotcols=\$(head -1 ptmpsms.txt| tr '\\t' '\\n' | grep -En '(^Peptide|^Master|^Gene Name)' | cut -f 1 -d':' | tr '\\n' ',' | sed 's/\\,\$//')
+  tail -n+2 ptmpsms.txt | cut -f\$geneprotcols | sort -uk1b,1 > geneprots
+  join -j1 -o auto -t '\t' <(paste geneprots <(cut -f3 geneprots | tr -dc ';\\n'| awk '{print length+1}')) <(tail -n+2 mergedtable | sort -k1b,1) >> "${peptable}"
+
   qc_ptms.R "${setnames.size()}" "${params.locptms ? params.locptms : ''}${params.ptms ? ";${params.ptms}": ''}" ptmpsms.txt "${peptable}"
   echo "<html><body>" > ptmqc.html
   for graph in ptmpsmfeats ptmpepfeats ptmprotfeats psmptmresidues pepptmresidues;

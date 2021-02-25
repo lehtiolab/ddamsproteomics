@@ -17,7 +17,6 @@ def main():
     locptms = sys.argv[5].split(';') if sys.argv[5] else []
     mods = sys.argv[6].split(';') if sys.argv[6] else []
     fasta = sys.argv[7]
-    tp_normalization = sys.argv[8] != 'false'
 
     msgfmods = get_msgfmods(modfile)
     fixedmods = {}
@@ -86,12 +85,11 @@ def main():
                     for res_loc in ptmlocs:
                         protptms.append('{}{}'.format(res_loc[0], res_loc[1] + peploc))
                         proteins_loc[p].append('{}_{}'.format(ptmname, ','.join(protptms)))
-            psm[lucp.PROTEIN] = ';'.join(['{}:{}'.format(p, ':'.join(ptmloc)) for p, ptmloc in proteins_loc.items()])
+            psm[lucp.MASTER_PROTEIN] = ';'.join(['{}:{}'.format(p, ':'.join(ptmloc)) for p, ptmloc in proteins_loc.items()])
             assert re.sub('[0-9.\[\]+-]', '', psm['Peptide']) == barepep
             psm[lucp.SE_PEPTIDE] = psm.pop(lucp.PEPTIDE)
-            for out in lucp.output_psm(psm[lucp.TOPPTM], barepep, proteins, tp_normalization):
-                psm.update(out)
-                wfp.write('\n{}'.format('\t'.join([psm[k] for k in outheader])))
+            psm[lucp.PEPTIDE] = '{}_{}'.format(barepep, psm[lucp.TOPPTM])
+            wfp.write('\n{}'.format('\t'.join([psm[k] for k in outheader])))
 
 
 if __name__ == '__main__':
