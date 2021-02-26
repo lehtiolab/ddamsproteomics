@@ -873,7 +873,7 @@ process createPSMTable {
   publishDir "${params.outdir}", mode: 'copy', overwrite: true, saveAs: {["target_psmlookup.sql", "decoy_psmlookup.sql", "target_psmtable.txt", "decoy_psmtable.txt"].contains(it) ? it : null}
 
   input:
-  set val(td), path('psms?'), path('lookup'), path(tdb), path(ddb), file(totalproteomepsms), file(cleaned_oldpsms) from prepsm
+  set val(td), path('psms?'), path('lookup'), path(tdb), path(ddb), file('tppsms.txt'), file(cleaned_oldpsms) from prepsm
   file(trainingpep) from hiriefpep
   val(mzmlcount) from mzmlcount_psm
   val(setnames) from setnames_psms
@@ -907,7 +907,7 @@ process createPSMTable {
   ${setnames.collect() { "test -f '${it}.tsv' || echo 'No ${td} PSMs found for set ${it}' >> warnings" }.join(' && ') }
   # In decoy PSM table process, also split the target total proteome normalizer table if necessary.
   # Doing it in decoy saves time, since target is usally largest table and slower
-  ${params.totalproteomepsms && td == 'decoy' ? "mkdir tppsms && msstitch split -i ${totalproteomepsms} -d tppsms --splitcol bioset" : ''}
+  ${params.totalproteomepsms && td == 'decoy' ? "mkdir tppsms && msstitch split -i tppsms.txt -d tppsms --splitcol bioset" : ''}
   """
 }
 
