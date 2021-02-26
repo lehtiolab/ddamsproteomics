@@ -106,22 +106,23 @@ def main():
         for psm in psms:
             psm = psm.strip('\n').split('\t')
             psm = {k: v for k,v in zip(psmheader, psm)}
-            proteins = psm[MASTER_PROTEIN].split(';')
             psmid = '{}.{}.{}.{}'.format(os.path.splitext(psm['SpectraFile'])[0], psm['ScanNum'], psm['ScanNum'], psm['Charge'])
             if psmid in lucptms:
                 ptm = lucptms[psmid]
                 # Get protein site location of mod
-                proteins = {p: tdb[p].seq.find(ptm['barepep']) for p in proteins}
-                proteins_loc = {p: [] for p, peploc in proteins.items() if peploc > -1}
-                for p, peploc in proteins.items():
-                    for ptmname, ptmlocs in ptm['modres'].items():
-                        if ptmname not in ptms:
-                            continue
-                        protptms = []
-                        for res_loc in ptmlocs:
-                            protptms.append('{}{}'.format(res_loc[0], res_loc[1] + peploc))
-                            proteins_loc[p].append('{}_{}'.format(ptmname, ','.join(protptms)))
-                psm[MASTER_PROTEIN] = ';'.join(['{}:{}'.format(p, ':'.join(ptmloc)) for p, ptmloc in proteins_loc.items()])
+                if MASTER_PROTEIN in psm:
+                    proteins = psm[MASTER_PROTEIN].split(';')
+                    proteins = {p: tdb[p].seq.find(ptm['barepep']) for p in proteins}
+                    proteins_loc = {p: [] for p, peploc in proteins.items() if peploc > -1}
+                    for p, peploc in proteins.items():
+                        for ptmname, ptmlocs in ptm['modres'].items():
+                            if ptmname not in ptms:
+                                continue
+                            protptms = []
+                            for res_loc in ptmlocs:
+                                protptms.append('{}{}'.format(res_loc[0], res_loc[1] + peploc))
+                                proteins_loc[p].append('{}_{}'.format(ptmname, ','.join(protptms)))
+                    psm[MASTER_PROTEIN] = ';'.join(['{}:{}'.format(p, ':'.join(ptmloc)) for p, ptmloc in proteins_loc.items()])
                 outpsm = {k: v for k,v in psm.items()}
                 outpsm.update(ptm)
                 outpsm[SE_PEPTIDE] = outpsm.pop(PEPTIDE)

@@ -52,7 +52,6 @@ def main():
         for psm in fp:
             psm = psm.strip('\n').split('\t')
             psm = {k: v for k,v in zip(header, psm)}
-            proteins = psm[lucp.MASTER_PROTEIN].split(';')
             psm.update({x: 'NA' for x in lucp.PTMFIELDS})
             modresidues = {x: [] for x in ptms + locptms}
             barepep, start = '', 0
@@ -75,18 +74,20 @@ def main():
             barepep += psm['Peptide'][start:]
             psm[lucp.TOPPTM] = ';'.join(['{}:{}'.format(name, ','.join(['{}{}'.format(x[0], x[1]) for x in resmods])) for 
                     name, resmods in modresidues.items() if len(resmods)])
-            proteins = {p: tdb[p].seq.find(barepep) for p in proteins}
-            proteins_loc = {p: [] for p, peploc in proteins.items() if peploc > -1}
-            for p, peploc in proteins.items():
-                for ptmname, ptmlocs in modresidues.items():
-                    if ptmname not in ptms:
-                        continue
-                    protptms = []
-                    for res_loc in ptmlocs:
-                        protptms.append('{}{}'.format(res_loc[0], res_loc[1] + peploc))
-                        proteins_loc[p].append('{}_{}'.format(ptmname, ','.join(protptms)))
-            psm[lucp.MASTER_PROTEIN] = ';'.join(['{}:{}'.format(p, ':'.join(ptmloc)) for p, ptmloc in proteins_loc.items()])
-            assert re.sub('[0-9.\[\]+-]', '', psm['Peptide']) == barepep
+            # Add protein location annotation
+            if lucp.MASTER_PROTEIN in psm:
+                proteins = psm[lucp.MASTER_PROTEIN].split(';')
+                proteins = {p: tdb[p].seq.find(barepep) for p in proteins}
+                proteins_loc = {p: [] for p, peploc in proteins.items() if peploc > -1}
+                for p, peploc in proteins.items():
+                    for ptmname, ptmlocs in modresidues.items():
+                        if ptmname not in ptms:
+                            continue
+                        protptms = []
+                        for res_loc in ptmlocs:
+                            protptms.append('{}{}'.format(res_loc[0], res_loc[1] + peploc))
+                            proteins_loc[p].append('{}_{}'.format(ptmname, ','.join(protptms)))
+                psm[lucp.MASTER_PROTEIN] = ';'.join(['{}:{}'.format(p, ':'.join(ptmloc)) for p, ptmloc in proteins_loc.items()])
             psm[lucp.SE_PEPTIDE] = psm.pop(lucp.PEPTIDE)
             psm[lucp.PEPTIDE] = '{}_{}'.format(barepep, psm[lucp.TOPPTM])
             wfp.write('\n{}'.format('\t'.join([psm[k] for k in outheader])))

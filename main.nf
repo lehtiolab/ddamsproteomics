@@ -1075,16 +1075,18 @@ process PTMPeptides {
   denom = !params.noquant && setdenoms ? setdenoms[setname] : false
   specialdenom = denom && (denom[0] == 'sweep' || denom[0] == 'intensity')
   peptable = "${setname}_ptm_peptides.txt"
+  dividebycol = params.onlypeptides ? '^Protein$' : '^Gene Name'
   """
   # If there is a total proteome PSMs file, prepare proteins from it for peptide normalization purposes
   # Use msstitch isosummarize here so we dont have to deal with gene FDR and peptide tables etc
   ${params.totalproteomepsms && denom ? "msstitch isosummarize -i totalproteomepsms -o tp_prots \
-    --featcol \$(head -n1 totalproteomepsms | tr '\\t' '\\n' | grep -n '^Gene Name' | cut -f 1 -d':') \
+    --featcol \$(head -n1 totalproteomepsms | tr '\\t' '\\n' | grep -n '${dividebycol}' | cut -f 1 -d':') \
     --isobquantcolpattern plex --minint 0.1 \
     ${params.isobaric && normalize ? "--median-normalize" : ''} \
     ${denom && denom[0] == 'sweep' ? '--mediansweep --logisoquant': ''} \
     ${denom && !specialdenom ? "--logisoquant --denompatterns ${setdenoms[setname].join(' ')}": ''} \
 " : ''}
+  ${params.onlypeptides ? "sed -i '0,/Protein/s//Protein ID/' tp_prots" : ''}
 
   msstitch peptides -i "ptms.txt" -o "${peptable}" --scorecolpattern svm --spectracol 1 \
     ${!params.noquant ? "${!params.noms1quant ? '--ms1quantcolpattern area' : ''} ${setisobaric && setisobaric[setname] ? '--isobquantcolpattern plex --minint 0.1' : ''}" : ''} \
@@ -1125,10 +1127,10 @@ process mergePTMPeps {
     ${!params.noquant && !params.noms1quant ? "--ms1quantcolpattern area" : ''} \
     ${!params.noquant && setisobaric ? "--isobquantcolpattern plex" : ''}
   # Add master/genes/gene count to peptide table, cant store in SQL because cant protein group on small PTM table
-  head -n1 mergedtable | sed 's/q-value/q-value-or-FLR/g;s/Peptide sequence/Peptide sequence'\$'\tMaster Protein\tGene Name\t# matching genes/' > "${peptable}"
-  geneprotcols=\$(head -1 ptmpsms.txt| tr '\\t' '\\n' | grep -En '(^Peptide|^Master|^Gene Name)' | cut -f 1 -d':' | tr '\\n' ',' | sed 's/\\,\$//')
-  tail -n+2 ptmpsms.txt | cut -f\$geneprotcols | sort -uk1b,1 > geneprots
-  join -j1 -o auto -t '\t' <(paste geneprots <(cut -f3 geneprots | tr -dc ';\\n'| awk '{print length+1}')) <(tail -n+2 mergedtable | sort -k1b,1) >> "${peptable}"
+  ${!params.onlypeptides ? "head -n1 mergedtable | sed \$'s/Peptide sequence/Peptide sequence\tMaster protein(s)\tGene name(s)\t# matching genes/;s/\\#/Amount/g' > '${peptable}'" : ''}
+  ${!params.onlypeptides ? "geneprotcols=\$(head -1 ptmpsms.txt| tr '\\t' '\\n' | grep -En '(^Peptide|^Master|^Gene Name)' | cut -f 1 -d':' | tr '\\n' ',' | sed 's/\\,\$//')" : ''}
+  ${!params.onlypeptides ? "tail -n+2 ptmpsms.txt | cut -f\$geneprotcols | sort -uk1b,1 > geneprots" : ''}
+  ${!params.onlypeptides ? "join -j1 -o auto -t '\t' <(paste geneprots <(cut -f3 geneprots | tr -dc ';\\n'| awk '{print length+1}')) <(tail -n+2 mergedtable | sort -k1b,1) >> " : 'mv mergedtable '} "${peptable}"
 
   qc_ptms.R "${setnames.size()}" "${params.locptms ? params.locptms : ''}${params.ptms ? ";${params.ptms}": ''}" ptmpsms.txt "${peptable}"
   echo "<html><body>" > ptmqc.html
