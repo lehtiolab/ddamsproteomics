@@ -25,10 +25,10 @@ svg('ptmpsmfeats', width=width, height=nrsets+2)
 dev.off()
 
 # nr peptides with PTMs
-qcols = colnames(peptides)[grep('_q.value.or.FLR', colnames(peptides), fixed=T)]
+qcols = colnames(peptides)[grep('_q.value', colnames(peptides), fixed=T)]
 set_amount_pep = melt(peptides, id.vars='Peptide.sequence', measure.vars=qcols)
 set_amount_pep = set_amount_pep[!is.na(set_amount_pep$value),]
-set_amount_pep$variable = sub('_q.value.or.FLR', '', set_amount_pep$variable)
+set_amount_pep$variable = sub('_q.value', '', set_amount_pep$variable)
 pepnums = aggregate(value~variable, set_amount_pep, length)
 svg('ptmpepfeats', width=width, height=nrsets+2)
   print(ggplot(pepnums) +
