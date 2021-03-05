@@ -136,21 +136,12 @@ and they can optionally get isobaric quantification normalization (below).
 ```
 
 
-### `--totalproteomepsms`
-This passes a PSM table of a previously done matching search of the global (non-PTM) proteome. The PSMs will we converted to proteins,
-which will be used for normalization of PTM peptide isobaric quantification.
-
-```bash
---totalproteomepsms /path/to/global_target_psmtable.txt
-```
-
-
 ### Output types
 The pipeline will produce by default PSM, peptide, and protein tables. You may pass FASTA databases that contain mixtures of ENSEMBL, Uniprot, or other types of entries. Use `--genes` and `--ensg` to output a gene(name)-centric table and an ENSG-centric table. If you rather have less output, use `--onlypeptides` to not output a protein table.
 
 
 ### Quantitation
-Isobaric data can be specified as such `--isobaric 'set1:tmt10plex:127N:128N set2:tmtpro:sweep set3:itraq8plex:intensity'`. Here PSMs will be quantified for 3 different isobaric sample sets in a somewhat contrived example with different chemistries. Isobaric quantitation will be summarized from PSM to peptide/protein/gene by taking median PSM values per feature. Prior to this, they can be log2-transformed and normalized to e.g. an internal standard using denominator channels as above in `set1`, or median sweep (i.e. use median PSM value as denominator for each PSM in `set2`) to generate log2(ratios). A possibility shown in `set3` is also to output non-normalized median PSM intensity per protein. When result tables have been summarized these can be median-centered, which is passed using `--normalize`. By default, PSMs with an NA value in any channel will not be used in summarizing isobaric quantification data. If you want to use these (possibly more noisy) PSMs, e.g. when having empty channels, you can pass `--keepnapsmsquant`.
+Isobaric data can be specified as such `--isobaric 'set1:tmt10plex:127N:128N set2:tmtpro:sweep set3:itraq8plex:intensity'`. Here PSMs will be quantified for 3 different isobaric sample sets in a somewhat contrived example with different chemistries. Isobaric quantitation is done using OpenMS IsobaricAnalyzer and will also output the precursor purity (fraction of precursor intensity in the selection window) to the PSM table. A filter can be used to set a minimum purity for PSM isobaric quant to not be set to NA, using e.g. `--minprecursorpurity 0.3`, default is not to filter. The resulting values will be summarized from PSM to peptide/protein/gene by taking median PSM values per feature. Prior to this, they can be log2-transformed and normalized to e.g. an internal standard using denominator channels as above in `set1`, or median sweep (i.e. use median PSM value as denominator for each PSM in `set2`) to generate log2(ratios). A possibility shown in `set3` is also to output non-normalized median PSM intensity per protein. When result tables have been summarized these can be median-centered, which is passed using `--normalize`. By default, PSMs with an NA value in any channel will not be used in summarizing isobaric quantification data. If you want to use these (possibly more noisy) PSMs, e.g. when having empty channels, you can pass `--keepnapsmsquant`.
 
 MS1 quantitation is done using Dinosaur and its features are aligned to PSMs using msstitch, using summed intensity of a feature. To not output any MS1 or isobaric data, use `--noquant`. If Dinosaur for some reason doesn't work, you can use Hardklor/Kronik, by specifying `--hardklor`
 
@@ -172,10 +163,12 @@ Even when not using DEqMS you can provide a sample table for annotation of your 
 
 ### PTM analysis
 As mentioned, labile PTMS reported by the search engine will be scored using Luciphor2, which will output the best scoring PTM localization and a false localization rate. Note that this is only beneficial for labile PTMs. Aside from that if any high-scoring PTMs are found by luciphor the pipeline will report these as well. All of this will end up in a separate PTM PSM table and a PTM peptide table.
+When passing `--totalproteomepsms`, the isobaric quant ratios for matching genes from a global search (i.e. no modifications) will be subtracted from the PTM peptide table quant.
+If `--onlypeptides` is used, quant from proteins will be used as a denominator.
 
 
 ### Reusing data
-If you have finished a rather large analysis and wish to rerun a part of it due to e.g. new MS data, you may do so by passing
+If you have finished a rather large analysis and wish to rerun a part of it or add more fractions, due to e.g. new MS data, you may do so by passing
 
 ```
   --targetpsms oldpsmtable.txt --decoypsms old_decoy_psms.txt \

@@ -10,6 +10,8 @@ The output is a number of text, SQLite and HTML files. Depending somewhat on inp
 * protein and genes tables (TSV)
 * quant and PSM SQLite lookup tables
 * a QC report (HTML)
+* a PTM PSM table (when searching PTM modifications)
+* a PTM peptide table (when searching PTM modifications)
 
 
 ## File columns
@@ -54,6 +56,27 @@ Proteins and genes tables are like peptide tables, and contain similar fields. O
 * MS1 precursor area (calculated using the top-3 highest intensity peptide for a protein/gene)
 * ...plex channels are as in peptide tables
 * logFC, count, sca.P.Value, sca.adj.pval are output from (https://github.com/yafeng/DEqMS/)[DEqMS] analysis
+
+
+When labile PTM modifications have been passed with --locptms, the pipeline runs luciphor2 to determine false 
+localization rates for these PTMs, and also outputs a PTM-annotated PSM table. This contains the following extra fields:
+
+* Top luciphor PTM (best scoring peptide localization permutation)
+* Top PTM score (its score)
+* Top PTM FLR (its FLR)
+* High-scoring PTMs (other permutations with high scores)
+
+Both --locptms and --ptms (for stabile modifications, e.g. Acetyl) result in a PTM-annotated peptide table. This 
+reports the following differing fields
+
+* Master protein(s) (the master protein(s) matching this peptide, with annotation of PTM sites)
+* Protein(s) (other proteins matching)
+* Gene Name (the genes matching)
+* Amount matching genes
+* SAMPLE_SETNAME_PTM FLR (the FLR of the PTM-peptide in a sample set)
+
+Note that when `--totalproteomepsms` is passed, the isobaric ratios in this table will be offset to the
+global search gene ratios, by subtracting those.
 
 
 ## Pipeline and tools 

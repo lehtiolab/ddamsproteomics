@@ -78,8 +78,6 @@ featnames = {
         'qc_light': {'peptides': 'Peptides', 'proteins': 'Proteins', 'genes': 'Proteins (genecentric)'},
         'qc_full': {'ensg': 'ENSGs', 'peptides': 'Peptides', 'proteins': 'Proteins', 'genes': 'Gene names'},
         }
-# FIXME  use this for ppsms!
-#PSMs/protein for quant (median)
 
 tablefieldtitles = {
         'nr_sets': 'IDed in # overlapping sets', 

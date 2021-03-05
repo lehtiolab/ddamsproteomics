@@ -183,7 +183,7 @@ if (length(grep('plex', names(feats)))) {
   }
 }
 
-#nrpsmsoverlapping
+#nrpsms in features that are overlapping, i.e. complete in every set
 if (length(grep('plex', names(feats)))) {
   qcols = colnames(feats)[grep('_q.value', colnames(feats))]
   overlap = na.exclude(feats[c(featcol, tmtcols, qcols, nrpsmscols)])

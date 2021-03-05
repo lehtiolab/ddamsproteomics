@@ -108,7 +108,8 @@ def helpMessage() {
       --ptmpsms FILE                In a complementary run, this optionally passes the old PTM PSM table, if one runs
                                     with --locptms
       --oldmzmldef                  An --mzmldef type file of a previous run you want to reuse and complement. Will be stripped of
-                                    its set data for the new set that will be analyzed. Needed for --fractionation runs.
+                                    its set data for the new set that will be analyzed. Needed for basing run on another run, but only
+                                    when the old one has --fractionation.
 
     Other options:
       --outdir                      The output directory where the results will be saved
@@ -810,7 +811,6 @@ process msgfPlus {
 
 mzids
   .groupTuple()
-  //.map { it -> [it[1], it[2]] }
   .set { mzids_2pin }
 
 
@@ -982,7 +982,7 @@ process stabilePTMPrep {
   script:
   isobtype = setisobaric && setisobaric[setname] ? setisobaric[setname] : ''
   """
-  nonlabile_ptm_columns.py psms stabileptms.txt "${params.msgfmods}" "$params.ptms" "${params.locptms ? "$params.locptms" : ""}" "${params.mods}${isobtype ? ";${isobtype}" : ''}" "${tdb}" "${params.totalproteomepsms}"
+  nonlabile_ptm_columns.py psms stabileptms.txt "${params.msgfmods}" "$params.ptms" "${params.locptms ? "$params.locptms" : ""}" "${params.mods}${isobtype ? ";${isobtype}" : ''}" "${tdb}"
   """
 }
 
@@ -994,6 +994,7 @@ if (params.locptms) {
     .map { it.sort( {a, b -> a[0] <=> b[0]}) } // sort on setname
     .transpose()
     .toList()
+   // add all setnames for cases of rerun complement where only limited amount of sets is run
     .combine(setnames_ptms)
     .map { it -> [(it[0] + it[2..-1]).unique(), it[1]] }
     .set { ptm_allsets }
@@ -1089,8 +1090,8 @@ process PTMPeptides {
   ${params.onlypeptides ? "sed -i '0,/Protein/s//Protein ID/' tp_prots" : ''}
 
   msstitch peptides -i "ptms.txt" -o "${peptable}" --scorecolpattern svm --spectracol 1 \
-    ${!params.noquant ? "${!params.noms1quant ? '--ms1quantcolpattern area' : ''} ${setisobaric && setisobaric[setname] ? '--isobquantcolpattern plex --minint 0.1' : ''}" : ''} \
-    ${denom ? '--keep-psms-na-quant' : ''} \
+    ${!params.noquant && params.noms1quant ? '--ms1quantcolpattern area' : ''} \
+    ${denom ? '--isobquantcolpattern plex --minint 0.1 --keep-psms-na-quant' : ''} \
     ${denom && denom[0] == 'sweep' ? '--mediansweep --logisoquant': ''} \
     ${denom && denom[0] == 'intensity' ? '--medianintensity' : ''} \
     ${denom && params.totalproteomepsms ? "--totalproteome tp_prots" : ''} \
@@ -1459,7 +1460,7 @@ process collectQC {
   ${params.genes ?  'join -j 1 -o auto -t \'\t\' psmpepsum_header <( head -n1 genes_summary) > summary_light_head && cat summary_light_head summary_light_tab > summary_light' : ''}
 
   # remove Yaml from software_versions to get HTML
-  grep -A \$(wc -l sw_ver | cut -f 1 -d ' ') "data\\:" sw_ver | tail -n+2 > sw_ver_cut
+  grep '<.*>' sw_ver > sw_ver_cut
   
   # merge warnings
   ls warnings* && cat warnings* > warnings.txt
