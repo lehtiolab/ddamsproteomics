@@ -1,11 +1,28 @@
 # lehtiolab/ddamsproteomics: Changelog
 
+## Version 2.4 [2021-03-05]
+- Fix rerunning (complementing run) bugs
+- Run Luciphor on more PSMs (cutoff 0.2 FDR, not all as otherwise it takes a long time), as it should learn which are bad.
+- PTM peptide table isobaric quant divided/subtracted by/with global proteome (ratio PTM pep / ratio gene or prot)
+- Do not crash when trying to merge peptide tables and a peptide has e.g. >600 zinc finger protein matches
+- Report protein PTM location to PTM table
+- PTMs can now be stable with --ptms or labile with --locptms. Labile PTMs get localization analysis,
+  both can get quant normalization.
+- Added PTM QC: numbers of PTM peptides, site distributions
+- Added HFX and Lumos options for MSGF instrument types (for easy to use: same MSGF instruments as earlier though)
+- Allow (but substitute to underscore) some more special characters in sample names, set names
+- QC missed cleavage percentage is now of set, not of all PSMs, and show fraction yield also for empty fractions
+- Add precursor purity column to PSM table and QC, make it possible to filter bad purity --min-precursor-purity
+- Check FASTA for duplicates/general validity before running search, abort when not valid FASTA
+- Bugfix: modifications such as Glygly do not block isobaric labels
+
 ## Version 2.3 [2020-09-25]
 - Possible to re-run analysis with a new sample set only, then add to existing data
 - More isobaric quant summarizing/normalization options by moving to msstitch 3.5
 - Fix bug where all sets' "number of (unique) PSMs" were the same (msstitch 3.5)
 - Consistent protein groups, bugfixed MS1 aligning in msstitch 3.5
 - SVG output in QC, makes QC HTML lighter and also does not crash the QC by exceeding png size limit on many sets
+- Fix Luciphor bug where residues were annotated wrong (off by one residue number)
 - More documentation
 
 ## Version 2.2 [2020-07-24]
