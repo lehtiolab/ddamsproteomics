@@ -14,7 +14,7 @@ if (has_fractions) {
   width = 4
   xcol ='plateID'
   feats$plateID = paste(feats$Biological.set, feats$Strip, sep='_')
-  amount_ms2 = read.table("platescans")
+  amount_ms2 = read.table("platescans", sep='\t', header=F)
   feats$Fraction = as.factor(feats$Fraction)
 } else {
   width = 14
