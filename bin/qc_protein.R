@@ -25,7 +25,9 @@ feats = read.table("feats", header=T, sep="\t", comment.char = "", quote = "")
 
 featcol = list(peptides='Peptide.sequence', proteins='Protein.ID', genes='Gene.Name', ensg='Gene.ID')[[feattype]]
 
-if (length(grep('plex', names(feats)))) {
+is_isobaric = length(grep('plex', names(feats)))
+
+if (is_isobaric) {
   tmtcols = colnames(feats)[setdiff(grep('plex', colnames(feats)), grep('quanted', colnames(feats)))]
   nrpsmscols = colnames(feats)[grep('_Amount.fully.quanted.PSMs', colnames(feats))]
 }
@@ -34,7 +36,7 @@ width = 4
 height = 4
 
 # nrpsms used for isobaric quant
-if (length(grep('plex', names(feats)))) {
+if (is_isobaric) {
   nrpsms = melt(feats, id.vars=featcol, measure.vars = nrpsmscols)
   nrpsms$Set = sub('_Amount.fully.quanted.PSMs', '', nrpsms$variable)
   summary_psms = aggregate(value~Set, nrpsms, median)
@@ -97,7 +99,7 @@ if (feattype == 'peptides') {
   missingvals = vector(mode='integer', length=length(missing))
   missing_df = data.frame(Set=missing, accession=missingvals)
   am_prots = rbind(am_prots, missing_df)
-  if (length(grep('plex', names(feats)))) {
+  if (is_isobaric) {
     # if isobaric, then show summary table of feats 1%FDR AND quant
     not_fullna = feats[rowSums(is.na(feats[,tmtcols])) != length(tmtcols),]
     sum_prots = melt(not_fullna, id.vars=featcol, measure.vars=qcols)
@@ -146,7 +148,7 @@ if (is.character(sampletable)) {
   names(setlookup) = rownames(sampletable)
 }
 
-if (length(grep('plex', names(feats)))) {
+if (is_isobaric) {
   # First produce the boxplots
   overlap = na.exclude(feats[c(tmtcols, qcols)])
   overlap = dim(overlap[apply(overlap[qcols], 1, function(x) any(x<0.01)),])[1]
@@ -184,7 +186,7 @@ if (length(grep('plex', names(feats)))) {
 }
 
 #nrpsms in features that are overlapping, i.e. complete in every set
-if (length(grep('plex', names(feats)))) {
+if (is_isobaric) {
   qcols = colnames(feats)[grep('_q.value', colnames(feats))]
   overlap = na.exclude(feats[c(featcol, tmtcols, qcols, nrpsmscols)])
   overlap = overlap[apply(overlap[qcols], 1, function(x) any(x<0.01)),]
@@ -208,7 +210,7 @@ if (length(grep('plex', names(feats)))) {
 }
 
 # percentage_onepsm
-if (length(grep('plex', names(feats)))) {
+if (is_isobaric) {
   if (nrow(overlap) > 0) {
     nrpsms = melt(overlap, id.vars=featcol, measure.vars = nrpsmscols)
     nrpsms$Set = sub('_Amount.fully.quanted.PSMs', '', nrpsms$variable)
@@ -291,7 +293,7 @@ if (length(deqpval_cols)) {
 
 
 # PCA
-if (use_sampletable) {
+if (is_isobaric && use_sampletable) {
   topca = na.omit(feats[,tmtcols])
   if (nrow(topca)) {
     pca_ana <- prcomp(t(topca), scale. = TRUE)
