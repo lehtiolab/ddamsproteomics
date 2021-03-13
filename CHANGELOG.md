@@ -1,5 +1,8 @@
 # lehtiolab/ddamsproteomics: Changelog
 
+## Version 2.5 [2021-03-13]
+- Bugfix in msstitch 3.7 for peptide tables in large datasets
+
 ## Version 2.4 [2021-03-05]
 - Fix rerunning (complementing run) bugs
 - Run Luciphor on more PSMs (cutoff 0.2 FDR, not all as otherwise it takes a long time), as it should learn which are bad.
