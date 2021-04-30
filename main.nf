@@ -1021,7 +1021,7 @@ process createPTMLookup {
   when: params.locptms || params.ptms
 
   input:
-  tuple val(setnames), file('ptms?'), file(stabileptms), file(cleaned_oldptms) from lucptmfiles_to_lup
+  tuple val(setnames), file('ptms?'), file('stabileptms*'), file(cleaned_oldptms) from lucptmfiles_to_lup
   file('speclup.sql') from ptm_lookup_in
 
   output:
@@ -1036,7 +1036,7 @@ process createPTMLookup {
   # Concat all the PTM PSM tables (labile, stabile, previous) and load into DB
   # PSM peptide sequences include the PTM site
   cat speclup.sql > ptmlup.sql
-  msstitch concat -i ${params.ptms ? "'${stabileptms}'" : ''} ${params.locptms ? "ptms*" : ''} ${complementary_run ? "'${cleaned_oldptms}'" : ''} -o concatptmpsms
+  msstitch concat -i ${params.ptms ? "stabileptms*" : ''} ${params.locptms ? "ptms*" : ''} ${complementary_run ? "'${cleaned_oldptms}'" : ''} -o concatptmpsms
   msstitch psmtable -i concatptmpsms --dbfile ptmlup.sql -o "${ptmtable}" \
     --spectracol 1
   msstitch split -i "${ptmtable}" --splitcol bioset
