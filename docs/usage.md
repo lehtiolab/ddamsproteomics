@@ -153,12 +153,12 @@ DEqMS is used for DE analysis using `--deqms` and it needs to know your sample g
 127N   setA   ABC1   TREAT 
 127C   setA   DMSO2  CTRL 
 128N   setA   ABC2   TREAT
-129N   setA   pool   X__POOL
+129N   setA   pool
 ...
 ```
 
-For DE analysis, sample groups represent internal standard can be called X__POOL so they will be filtered out.
-Even when not using DEqMS you can provide a sample table for annotation of your quant output.
+For DE analysis, sample-channels that e.g represent internal standards will be filtered out if no sample group is given, see above 129N channel.
+N.B. Even when not using DEqMS you can provide a sample table for annotation of your quant output.
 
 
 ### PTM analysis

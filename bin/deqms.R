@@ -19,8 +19,8 @@ featcol = colnames(feats)[1]
 rownames(feats) = feats[,1]
 
 # Remove possible internal standard
-feats.nostd = feats[, !grepl('^X__POOL', colnames(feats))]
-sampletable = sampletable[sampletable$group != 'X__POOL',]
+feats.nostd = feats[, !grepl('^NO__GROUP', colnames(feats))]
+sampletable = sampletable[sampletable$group != 'NO__GROUP',]
 
 # Get all features with more than 1 measurement in ALL sample groups, discard the rest
 # First regex for all channels, exclude the Amount PSMs columns with lookbehind regex (need PCRE)

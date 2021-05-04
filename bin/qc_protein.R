@@ -261,7 +261,7 @@ deqpval_cols = grep('_sca.P.Value$', names(feats))
 deqFC_cols = grep('_logFC$', names(feats))
 names(feats)[1] = 'feat'
 if (length(deqpval_cols)) {
-  s_table = unique(sampletable[sampletable$group != 'X__POOL', 'group'])
+  s_table = unique(sampletable[sampletable$group != 'NO__GROUP', 'group'])
   s_table = sub('[^a-zA-Z0-9_]', '_', s_table)
   s_table = sub('^([0-9])', 'X\\1', s_table)
   cartprod = expand.grid(s_table, s_table)
