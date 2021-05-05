@@ -892,7 +892,7 @@ process createPSMTable {
   quant = !params.noquant && td == 'target'
   """
   msstitch concat -i psms* -o psms.txt
-  tail -n+2 psms.txt | grep . || (echo "No ${td} PSMs made the combined PSM / peptide FDR cutoff (${params.psmconflvl} / ${params.pepconflvl})" && exit 1)
+  tail -n+2 psms.txt | grep . || (>&2 echo "No ${td} PSMs made the combined PSM / peptide FDR cutoff (${params.psmconflvl} / ${params.pepconflvl})" && exit 1)
   # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
   cat lookup > $psmlookup
   sed '0,/\\#SpecFile/s//SpectraFile/' -i psms.txt
@@ -1282,6 +1282,12 @@ process proteinPeptideSetMerge {
 
   script:
   """
+  # exchange sample names on isobaric fields in header
+  # First add NO__GROUP marker for no-samplegroups clean sampletable from special chars
+  ${params.sampletable ? 'awk -v OFS="\\t" \'{if (NF==3) print $1,$2,$3,"NO__GROUP"; else print}\' sampletable > tmpsam && mv tmpsam sampletable' : ''}
+  ${params.deqms ? 'grep -v NO__GROUP sampletable || (>&2 echo "Cannot run DEqMS without specified sample groups" && exit 1)': ''}
+  ${params.sampletable ? 'sed "s/[^A-Za-z0-9_\\t]/_/g" sampletable > clean_sampletable' : ''}
+
   # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
   cat $lookup > db.sqlite
   msstitch merge -i ${tables.join(' ')} --setnames ${setnames.sort().join(' ')} --dbfile db.sqlite -o mergedtable \
@@ -1292,10 +1298,6 @@ process proteinPeptideSetMerge {
    
   # make a header for sample names, first clean it from #-sign
   head -n1 mergedtable | sed 's/\\#/Amount/g' > header
-  # exchange sample names on isobaric fields in header
-  # First add NO__GROUP marker for no-samplegroups clean sampletable from special chars
-  ${params.sampletable ? 'awk -v OFS="\\t" \'{if (NF==3) print $1,$2,$3,"NO__GROUP"; else print}\' sampletable > tmpsam && mv tmpsam sampletable' : ''}
-  ${params.sampletable ? 'sed "s/[^A-Za-z0-9_\\t]/_/g" sampletable > clean_sampletable' : ''}
   # Put annotation on header, use normal setname for finding, replace with clean name
   ${params.sampletable && setisobaric ?  
     'while read line ; do read -a arr <<< $line ; sed -i "s/${arr[0]}_\\([a-z0-9]*plex\\)_${arr[1]}/${arr[4]}_${arr[3]}_${arr[2]}_\\1_${arr[1]}/" header ; done < <(paste <(cut -f2 sampletable) clean_sampletable)' \
