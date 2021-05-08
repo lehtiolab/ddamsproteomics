@@ -138,6 +138,7 @@ params.email = false
 params.plaintext_email = false
 
 params.mzmls = false
+params.mzmldef = false
 params.mods = false
 params.locptms = false
 params.ptms = false
@@ -200,6 +201,7 @@ if (params.sampletable) {
 }
 
 complementary_run = params.targetpsmlookup && params.decoypsmlookup && params.targetpsms && params.decoypsms
+is_rerun = complementary_run && !params.mzmldef
 if (complementary_run) {
   if (params.quantlookup) exit 1, "When specifying a complementary you may not pass --quantlookup"
   prev_results = Channel
@@ -399,10 +401,14 @@ if (workflow.profile.tokenize(',').intersect(['test', 'test_nofrac'])) {
     .from(params.mzmlPaths)
     .set { mzml_in }
 }
-else if (!params.mzmldef) {
+else if (!params.mzmldef && params.mzmls) {
   Channel
     .fromPath(params.mzmls)
     .map { it -> [it, params.instrument, 'NA'] }
+    .set { mzml_in }
+} else if (is_rerun) {
+  Channel
+    .empty()
     .set { mzml_in }
 } else {
   Channel
@@ -500,10 +506,14 @@ mzmlfiles_rest
   .map { it -> it[0..2] } // remove basenames, fractions
   .into { mzmlfiles_all; mzmlfiles_all_count; mzmlfiles_comp }
 
-mzmlfiles_counter
-  .count()
-  .subscribe { println "$it mzML files in analysis" }
-  .into { mzmlcount_psm; mzmlcount_percolator }
+if (!is_rerun) {
+  mzmlfiles_counter
+    .count()
+    .subscribe { println "$it mzML files in analysis" }
+    .into { mzmlcount_psm; mzmlcount_percolator }
+} else {
+  Channel.of(0).into { mzmlcount_psm; mzmlcount_percolator }
+}
 
 
 
@@ -541,9 +551,9 @@ process complementSpectraLookupCleanPSMs {
       ${params.ptmpsms ? "mv '${ptmpsms}' cleaned_ptmpsms.txt" : ''}
   fi
   
-  msstitch storespectra --spectra ${mzmlfiles.join(' ')} --setnames ${in_setnames.join(' ')} --dbfile target_db.sqlite
-  copy_spectra.py target_db.sqlite decoy_db.sqlite ${params.ptmpsms ? 'ptms_db.sqlite' : '0'} ${setnames.join(' ')}
-  cat old_setnames <(echo ${setnames.join('\n')}) | sort -u > all_setnames
+  ${mzmlfiles.size() ? "msstitch storespectra --spectra ${mzmlfiles.join(' ')} --setnames ${in_setnames.join(' ')} --dbfile target_db.sqlite" : ''}
+  ${mzmlfiles.size() ? "copy_spectra.py target_db.sqlite decoy_db.sqlite ${params.ptmpsms ? 'ptms_db.sqlite' : '0'} ${setnames.join(' ')}" : ''}
+  cat old_setnames <(echo ${setnames.join('\n')}) | sort -u | grep -v '^\$' > all_setnames
   """
 }
 
@@ -612,6 +622,7 @@ if (params.noquant && !params.quantlookup) {
     .flatMap { it -> [[it[0], 'target'], [it[1], 'decoy']] }
     .set { specquant_lookups }
    spectoquant = Channel.empty()
+
 } else if (params.quantlookup) {
   // Runs with a premade quant lookup eg from previous search
   spectoquant = Channel.empty()
@@ -627,8 +638,24 @@ if (params.noquant && !params.quantlookup) {
     .unique()
     .toList()
     .set { allsetnames }
+
+} else if (is_rerun) {
+  // In case of rerun with same sets, no new search but only some different post-identification
+  // output options
+  spectoquant = Channel.empty()
+  prespectoquant  // contains  t, d lookups
+    .flatMap { it -> [[it[0], 'target'], [it[1], 'decoy']] }
+    .set{ specquant_lookups }
+  Channel.of(['NA', 'target']).set { rerun_tmzidtsv_perco }
+  Channel.of(['NA', 'decoy']).set { rerun_dmzidtsv_perco }
+  
 } else {
   prespectoquant.set { spectoquant }
+}
+
+if (!is_rerun) {
+  Channel.empty().set { rerun_tmzidtsv_perco }
+  Channel.empty().set { rerun_dmzidtsv_perco }
 }
 
 if (!params.quantlookup) {
@@ -667,7 +694,7 @@ process quantLookup {
 }
 
 
-if (!params.quantlookup && !params.noquant) {
+if (!params.quantlookup && !params.noquant && !is_rerun) {
   newquantlookup
     .flatMap { it -> [[it[0], 'target'], [it[1], 'decoy']] }
     .set { specquant_lookups }
@@ -847,6 +874,9 @@ totalproteomepsms = params.totalproteomepsms ? Channel.fromPath(params.totalprot
 // Collect percolator data of target/decoy and feed into PSM table creation
 tmzidtsv_perco
   .concat(dmzidtsv_perco)
+  // Mix in the reruns here if any (in that case there are no percolators run.
+  .concat(rerun_tmzidtsv_perco)
+  .concat(rerun_dmzidtsv_perco)
   .groupTuple(by: 1) // group by TD
   .join(specquant_lookups, by: 1) // join on TD
   .combine(psmdbs)
@@ -873,9 +903,9 @@ process createPSMTable {
   publishDir "${params.outdir}", mode: 'copy', overwrite: true, saveAs: {["target_psmlookup.sql", "decoy_psmlookup.sql", "target_psmtable.txt", "decoy_psmtable.txt"].contains(it) ? it : null}
 
   input:
-  set val(td), path('psms?'), path('lookup'), path(tdb), path(ddb), file('tppsms.txt'), file(cleaned_oldpsms) from prepsm
+  set val(td), file('psms?'), path('lookup'), path(tdb), path(ddb), file('tppsms.txt'), file(cleaned_oldpsms) from prepsm
   file(trainingpep) from hiriefpep
-  val(mzmlcount) from mzmlcount_psm
+  val(mzmlcount) from mzmlcount_psm  // For time limits
   val(setnames) from setnames_psms
 
   output:
@@ -892,17 +922,17 @@ process createPSMTable {
   quant = !params.noquant && td == 'target'
   """
   msstitch concat -i psms* -o psms.txt
-  tail -n+2 psms.txt | grep . || (>&2 echo "No ${td} PSMs made the combined PSM / peptide FDR cutoff (${params.psmconflvl} / ${params.pepconflvl})" && exit 1)
+  ${!is_rerun ? "tail -n+2 psms.txt | grep . || (>&2 echo 'No ${td} PSMs made the combined PSM / peptide FDR cutoff (${params.psmconflvl} / ${params.pepconflvl})' && exit 1)" : ''}
   # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
   cat lookup > $psmlookup
   sed '0,/\\#SpecFile/s//SpectraFile/' -i psms.txt
-  msstitch psmtable -i psms.txt --dbfile $psmlookup --addmiscleav -o psmsrefined --spectracol 1 \
+  ${is_rerun ? "mv ${cleaned_oldpsms} psmsrefined" : "msstitch psmtable -i psms.txt --dbfile $psmlookup --addmiscleav -o psmsrefined --spectracol 1 \
     ${params.onlypeptides ? '' : "--fasta \"${td == 'target' ? "${tdb}" : "${ddb}"}\" --genes"} \
     ${quant ? "${!params.noms1quant ? '--ms1quant' : ''} ${params.isobaric ? "--isobaric --min-precursor-purity ${params.minprecursorpurity}" : ''}" : ''} \
     ${!params.onlypeptides ? '--proteingroup' : ''} \
-    ${complementary_run ? "--oldpsms ${cleaned_oldpsms}" : ''}
+    ${complementary_run ? "--oldpsms ${cleaned_oldpsms}" : ''}" }
   sed 's/\\#SpecFile/SpectraFile/' -i psmsrefined
-  ${params.hirief && td == 'target' ? "echo \'${groovy.json.JsonOutput.toJson(params.strips)}\' >> strip.json && peptide_pi_annotator.py -i $trainingpep -p psmsrefined --o $outpsms --stripcolpattern Strip --pepcolpattern Peptide --fraccolpattern Fraction --stripdef strip.json --ignoremods \'*\'": "mv psmsrefined ${outpsms}"} 
+  ${params.hirief && td == 'target' && !is_rerun ? "echo \'${groovy.json.JsonOutput.toJson(params.strips)}\' >> strip.json && peptide_pi_annotator.py -i $trainingpep -p psmsrefined --o $outpsms --stripcolpattern Strip --pepcolpattern Peptide --fraccolpattern Fraction --stripdef strip.json --ignoremods \'*\'": "mv psmsrefined ${outpsms}"} 
   msstitch split -i ${outpsms} --splitcol bioset
   ${setnames.collect() { "test -f '${it}.tsv' || echo 'No ${td} PSMs found for set ${it}' >> warnings" }.join(' && ') }
   # In decoy PSM table process, also split the target total proteome normalizer table if necessary.
@@ -988,7 +1018,7 @@ process stabilePTMPrep {
 
 
 // Sort to be able to resume
-if (params.locptms) {
+if (params.locptms && !is_rerun) {
   luciphor_all
     .toList()
     .map { it.sort( {a, b -> a[0] <=> b[0]}) } // sort on setname
