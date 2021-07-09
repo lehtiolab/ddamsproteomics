@@ -1330,7 +1330,7 @@ process proteinPeptideSetMerge {
   head -n1 mergedtable | sed 's/\\#/Amount/g' > header
   # Put annotation on header, use normal setname for finding, replace with clean name
   ${params.sampletable && setisobaric ?  
-    'while read line ; do read -a arr <<< $line ; sed -i "s/${arr[0]}_\\([a-z0-9]*plex\\)_${arr[1]}/${arr[4]}_${arr[3]}_${arr[2]}_\\1_${arr[1]}/" header ; done < <(paste <(cut -f2 sampletable) clean_sampletable)' \
+    'while read line ; do read -a arr <<< $line ; sed -i "s/"\$"\\t${arr[0]}_\\([a-z0-9]*plex\\)_${arr[1]}/\t${arr[4]}_${arr[3]}_${arr[2]}_\\1_${arr[1]}/" header ; done < <(paste <(cut -f2 sampletable) clean_sampletable)' \
   :  ''}
   cat header <(tail -n+2 mergedtable) > feats
   # Run DEqMS if needed, use original sample table with NO__GROUP
