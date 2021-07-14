@@ -449,7 +449,7 @@ bothdbs.into { psmdbs; fdrdbs; ptmdbs }
 // Set fraction name to NA if not specified
 mzml_in
   .tap { mzmlfiles_counter; mzmlfiles_qlup_sets } // for counting-> timelimits; getting sets from supplied lookup
-  .map { it -> [it[2], file(it[0]).baseName, file(it[0]), it[1], (it.size() > 3 ? it[3] : it[2]), or_na(it, 4)] }
+  .map { it -> [it[2], file(it[0]).baseName.replaceAll('[&<>\'"]', '_'), file(it[0]), it[1], (it.size() > 3 ? it[3] : it[2]), or_na(it, 4)] }
   .tap { mzmlfiles; mzml_luciphor; mzml_quant }
   .combine(concatdb)
   .set { mzml_msgf }
@@ -466,10 +466,10 @@ process quantifySpectra {
   file(hkconf) from Channel.fromPath("$baseDir/assets/hardklor.conf").first()
 
   output:
-  set val(sample), val(infile.name) into sample_mzmlfn
-  set val(sample), file("${infile.baseName}.features.tsv") optional true into dino_out 
+  set val(sample), val(parsed_infile) into sample_mzmlfn
+  set val(sample), file("${sample}.features.tsv") optional true into dino_out 
   set val(sample), file("${sample}.kr") optional true into kronik_out 
-  set val(sample), file("${infile}.consensusXML") optional true into isobaricxml
+  set val(sample), file("${parsed_infile}.consensusXML") optional true into isobaricxml
 
   script:
   activationtype = [hcd:'High-energy collision-induced dissociation', cid:'Collision-induced dissociation', etd:'Electron transfer dissociation'][params.activation]
@@ -477,14 +477,22 @@ process quantifySpectra {
   isobtype = isobtype == 'tmtpro' ? 'tmt16plex' : isobtype
   plextype = isobtype ? isobtype.replaceFirst(/[0-9]+plex/, "") : 'false'
   massshift = [tmt:0.0013, itraq:0.00125, false:0][plextype]
+
+  // the string in "scriptinfile" does not have NF escaping characters like & (e.g. in FAIMS 35&65),
+  // which NF does to "infile". That would work fine but not if the files are quoted in the 
+  // script, then they cant be found when there is \&.
+  scriptinfile = "${infile.baseName}.${infile.extension}"
+  // Replace those characters anyway since they cause trouble in percolator XML output downstream
+  parsed_infile = scriptinfile.replaceAll('[&<>\'"]', '_')
   """
+  ${scriptinfile != parsed_infile ? "mv '${scriptinfile}' '${parsed_infile}'" : ''}
   # Dinosaur is first choice for MS1 quant
-  ${!params.noms1quant && !params.hardklor ? "dinosaur --concurrency=${task.cpus * params.threadspercore} \"${infile}\"" : ''}
+  ${!params.noms1quant && !params.hardklor ? "dinosaur --concurrency=${task.cpus * params.threadspercore} \"${parsed_infile}\"" : ''}
   # Hardklor/Kronik can be used as a backup, using --hardklor
-  ${!params.noms1quant && params.hardklor ? "hardklor <(cat $hkconf <(echo \"$infile\" hardklor.out)) && kronik -c 5 -d 3 -g 1 -m 8000 -n 600 -p 10 hardklor.out ${sample}.kr" : ''}
+  ${!params.noms1quant && params.hardklor ? "hardklor <(cat $hkconf <(echo \"$parsed_infile\" hardklor.out)) && kronik -c 5 -d 3 -g 1 -m 8000 -n 600 -p 10 hardklor.out ${sample}.kr" : ''}
   # Use centroided MS1 for IsobaricAnalyzer so it gets proper precursor purity calculation
-  ${isobtype ? "msconvert '$infile' --outfile centroidms1.mzML --filter 'peakPicking true 1'" : ''}
-  ${isobtype ? "IsobaricAnalyzer -type $isobtype -in centroidms1.mzML -out \"${infile}.consensusXML\" -extraction:select_activation \"$activationtype\" -extraction:reporter_mass_shift $massshift -extraction:min_precursor_intensity 1.0 -extraction:keep_unannotated_precursor true -quantification:isotope_correction true" : ''}
+  ${isobtype ? "msconvert '$parsed_infile' --outfile centroidms1.mzML --filter 'peakPicking true 1'" : ''}
+  ${isobtype ? "IsobaricAnalyzer -type $isobtype -in centroidms1.mzML -out \"${parsed_infile}.consensusXML\" -extraction:select_activation \"$activationtype\" -extraction:reporter_mass_shift $massshift -extraction:min_precursor_intensity 1.0 -extraction:keep_unannotated_precursor true -quantification:isotope_correction true" : ''}
   """
 }
 
@@ -551,7 +559,10 @@ process complementSpectraLookupCleanPSMs {
       ${params.ptmpsms ? "mv '${ptmpsms}' cleaned_ptmpsms.txt" : ''}
   fi
   
-  ${mzmlfiles.size() ? "msstitch storespectra --spectra ${mzmlfiles.join(' ')} --setnames ${in_setnames.join(' ')} --dbfile target_db.sqlite" : ''}
+  ${mzmlfiles.collect() { it.toString() != it.toString().replaceAll('[&<>\'"]', '_') ? "mv '${it}' '${it.toString().replaceAll('[&<>\'"]', '_')}'" : ''}.findAll { it != '' }.join(' && ')}
+
+  ${mzmlfiles.size() ? "msstitch storespectra --spectra ${mzmlfiles.collect() { "'${it.toString().replaceAll('[&<>\'"]', '_')}'" }.join(' ')} --setnames ${in_setnames.collect() { "'$it'" }.join(' ')} --dbfile target_db.sqlite" : ''}
+
   ${mzmlfiles.size() ? "copy_spectra.py target_db.sqlite decoy_db.sqlite ${params.ptmpsms ? 'ptms_db.sqlite' : '0'} ${setnames.join(' ')}" : ''}
   cat old_setnames <(echo ${setnames.join('\n')}) | sort -u | grep -v '^\$' > all_setnames
   """
@@ -573,7 +584,9 @@ process createNewSpectraLookup {
   script:
   uni_setnames = setnames.unique(false)
   """
-  msstitch storespectra --spectra ${mzmlfiles.join(' ')} --setnames ${setnames.join(' ')} -o target_db.sqlite
+  ${mzmlfiles.collect() { it.toString() != it.toString().replaceAll('[&<>\'"]', '_') ? "mv '${it}' '${it.toString().replaceAll('[&<>\'"]', '_')}'" : ''}.findAll { it != ''}.join(' && ')}
+
+  msstitch storespectra --spectra ${mzmlfiles.collect() { "'$it'" }.join(' ')} --setnames ${setnames.collect() { "'$it'" }.join(' ')} -o target_db.sqlite
   ln -s target_db.sqlite decoy_db.sqlite
   """
 }
@@ -687,9 +700,9 @@ process quantLookup {
   """
   # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
   cat $tlookup > target.sqlite
-  msstitch storequant --dbfile target.sqlite --spectra ${mzmlnames.join(' ')}  \
-    ${!params.noms1quant ? "--mztol 20.0 --mztoltype ppm --rttol 5.0 ${params.hardklor ? "--kronik ${ms1fns.join(' ')}" : "--dinosaur ${ms1fns.join(' ')}"}" : ''} \
-    ${params.isobaric ? "--isobaric ${isofns.join(' ')}" : ''}
+  msstitch storequant --dbfile target.sqlite --spectra ${mzmlnames.collect() { "'$it'" }.join(' ')}  \
+    ${!params.noms1quant ? "--mztol 20.0 --mztoltype ppm --rttol 5.0 ${params.hardklor ? "--kronik ${ms1fns.collect() { "'$it'" }.join(' ')}" : "--dinosaur ${ms1fns.collect() { "'$it'" }.join(' ')}"}" : ''} \
+    ${params.isobaric ? "--isobaric ${isofns.collect() { "'$it'" }.join(' ')}" : ''}
   """
 }
 
@@ -757,7 +770,7 @@ process countMS2sPerPlate {
   plates = [\"${platenames.join('", "')}\"]
   setnames = [\"${setnames.join('", "')}\"]
   fileplates = {}
-  for fn, setname, plate in zip([\"${mzmlfiles.join('", "')}\"], setnames, plates):
+  for fn, setname, plate in zip([\"${mzmlfiles.collect() { it.toString().replaceAll('[&<>\'"]', '_')}.join('", "')}\"], setnames, plates):
       try:
           fileplates[fn][setname] = plate
       except KeyError:
@@ -825,9 +838,18 @@ process msgfPlus {
   enzyme = [unspecific:0, trypsin:1, chymotrypsin: 2, lysc: 3, lysn: 4, gluc: 5, argc: 6, aspn:7, no_enzyme:9][enzyme]
   ntt = [full: 2, semi: 1, non: 0][params.terminicleaved]
 
+  // the string in "scriptinfile" does not have NF escaping characters like & (e.g. in FAIMS 35&65),
+  // which NF does to "infile". That would work fine but not if the files are quoted in the 
+  // script, then they cant be found when there is \&.
+  scriptinfile = "${x.baseName}.${x.extension}"
+  // Replace those characters anyway since they cause trouble in percolator XML output downstream
+  parsed_infile = scriptinfile.replaceAll('[&<>\'"]', '_')
   """
+  ${scriptinfile != parsed_infile ? "mv '${scriptinfile}' '${parsed_infile}'" : ''}
+
   create_modfile.py ${params.maxvarmods} "${params.msgfmods}" "${params.mods}${isobtype ? ";${isobtype}" : ''}${params.ptms ? ";${params.ptms}" : ''}${params.locptms ? ";${params.locptms}" : ''}"
-  msgf_plus -Xmx8G -d $db -s $x -o "${sample}.mzid" -thread ${task.cpus * params.threadspercore} -mod "mods.txt" -tda 0 -maxMissedCleavages $params.maxmiscleav -t ${params.prectol}  -ti ${params.iso_err} -m ${fragmeth} -inst ${msgfinstrument} -e ${enzyme} -protocol ${msgfprotocol} -ntt ${ntt} -minLength ${params.minpeplen} -maxLength ${params.maxpeplen} -minCharge ${params.mincharge} -maxCharge ${params.maxcharge} -n 1 -addFeatures 1
+  
+  msgf_plus -Xmx8G -d $db -s "$parsed_infile" -o "${sample}.mzid" -thread ${task.cpus * params.threadspercore} -mod "mods.txt" -tda 0 -maxMissedCleavages $params.maxmiscleav -t ${params.prectol}  -ti ${params.iso_err} -m ${fragmeth} -inst ${msgfinstrument} -e ${enzyme} -protocol ${msgfprotocol} -ntt ${ntt} -minLength ${params.minpeplen} -maxLength ${params.maxpeplen} -minCharge ${params.mincharge} -maxCharge ${params.maxcharge} -n 1 -addFeatures 1
   msgf_plus -Xmx3500M edu.ucsd.msjava.ui.MzIDToTsv -i "${sample}.mzid" -o out.tsv
   awk -F \$'\\t' '{OFS=FS ; print \$0, "Biological set" ${fractionation ? ', "Strip", "Fraction"' : ''}}' <( head -n+1 out.tsv) > "${sample}.mzid.tsv"
   awk -F \$'\\t' '{OFS=FS ; print \$0, "$setname" ${fractionation ? ", \"$platename\", \"$fraction\"" : ''}}' <( tail -n+2 out.tsv) >> "${sample}.mzid.tsv"
@@ -854,7 +876,7 @@ process percolator {
 
   script:
   """
-  ${mzids.collect() { "echo $it >> metafile" }.join('&&')}
+  ${mzids.collect() { "echo '$it' >> metafile" }.join('&&')}
   msgf2pin -o percoin.tsv -e ${params.enzyme} -P "decoy_" metafile
   percolator -j percoin.tsv -X perco.xml -N 500000 --decoy-xml-output
   mkdir outtables
@@ -978,7 +1000,9 @@ process luciphorPTMLocalizationScoring {
   denom = !params.noquant && setdenoms ? setdenoms[setname] : false
   specialdenom = denom && (denom[0] == 'sweep' || denom[0] == 'intensity')
   isobtype = setisobaric && setisobaric[setname] ? setisobaric[setname] : ''
+
   """
+  ${mzmls.collect() { it.toString() != it.toString().replaceAll('[&<>\'"]', '_') ? "mv '${it}' '${it.toString().replaceAll('[&<>\'"]', '_')}'" : ''}.findAll {it != ''}.join(' && ')}
   # Split allpsms to get target PSMs
   sed '0,/\\#SpecFile/s//SpectraFile/' -i "${allpsms}"
   msstitch split -i "${allpsms}" --splitcol \$(head -n1 "${allpsms}" | tr '\t' '\n' | grep -n ^TD\$ | cut -f 1 -d':')
