@@ -492,7 +492,7 @@ process quantifySpectra {
   ${!params.noms1quant && params.hardklor ? "hardklor <(cat $hkconf <(echo \"$parsed_infile\" hardklor.out)) && kronik -c 5 -d 3 -g 1 -m 8000 -n 600 -p 10 hardklor.out ${sample}.kr" : ''}
   # Use centroided MS1 for IsobaricAnalyzer so it gets proper precursor purity calculation
   ${isobtype ? "msconvert '$parsed_infile' --outfile centroidms1.mzML --filter 'peakPicking true 1'" : ''}
-  ${isobtype ? "IsobaricAnalyzer -type $isobtype -in centroidms1.mzML -out \"${parsed_infile}.consensusXML\" -extraction:select_activation \"$activationtype\" -extraction:reporter_mass_shift $massshift -extraction:min_precursor_intensity 1.0 -extraction:keep_unannotated_precursor true -quantification:isotope_correction true" : ''}
+  ${isobtype ? "IsobaricAnalyzer -type $isobtype -in centroidms1.mzML -out \"${parsed_infile}.consensusXML\" -extraction:select_activation \"$activationtype\" -extraction:reporter_mass_shift $massshift -extraction:min_precursor_intensity 1.0 -extraction:keep_unannotated_precursor true -quantification:isotope_correction true && rm centroidms1.mzML" : ''}
   """
 }
 
