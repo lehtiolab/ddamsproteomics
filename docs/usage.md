@@ -114,7 +114,7 @@ Alternative to the above --mzml this would pass a text file which contains the m
 
 The file itself is tab-separated without header, contains a single line per mzML file specified as follows:
 `/path/to/file	instrument_type	sample_or_sampleset_name	OPTIONAL:fractionation_plate_name	OPTIONAL:fraction_nr`
-Instrument type can currently be one of 'qe', 'qehf', 'velos', 'lumos', 'qehfx', or 'lowres'.
+Instrument type can currently be one of 'qe', 'qehf', 'velos', 'lumos', 'qehfx', 'timstof', or 'lowres'.
 Examples of instruments can be found in [this MSGF+ parameter file](https://github.com/MSGFPlus/msgfplus/blob/master/docs/ParameterFiles/MSGFPlus_Tryp_NoMods_20ppmParTol.txt) 
 
 ### `--tdb`

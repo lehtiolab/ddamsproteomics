@@ -31,7 +31,7 @@ def helpMessage() {
 
     Options:
       --instrument                  If not using --mzmldef, use this to specify instrument type.
-                                    Currently supporting 'qe', 'qehf', 'velos', 'lumos', 'qehfx', 'lowres'
+                                    Currently supporting 'qe', 'qehf', 'velos', 'lumos', 'qehfx', 'lowres', 'timstof'
 
       --fractions                   Fractionated samples, changes input of mzml definition and QC output
       --mods                        Modifications specified by their UNIMOD name. e.g. --mods 'oxidation;carbamidomethyl'
@@ -832,7 +832,7 @@ process msgfPlus {
   // protcol 0 is automatic, msgf checks in mod file, TMT should be run with 1
   // see at https://github.com/MSGFPlus/msgfplus/issues/19
   msgfprotocol = params.phospho ? setisobaric[setname][0..4] == 'itraq' ? 3 : 1 : 0
-  msgfinstrument = [lowres:0, velos:1, qe:3, qehf: 3, false:0, qehfx:1, lumos:1][instrument]
+  msgfinstrument = [lowres:0, velos:1, qe:3, qehf: 3, false:0, qehfx:1, lumos:1, timstof:2][instrument]
   fragmeth = [auto:0, cid:1, etd:2, hcd:3, uvpd:4][params.frag]
   enzyme = params.enzyme.indexOf('-') > -1 ? params.enzyme.replaceAll('-', '') : params.enzyme
   enzyme = [unspecific:0, trypsin:1, chymotrypsin: 2, lysc: 3, lysn: 4, gluc: 5, argc: 6, aspn:7, no_enzyme:9][enzyme]
