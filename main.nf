@@ -825,7 +825,7 @@ process msgfPlus {
   set val(setname), val(sample), file(x), val(instrument), val(platename), val(fraction), file(db) from mzml_msgf
 
   output:
-  set val(setname), val(sample), file("${sample}.mzid"), file("${sample}.mzid.tsv"), val(instrument) into mzids
+  set val(setname), val(sample), file("${sample}.mzid"), file("${sample}.mzid.tsv") into mzids
   
   script:
   isobtype = setisobaric && setisobaric[setname] ? setisobaric[setname] : false
@@ -866,7 +866,7 @@ mzids
 process percolator {
 
   input:
-  set val(setname), val(samples), file(mzids), file(tsvs), val(instruments) from mzids_2pin
+  set val(setname), val(samples), file(mzids), file(tsvs) from mzids_2pin
   val(mzmlcount) from mzmlcount_percolator
 
   output:
@@ -877,10 +877,7 @@ process percolator {
   script:
   """
   ${mzids.collect() { "echo '$it' >> metafile" }.join('&&')}
-  # FIXME workaround until msstitch processes mzid as percolator does when using
-  # enumerated scans (i.e. timstof), remove when that is fixed. Also remove
-  # input instruments (and output from msgf)
-  msgf2pin -o percoin.tsv -e ${params.enzyme} -P "decoy_" metafile ${instruments.contains('timstof') ? '-m 1000' : ''}
+  msgf2pin -o percoin.tsv -e ${params.enzyme} -P "decoy_" metafile
   percolator -j percoin.tsv -X perco.xml -N 500000 --decoy-xml-output
   mkdir outtables
   ${params.locptms ? 
