@@ -107,15 +107,16 @@ The path must be enclosed in quotes when using wildcards like `*`
 
 
 ### `--mzmldef`
-Alternative to the above --mzml this would pass a text file which contains the mzML specifications.
+Alternative to the above --mzml this would pass a mzML definition (txt) file which contains the mzML specifications. This also enables runs with specific fractionation such as HiRIEF or high pH, and the specification of individual instruments per file.
+
 ```bash
 --mzmldef /path/to/data/mzmls.txt
 ```
 
 The file itself is tab-separated without header, contains a single line per mzML file specified as follows:
 `/path/to/file	instrument_type	sample_or_sampleset_name	OPTIONAL:fractionation_plate_name	OPTIONAL:fraction_nr`
-Instrument type can currently be one of 'qe', 'qehf', 'velos', 'lumos', 'qehfx', 'timstof', or 'lowres'.
-Examples of instruments can be found in [this MSGF+ parameter file](https://github.com/MSGFPlus/msgfplus/blob/master/docs/ParameterFiles/MSGFPlus_Tryp_NoMods_20ppmParTol.txt) 
+Fractionation is automatically detected from this file, and enforced if ANY of the files have a fraction. This mainly has implications for QC though, identification and quantification are not much impacted by specifying fractionation. Instrument type can currently be one of 'qe', 'qehf', 'velos', 'lumos', 'qehfx', 'timstof', or 'lowres'.
+Examples of instruments can be found in [this MSGF+ parameter file](https://github.com/MSGFPlus/msgfplus/blob/master/docs/ParameterFiles/MSGFPlus_Tryp_NoMods_20ppmParTol.txt).
 
 ### `--tdb`
 Target database. Decoy databases are created "tryptic-reverse" by the pipeline and searches are against a

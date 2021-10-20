@@ -94,9 +94,14 @@ def annotate_peptable(predicted_peps_fn, peptable, seqcol, frac_col, stripcol,
                 pred_pi, delta_pi = 'NA', 'NA'
             else:
                 predicted_count += 1
-            fraction = int(line[frac_col]) 
+            try:
+                fraction = int(line[frac_col]) 
+            except ValueError:
+                fraction = False
+                print('Cannot assign delta pI to non-number fraction for peptide {} with predicted '
+                    'pI {}'.format(sequence, pred_pi))
             strip = get_strip(strips, line[stripcol], fraction)
-            if not strip:
+            if not strip or not fraction:
                 exp_pi, delta_pi = 'NA', 'NA'
             else:
                 try:

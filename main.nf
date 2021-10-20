@@ -33,7 +33,6 @@ def helpMessage() {
       --instrument                  If not using --mzmldef, use this to specify instrument type.
                                     Currently supporting 'qe', 'qehf', 'velos', 'lumos', 'qehfx', 'lowres', 'timstof'
 
-      --fractions                   Fractionated samples, changes input of mzml definition and QC output
       --mods                        Modifications specified by their UNIMOD name. e.g. --mods 'oxidation;carbamidomethyl'
                                     Note that there are a limited number of modifications available, but that
                                     this list can easily be expanded in assets/msgfmods.txt
@@ -85,7 +84,7 @@ def helpMessage() {
       --hirief                      File containing peptide sequences and their isoelectric points.
                                     An example can be found here:
                                     https://github.com/nf-core/test-datasets/blob/ddamsproteomics/testdata/formatted_known_peptides_ENSUniRefseq_TMT_predpi_20150825.txt
-                                    For IEF fractionated samples, implies --fractions, enables delta pI calculation
+                                    For IEF fractionated samples, implies fractions in mzml definition, enables delta pI calculation
       --onlypeptides                Do not produce protein or gene level data
       --noquant                     Do not produce isobaric or MS1 quantification data
       --noms1quant                  Do not produce MS1 quantification data
@@ -109,7 +108,7 @@ def helpMessage() {
                                     with --locptms
       --oldmzmldef                  An --mzmldef type file of a previous run you want to reuse and complement. Will be stripped of
                                     its set data for the new set that will be analyzed. Needed for basing run on another run, but only
-                                    when the old one has --fractionation.
+                                    when the new run is fractionated.
 
     Other options:
       --outdir                      The output directory where the results will be saved
@@ -172,7 +171,6 @@ params.ensg = false
 params.fastadelim = false
 params.genefield = false
 params.quantlookup = false
-params.fractions = false
 params.hirief = false
 params.onlypeptides = false
 params.noquant = false
@@ -189,10 +187,10 @@ params.ptmpsms = false
 params.oldmzmldef = false
 
 // Validate and set file inputs
-fractionation = (params.hirief || params.fractions)
 
 // Files which are not standard can be checked here
 if (params.hirief && !file(params.hirief).exists()) exit 1, "Peptide pI data file not found: ${params.hirief}"
+if (params.hirief && !params.mzmldef) exit 1, "Cannot run HiRIEF delta pI calculation without fraction-annotated mzML definition file"
 if (params.sampletable) {
   sampletable = file(params.sampletable)
   if( !sampletable.exists() ) exit 1, "Sampletable file not found: ${params.sampletable}"
@@ -320,7 +318,6 @@ summary['Previous run decoy results SQLite'] = params.decoypsmlookup
 summary['Previous run target PSMs'] = params.targetpsms
 summary['Previous run decoy PSMs'] = params.decoypsms
 summary['Previous run mzml definition'] = params.oldmzmldef
-summary['Fractionated sample'] = fractionation
 summary['HiRIEF pI peptide data'] = params.hirief 
 summary['Only output peptides'] = params.onlypeptides
 summary['Do not quantify'] = params.noquant
@@ -407,19 +404,28 @@ else if (!params.mzmldef && params.mzmls) {
     .map { it -> [it, params.instrument, 'NA'] }
     .set { mzml_in }
 } else if (is_rerun) {
+  fractionation = false
   Channel
     .empty()
     .set { mzml_in }
 } else {
+  mzmllines = file("${params.mzmldef}").readLines().collect { it.tokenize('\t') }
   Channel
-    .from(file("${params.mzmldef}").readLines())
-    .map { it -> it.tokenize('\t') }
+    .from(mzmllines)
     .set { mzml_in }
-}
-
-
-def or_na(it, length){
-    return it.size() > length ? it[length] : 'NA'
+  fractionation = mzmllines.any { it.size() == 5}
+  if (fractionation) {
+    println("Fractions detected in mzml definition, will run as fractionated")
+    if (mzmllines.any { it.size() == 4}) {
+      println("Forcing files without fraction to file-named fraction in their specified plate")
+    } else if (mzmllines.any { it.size() == 3}) {
+      println("Forcing files without fraction to file-named fraction in set-named plate")
+    }
+  } else if (params.hirief) {
+    exit 1, "Cannot run HiRIEF --hirief while not specifying fractions. If this is an addition of e.g. a long gradient to a fractionated run, or a rerun from existing PSM table, you may leave out --hirief since it is already done"
+  } else {
+    println("No fractions detected in mzml definition")
+  }
 }
 
 
@@ -443,13 +449,23 @@ process createTargetDecoyFasta {
 
 bothdbs.into { psmdbs; fdrdbs; ptmdbs }
 
+
+def fr_or_file(it, length) {
+  // returns either fraction number or file from line
+  return it.size() > length ? it[length] : it[0]
+}
+
+def plate_or_no(it, length) {
+  return it.size() > 3 ? it[3] : "no_plate"
+}
+
 // Parse mzML input to get files and sample names etc
 // get setname, sample name (baseName), input mzML file. 
-// Set platename to samplename if not specified. 
+// Set platename to setname if not specified. 
 // Set fraction name to NA if not specified
 mzml_in
   .tap { mzmlfiles_counter; mzmlfiles_qlup_sets } // for counting-> timelimits; getting sets from supplied lookup
-  .map { it -> [it[2], file(it[0]).baseName.replaceAll('[&<>\'"]', '_'), file(it[0]), it[1], (it.size() > 3 ? it[3] : it[2]), or_na(it, 4)] }
+  .map { it -> [it[2], file(it[0]).baseName.replaceAll('[&<>\'"]', '_'), file(it[0]), it[1], plate_or_no(it, 3), fr_or_file(it, 4)] }
   .tap { mzmlfiles; mzml_luciphor; mzml_quant }
   .combine(concatdb)
   .set { mzml_msgf }
