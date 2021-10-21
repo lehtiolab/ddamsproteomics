@@ -94,6 +94,8 @@ tablefieldtitles = {
         'nr_assoc_q': 'Proteins ID and quant. (symbol centric, 1%FDR)',
         'Non-shared (unique)': 'Peptides (unique, 1%FDR)',
         'psmcount': 'PSMs (total)',
+        'normfac': 'Norm. factor',
+        'channel': 'Isob. channel',
         }
 
 field_order = ['Set', 'nr_proteins_q', 'nr_proteins', 'nr_genes_q', 'nr_genes', 'nr_assoc', 'nr_assoc_q', 'Non-shared (unique)', 'no_pep_proteins', 'no_pep_genes', 'psmcount', 'no_psm_proteins', 'no_psm_genes']
@@ -122,28 +124,32 @@ if has_ptms:
         pass
 
 def parse_table(fn):
-    table = {'_rows': {}}
+    table = {'_rows': []}
     with open(fn) as fp:
         header = next(fp).strip('\n').split('\t')
         table['_fields'] = sorted(header, key=lambda x: field_order[x] if x in field_order else len(field_order)+1)
         for line in fp:
             line = line.strip('\n').split('\t')
             line = {header[x]: line[x] for x in range(0,len(line))}
-            table['_rows'][line[header[0]]] = line
+            table['_rows'].append(line)
     return table
 
 summaries = {'qc_light': 'summary_light', 'qc_full': 'summary'}
 sumtable = parse_table(summaries[templatetype])
-overlaptables = {}
+overlaptables, normfactables = {}, {}
 for feat in feattypes[templatetype]:
     try:
-        overlap = parse_table('{}_overlap'.format(feat))
+        overlaptables[feat] = parse_table('{}_overlap'.format(feat))
     except IOError:
         pass
-    else:
-        overlaptables[feat] = overlap
+    try:
+        normfactables[feat] = parse_table('{}_normfacs'.format(feat))
+    except IOError:
+        pass
 if templatetype == 'qc_light' and 'genes' in overlaptables:
     overlaptables.pop('proteins')
+if templatetype == 'qc_light' and 'genes' in normfactables:
+    normfactables.pop('proteins')
     
 with open('{}.html'.format(templatetype), 'w') as fp:
-    fp.write(main.render(sumtable=sumtable, overlap=overlaptables, tablefieldtitles=tablefieldtitles, frac=frac, searchname=searchname, titles=titles, featnames=featnames[templatetype], psms=psms, firstplate=sorted(ppsms.keys())[0], ppsms=ppsms, features=graphs, ptms=ptms, software=sw_ver_template.format('\n'.join(sw_vers)), warnings=warnings, completedate=datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S')))
+    fp.write(main.render(sumtable=sumtable, overlap=overlaptables, normfacs=normfactables, tablefieldtitles=tablefieldtitles, frac=frac, searchname=searchname, titles=titles, featnames=featnames[templatetype], psms=psms, firstplate=sorted(ppsms.keys())[0], ppsms=ppsms, features=graphs, ptms=ptms, software=sw_ver_template.format('\n'.join(sw_vers)), warnings=warnings, completedate=datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S')))

@@ -1440,7 +1440,7 @@ process featQC {
 
   output:
   file('feats') into featsout
-  set val(acctype), file('featqc.html'), file('summary.txt'), file('overlap') into qccollect
+  set val(acctype), file('featqc.html'), file('summary.txt'), file('overlap'), file('allnormfacs') into qccollect
 
   script:
   show_normfactors = setdenoms && normalize
@@ -1505,7 +1505,7 @@ ptmqcout = params.ptms || params.locptms ? ptmqc : Channel.from('NA')
 qccollect
   .concat(psmqccollect)
   .toList()
-  .map { it -> [it.collect() { it[0] }, it.collect() { it[1] }, it.collect() { it[2] }, it.collect() { it[3] }] }
+  .map { it -> [it.collect() { it[0] }, it.collect() { it[1] }, it.collect() { it[2] }, it.collect() { it[3] }, it.collect() { it[4] } ] }
   .merge(ptmqcout)
   .set { collected_feats_qc }
 
@@ -1515,7 +1515,7 @@ process collectQC {
   publishDir "${params.outdir}", mode: 'copy', overwrite: true
 
   input:
-  set val(acctypes), file('feat?'), file('summary?'), file('overlap?'), file('ptmqc') from collected_feats_qc
+  set val(acctypes), file('feat?'), file('summary?'), file('overlap?'), file('normfacs?'), file('ptmqc') from collected_feats_qc
   val(plates) from qcplates
   file('sw_ver') from software_versions_qc
   file('warnings??') from warnings
@@ -1525,7 +1525,12 @@ process collectQC {
 
   script:
   """
-  count=1; for ac in ${acctypes.join(' ')}; do mv feat\$count \$ac.html; mv summary\$count \${ac}_summary; mv overlap\$count \${ac}_overlap; ((count++)); done
+  count=1; for ac in ${acctypes.join(' ')}; 
+    do mv feat\$count \$ac.html;
+    mv summary\$count \${ac}_summary;
+    mv overlap\$count \${ac}_overlap 
+    [ -s normfacs\${count} ] && cat <(echo Set\$'\t'channel\$'\t'normfac) normfacs\$count > \${ac}_normfacs;
+    ((count++)); done
   join -j 1 -o auto -t '\t' <(head -n1 psms_summary) <(head -n1 peptides_summary) > psmpepsum_header
   join -j 1 -o auto -t '\t' <(tail -n+2 psms_summary | sort -k1b,1 ) <(tail -n+2 peptides_summary | sort -k1b,1 ) > psmpepsum_tab
 

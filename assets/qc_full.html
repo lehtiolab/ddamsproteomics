@@ -42,16 +42,30 @@
   <h4 class="title is-4">Summary</h4>
   {{ tm.table(sumtable, tablefieldtitles) }}
   <hr>
+
   <h4 class="title is-4">Overlap</h4>
   <div class="columns">
-  {% for feat in overlap %}
-  <div class="column">
-  <h5 class="title is-5">{{ featnames[feat] }}</h5>
-  {{ tm.table(overlap[feat], tablefieldtitles) }}
-  </div>
-  {% endfor %}
+    {% for feat in overlap %}
+      <div class="column">
+      <h5 class="title is-5">{{ featnames[feat] }}</h5>
+      {{ tm.table(overlap[feat], tablefieldtitles) }}
+      </div>
+    {% endfor %}
   </div>
   <hr>
+
+  {% if normfacs %}
+  <h4 class="title is-4">Median centered isobaric normalization factors</h4>
+  <div class="columns">
+    {% for feat in normfacs %}
+      <div class="column">
+      <h5 class="title is-5">{{ featnames[feat] }}</h5>
+      {{ tm.table(normfacs[feat], tablefieldtitles) }}
+      </div>
+      {% endfor %}
+  </div>
+  <hr>
+  {% endif %}
 
 
 {% for graphtype in ["featyield", "precursorarea", "isobaric", "normfactors", "nrpsms", "nrpsmsoverlapping",

@@ -1,5 +1,5 @@
 {% macro table(table, titles) -%}
-<table class="table is-striped is-narrow is-hoverable">
+<table class="table is-striped is-narrow is-hoverable is-size-7">
 <thead>
 <tr>
 {% for field in table['_fields'] %}
@@ -8,10 +8,10 @@
 </tr>
 </thead>
 <tbody>
-{% for sampleset in table['_rows'] %}
+{% for line in table['_rows'] %}
 <tr>
 {% for field in table['_fields'] %}
-<td>{{ table['_rows'][sampleset][field] }}</td>
+<td>{{ line[field] }}</td>
 {% endfor %}
 </tr>
 {% endfor %}
