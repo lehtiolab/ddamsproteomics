@@ -239,14 +239,11 @@ setisobaric = isop ? isop.collect() {
 }.collectEntries() {
   x-> [x[0], x[1]]
 } : false
-// FIXME add non-isobaric sets here if we have any mixed-in?
 setdenoms = isop ? isop.collect() {
   y -> y.tokenize(':')
 }.collectEntries() {
   x-> [x[0], x[2..-1]]
 } : false
-
-luciphor_ptms = params.locptms ? params.locptms.tokenize(';') : false
 
 normalize = (!params.noquant && (params.normalize || params.deqms) && params.isobaric)
 
@@ -536,7 +533,7 @@ if (!is_rerun) {
     .subscribe { println "$it mzML files in analysis" }
     .into { mzmlcount_psm; mzmlcount_percolator }
 } else {
-  Channel.of(0).into { mzmlcount_psm; mzmlcount_percolator }
+  Channel.value(0).into { mzmlcount_psm; mzmlcount_percolator }
 }
 
 
@@ -560,8 +557,9 @@ process complementSpectraLookupCleanPSMs {
   setnames = in_setnames.unique(false)
   """
   # If this is an addition to an old lookup, copy it and extract set names
-  cp "${tlup}" target_db.sqlite && sqlite3 target_db.sqlite "SELECT set_name FROM biosets" > old_setnames
+  cp "${tlup}" target_db.sqlite
   cp "${dlup}" decoy_db.sqlite
+  sqlite3 target_db.sqlite "SELECT set_name FROM biosets" > old_setnames
   # If adding to old lookup: grep new setnames in old and run msstitch deletesets if they match
   # use -x for grep since old_setnames must grep whole word
   if grep -xf old_setnames <(echo ${setnames.join('\n')} )
@@ -578,8 +576,9 @@ process complementSpectraLookupCleanPSMs {
   ${mzmlfiles.collect() { it.toString() != it.toString().replaceAll('[&<>\'"]', '_') ? "mv '${it}' '${it.toString().replaceAll('[&<>\'"]', '_')}'" : ''}.findAll { it != '' }.join(' && ')}
 
   ${mzmlfiles.size() ? "msstitch storespectra --spectra ${mzmlfiles.collect() { "'${it.toString().replaceAll('[&<>\'"]', '_')}'" }.join(' ')} --setnames ${in_setnames.collect() { "'$it'" }.join(' ')} --dbfile target_db.sqlite" : ''}
+  ${params.ptmpsms ? "cp target_db.sqlite ptms_db.sqlite" : ''}
 
-  ${mzmlfiles.size() ? "copy_spectra.py target_db.sqlite decoy_db.sqlite ${params.ptmpsms ? 'ptms_db.sqlite' : '0'} ${setnames.join(' ')}" : ''}
+  copy_spectra.py target_db.sqlite decoy_db.sqlite ${params.ptmpsms ? 'ptms_db.sqlite' : '0'} ${setnames.join(' ')}
   cat old_setnames <(echo ${setnames.join('\n')}) | sort -u | grep -v '^\$' > all_setnames
   """
 }
@@ -934,7 +933,7 @@ if (complementary_run) {
 * Step 3: Post-process peptide identification data
 */
 
-hiriefpep = params.hirief ? Channel.fromPath([params.hirief, params.hirief]) : Channel.value(['NA', 'NA'])
+hiriefpep = params.hirief ? Channel.fromPath([params.hirief, params.hirief]) : Channel.value('NA')
 
 process createPSMTable {
 
@@ -1070,12 +1069,12 @@ if (params.locptms && !is_rerun) {
     .set { ptm_allsets }
 } else {
   setnames_ptms 
-    .map { it -> [it, 'NA'] }
+    .map { it -> [it, ''] }
     .set { ptm_allsets }
 }
 
 stabileptms
-  .ifEmpty('NA')
+  .ifEmpty('')
   .toList()
   .set { allstabileptms }
     
@@ -1085,10 +1084,16 @@ ptm_allsets
   .set { lucptmfiles_to_lup }
 
 
+ptms_used = params.locptms || params.ptms || params.ptmpsms
+
+// FIXME currently not storing the PTMs in SQL or similar, would be good to keep this state
+// between runs for complement/rerun etc ?
+if (params.ptmpsms && !(params.locptms || params.ptms)) exit 1, "In a rerun with --ptmpsms you  must specify which PTMs you have used with --locptms or --ptms"
+
 process createPTMLookup {
   publishDir "${params.outdir}", mode: 'copy', overwrite: true, saveAs: {it == ptmtable ? ptmtable: null}
 
-  when: params.locptms || params.ptms
+  when: ptms_used
 
   input:
   tuple val(setnames), file('ptms?'), file('stabileptms*'), file(cleaned_oldptms) from lucptmfiles_to_lup
@@ -1106,7 +1111,7 @@ process createPTMLookup {
   # Concat all the PTM PSM tables (labile, stabile, previous) and load into DB
   # PSM peptide sequences include the PTM site
   cat speclup.sql > ptmlup.sql
-  msstitch concat -i ${params.ptms ? "stabileptms*" : ''} ${params.locptms ? "ptms*" : ''} ${complementary_run ? "'${cleaned_oldptms}'" : ''} -o concatptmpsms
+  msstitch concat -i ${params.ptms && !is_rerun ? "stabileptms*" : ''} ${params.locptms && !is_rerun ? "ptms*" : ''} ${complementary_run ? "'${cleaned_oldptms}'" : ''} -o concatptmpsms
   msstitch psmtable -i concatptmpsms --dbfile ptmlup.sql -o "${ptmtable}" \
     --spectracol 1
   msstitch split -i "${ptmtable}" --splitcol bioset
@@ -1308,6 +1313,7 @@ process proteinGeneSymbolTableFDR {
 psmwarnings
   .concat(pepwarnings)
   .concat(fdrwarnings)
+  .concat(ptmwarnings)
   .toList()
   .set { warnings }
 
@@ -1500,7 +1506,7 @@ process featQC {
   """
 }
 
-ptmqcout = params.ptms || params.locptms ? ptmqc : Channel.from('NA')
+ptmqcout = params.ptms || params.locptms || params.ptmpsms ? ptmqc : Channel.from('NA')
 
 qccollect
   .concat(psmqccollect)
