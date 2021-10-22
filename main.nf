@@ -1407,7 +1407,7 @@ process psmQC {
   // TODO no proteins == no coverage for pep centric
   script:
   """
-  paste <(echo ${mzmlbasenames.join(' ')} | tr ' ' '\\n' ) <(echo ${plicate_sets.join(' ')} | tr ' ' '\\n') <( echo ${mzmlplates.join(' ')} | tr ' ' '\\n') <(echo ${fractions.join(' ')} | tr ' ' '\\n') > mzmlfrs
+  paste <(echo ${mzmlpaths.collect() { "${it.baseName}.${it.extension}" }.join(' ')} | tr ' ' '\\n' ) <(echo ${plicate_sets.join(' ')} | tr ' ' '\\n') <( echo ${mzmlplates.join(' ')} | tr ' ' '\\n') <(echo ${fractions.join(' ')} | tr ' ' '\\n') > mzmlfrs
   qc_psms.R ${setnames[0].size()} ${fractionation ? 'TRUE' : 'FALSE'} ${params.oldmzmldef ? 'oldmzmldef' : 'nofile'} ${plates.join(' ')}
   sed -Ei 's/[^A-Za-z0-9_\\t]/./' summary.txt
   echo "<html><body>" > psmqc.html
