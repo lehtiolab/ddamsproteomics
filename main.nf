@@ -1366,7 +1366,8 @@ process proteinPeptideSetMerge {
 
   # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
   cat $lookup > db.sqlite
-  msstitch merge -i ${tables.join(' ')} --setnames ${setnames.sort().join(' ')} --dbfile db.sqlite -o mergedtable \
+  msstitch merge -i ${[tables, setnames].transpose().sort({ a,b -> a[1] <=> b[1]}).collect() { it[0] }.join(' ')} \
+    --setnames ${setnames.sort().join(' ')} --dbfile db.sqlite -o mergedtable \
     --fdrcolpattern '^q-value\$' ${acctype != 'peptides' ? '--mergecutoff 0.01' : ''} \
     ${!params.noquant && !params.noms1quant ? "--ms1quantcolpattern area" : ''} \
     ${!params.noquant && setisobaric ? "--isobquantcolpattern plex" : ''} \
