@@ -1240,9 +1240,8 @@ process makePeptides {
   
   output:
   set val(setname), val(td), file(psms), file("${setname}_peptides") into prepgs_in
-  set val(setname), val('peptides'), val(td), file("${setname}_peptides") into peptides_out
+  set val(setname), val('peptides'), val(td), file("${setname}_peptides"), path(normfactors) optional true into peptides_out
   file('warnings') optional true into pepwarnings
-  set val(setname), path(normfactors) optional true into pepnormfac
 
   script:
   quant = !params.noquant && td == 'target'
@@ -1258,7 +1257,7 @@ process makePeptides {
     ${denom && denom[0] == 'intensity' ? '--medianintensity' : ''} \
     ${denom && !specialdenom ? "--logisoquant --denompatterns ${setdenoms[setname].join(' ')}" : ''} \
     ${quant && normalize ? "--median-normalize" : ''}
-    ${quant && normalize ? "sed 's/^/$setname'\$'\t/' < normalization_factors_psms > $normfactors" : ''}
+    ${quant && normalize ? "sed 's/^/$setname'\$'\t/' < normalization_factors_psms > $normfactors" : "touch $normfactors"}
   """
 }
 
@@ -1289,9 +1288,8 @@ process proteinGeneSymbolTableFDR {
   each acctype from acctypes
 
   output:
-  set val(setname), val(acctype), file("${setname}_protfdr") into protfdrout
+  set val(setname), val(acctype), file("${setname}_protfdr"), path(normfactors) into protfdrout
   file('warnings') optional true into fdrwarnings
-  set val(setname), val(acctype), path(normfactors) optional true into protnormfac
 
   script:
   scorecolpat = acctype == 'proteins' ? '^q-value$' : 'linear model'
@@ -1321,7 +1319,7 @@ process proteinGeneSymbolTableFDR {
     ${denom && denom[0] == 'intensity' ? '--medianintensity' : ''} \
     ${denom && !specialdenom ? "--denompatterns ${setdenoms[setname].join(' ')} --logisoquant" : ''} \
     ${normalize ? "--median-normalize" : ''}
-    ${normalize ? "sed 's/^/$setname'\$'\t/' < normalization_factors_tpsms > $normfactors" : ''}
+    ${normalize ? "sed 's/^/$setname'\$'\t/' < normalization_factors_tpsms > $normfactors" : "touch $normfactors"}
   """
 }
     
@@ -1333,23 +1331,19 @@ psmwarnings
   .toList()
   .set { warnings }
 
-protgenes = (normalize ? protfdrout.join(protnormfac, by:[0, 1]) : protfdrout )
-
 peptides_out
   .filter { it[2] == 'target' }
-  // setname, acctype, outfile
-  .map { it -> [it[0], it[1], it[3]] }
+  // setname, acctype, outfile, optional normfactors
+  .map { it -> [it[0], it[1]] + it[3..-1] }
   .set { tpeps }
 
-peps_tomerge = (normalize ? tpeps.join(pepnormfac) : tpeps)
-
-peps_tomerge
-  .concat(protgenes)
-  .set { features_out }
-
-features_out
+tpeps
+  .concat(protfdrout)
+  .toSortedList( {a, b -> a[0] <=> b[0]} ) // sort on setname
+  .flatMap { it -> it}
   .groupTuple(by: 1)  // all outputs of same accession type together.
   .set { ptables_to_merge }
+
 
 psmlookup
   .filter { it[0] == 'target' }
@@ -1382,8 +1376,7 @@ process proteinPeptideSetMerge {
 
   # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
   cat $lookup > db.sqlite
-  msstitch merge -i ${[tables, setnames].transpose().sort({ a,b -> a[1] <=> b[1]}).collect() { it[0] }.join(' ')} \
-    --setnames ${setnames.sort().join(' ')} --dbfile db.sqlite -o mergedtable \
+  msstitch merge -i ${tables.join(' ')} --setnames ${setnames.join(' ')} --dbfile db.sqlite -o mergedtable \
     --fdrcolpattern '^q-value\$' ${acctype != 'peptides' ? '--mergecutoff 0.01' : ''} \
     ${!params.noquant && !params.noms1quant ? "--ms1quantcolpattern area" : ''} \
     ${!params.noquant && setisobaric ? "--isobquantcolpattern plex" : ''} \
