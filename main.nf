@@ -108,7 +108,7 @@ def helpMessage() {
                                     with --locptms
       --oldmzmldef                  An --mzmldef type file of a previous run you want to reuse and complement. Will be stripped of
                                     its set data for the new set that will be analyzed. Needed for basing run on another run, but only
-                                    when the new run is fractionated.
+                                    when the new run is fractionated, and only for QC purposes
 
     Other options:
       --outdir                      The output directory where the results will be saved
@@ -200,15 +200,22 @@ if (params.sampletable) {
 
 complementary_run = params.targetpsmlookup && params.decoypsmlookup && params.targetpsms && params.decoypsms
 is_rerun = complementary_run && !params.mzmldef
+
 if (complementary_run) {
   if (params.quantlookup) exit 1, "When specifying a complementary you may not pass --quantlookup"
   prev_results = Channel
     .fromPath([params.targetpsmlookup, params.decoypsmlookup, params.targetpsms, params.decoypsms, params.ptmpsms ? params.ptmpsms : 'NA'])
     .toList()
+  def oldpsmheader
+  new File("${params.targetpsms}").withReader { oldpsmheader = it.readLine() }
+  old_fractionation = oldpsmheader.contains('Fraction')
+
 } else if (params.targetpsmlookup || params.decoypsmlookup || params.targetpsms || params.decoypsms || params.ptmpsms) {
   exit 1, "When specifying a complementary run you need to pass all of --targetpsmlookup, --decoypsmlookup, --targetpsms, --decoypsms"
+
 } else {
   complementary_run = false
+  old_fractionation = false
   prev_results = Channel.empty()
 }
 
@@ -401,7 +408,7 @@ else if (!params.mzmldef && params.mzmls) {
     .map { it -> [it, params.instrument, 'NA'] }
     .set { mzml_in }
 } else if (is_rerun) {
-  fractionation = false
+  fractionation_in = false
   Channel
     .empty()
     .set { mzml_in }
@@ -410,16 +417,18 @@ else if (!params.mzmldef && params.mzmls) {
   Channel
     .from(mzmllines)
     .set { mzml_in }
-  fractionation = mzmllines.any { it.size() == 5}
-  if (fractionation) {
+  fractionation_in = mzmllines.any { it.size() == 5}
+  if (fractionation_in) {
     println("Fractions detected in mzml definition, will run as fractionated")
     if (mzmllines.any { it.size() == 4}) {
       println("Forcing files without fraction to file-named fraction in their specified plate")
     } else if (mzmllines.any { it.size() == 3}) {
       println("Forcing files without fraction to file-named fraction in set-named plate")
     }
+  } else if (params.hirief && !(is_rerun || complementary_run)) {
+    exit 1, "Cannot run HiRIEF --hirief while not specifying fractions"
   } else if (params.hirief) {
-    exit 1, "Cannot run HiRIEF --hirief while not specifying fractions. If this is an addition of e.g. a long gradient to a fractionated run, or a rerun from existing PSM table, you may leave out --hirief since it is already done"
+    println("No fractions detected in mzml definition but specified --hirief and supplied PSM table,will try to add pI data to any fractions detected in PSMs")
   } else {
     println("No fractions detected in mzml definition")
   }
@@ -449,7 +458,9 @@ bothdbs.into { psmdbs; fdrdbs; ptmdbs }
 
 def fr_or_file(it, length) {
   // returns either fraction number or file from line
-  return it.size() > length ? it[length] : it[0]
+  // file name is used in QC plots where no frac is available and fraction plot is enforced,
+  // e.g. when mixing fractions and non-fractions
+  return it.size() > length ? it[length] : "${file(it[0]).baseName}.${file(it[0]).extension}"
 }
 
 def plate_or_no(it, length) {
@@ -748,6 +759,7 @@ process countMS2perFile {
 }
 
 
+fractionation = fractionation_in || old_fractionation
 if (fractionation && complementary_run) { 
   if (!params.oldmzmldef || !file(params.oldmzmldef).exists()) exit 1, 'Fractionation with complementing run needs an --oldmzmldef file'
   specfilems2
@@ -794,6 +806,10 @@ process countMS2sPerPlate {
       with open('$old_platedef') as oldmzfp:
           for line in oldmzfp:
               fpath, inst, setname, plate, fraction = line.strip('\\n').split('\\t')
+              # old mzmls also contain files that are no longer used (i.e. removed from set)
+              # filter by skipping any setname that is in the current new setnames
+              if setname in setnames:
+                  continue
               setplate = '{}_{}'.format(setname, plate)
               fn = os.path.basename(fpath)
               if setplate not in platesets:
@@ -969,7 +985,7 @@ process createPSMTable {
     ${!params.onlypeptides ? '--proteingroup' : ''} \
     ${complementary_run ? "--oldpsms ${cleaned_oldpsms}" : ''}" }
   sed 's/\\#SpecFile/SpectraFile/' -i psmsrefined
-  ${params.hirief && td == 'target' && !is_rerun ? "echo \'${groovy.json.JsonOutput.toJson(params.strips)}\' >> strip.json && peptide_pi_annotator.py -i $trainingpep -p psmsrefined --o $outpsms --stripcolpattern Strip --pepcolpattern Peptide --fraccolpattern Fraction --stripdef strip.json --ignoremods \'*\'": "mv psmsrefined ${outpsms}"} 
+  ${params.hirief && td == 'target' && !is_rerun ? "echo \'${groovy.json.JsonOutput.toJson(params.strips)}\' >> strip.json && peptide_pi_annotator.py -i $trainingpep -p psmsrefined --out $outpsms --stripcolpattern Strip --pepcolpattern Peptide --oldpsms '${cleaned_oldpsms}' --fraccolpattern Fraction --stripdef strip.json --ignoremods \'*\'": "mv psmsrefined ${outpsms}"} 
   msstitch split -i ${outpsms} --splitcol bioset
   ${setnames.collect() { "test -f '${it}.tsv' || echo 'No ${td} PSMs found for set ${it}' >> warnings" }.join(' && ') }
   # In decoy PSM table process, also split the target total proteome normalizer table if necessary.

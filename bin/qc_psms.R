@@ -8,7 +8,10 @@ oldmzmlfn = args[3]
 oldmzmldef = ifelse(oldmzmlfn == 'nofile', FALSE, TRUE)
 plateids = args[4:length(args)]
 
-feats = read.table("psms", header=T, sep="\t", comment.char = "", quote = "")
+# Fraction needs to be a factor and not numeric, since it can contain strings (e.g. A2)
+# That would be fine but when mixing oldmzmls from a rerun in, the join on Fraction op may fail
+# when there is both the factor 02, and the numeric 2 in different tables
+feats = read.table("psms", colClasses=c('Fraction'='factor'), header=T, sep="\t", comment.char = "", quote = "")
 ycol = 'value'
 if (has_fractions) {
   width = 4
@@ -82,15 +85,15 @@ if (has_fractions) {
   fryield_form = 'SpecID ~ SpectraFile'
 }
 
-allfilefractions = read.table("mzmlfrs", header=F, sep='\t')
+allfilefractions = read.table("mzmlfrs", colClasses=c(NA, NA, NA, 'factor'), header=F, sep='\t')
 colnames(allfilefractions) = c('SpectraFile', 'setname', 'strip', 'Fraction')
 if (oldmzmldef) {
-  oldmzmls = read.table(oldmzmlfn, header=F, sep='\t')[,c(1,3,4,5)]
+  oldmzmls = read.table(oldmzmlfn, colClasses=c(NA, NA, NA, NA, 'factor'), header=F, sep='\t')[,c(1,3,4,5)]
+  # TODO columns maybe added/disappea in future old/mzmldef file
   colnames(oldmzmls) = c('SpectraFile', 'setname', 'strip', 'Fraction')
   allfilefractions = rbind(allfilefractions, oldmzmls)
 }
 allfilefractions$plateID = paste(allfilefractions$setname, allfilefractions$strip, sep='_')
-allfilefractions$Fraction = as.factor(allfilefractions$Fraction)
 
 ptypes = list(
   retentiontime=c('Retention.time.min.', 'time(min)'),
