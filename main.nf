@@ -538,7 +538,7 @@ mzmlfiles
 
 mzmlfiles_rest
   .map { it -> it[0..2] } // remove basenames, fractions
-  .into { mzmlfiles_all; mzmlfiles_all_count; mzmlfiles_comp }
+  .into { mzmlfiles_all; mzmlfiles_all_count }
 
 if (!is_rerun) {
   mzmlfiles_counter
@@ -556,7 +556,7 @@ process complementSpectraLookupCleanPSMs {
   when: complementary_run
 
   input:
-  set val(in_setnames), path(mzmlfiles), val(platenames) from mzmlfiles_comp
+  set val(in_setnames), path(mzmlfiles), val(platenames) from mzmlfiles_all
   set path(tlup), path(dlup), path(tpsms), path(dpsms), path(ptmpsms) from prev_results
 
   output:
