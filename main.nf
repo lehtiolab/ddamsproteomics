@@ -264,6 +264,7 @@ if(workflow.profile == 'awsbatch'){
 // Has the run name been specified by the user?
 //  this has the bonus effect of catching both -name and --name
 custom_runName = params.name
+// if not wf.runName (-name or auto) is like "crazy_euler" or other "{adjective}_{scientist}"
 if( !(workflow.runName ==~ /[a-z]+_[a-z]+/) ){
   custom_runName = workflow.runName
 }
@@ -311,7 +312,8 @@ summary['Maximum peptide charge'] = params.maxcharge
 summary['FDR method'] = params.fdrmethod
 summary['Isobaric tags'] = params.isobaric
 summary['Isobaric activation'] = params.activation
-summary['Isobaric normalization'] = params.normalize
+summary['Explicit isobaric normalization'] = params.normalize
+summary['Perform DE analysis (implies normalization)'] = params.deqms
 summary['Output genes'] = params.genes
 summary['Output ENSG IDs'] = params.ensg
 summary['Custom FASTA delimiter'] = params.fastadelim 
@@ -325,7 +327,6 @@ summary['Previous run mzml definition'] = params.oldmzmldef
 summary['HiRIEF pI peptide data'] = params.hirief 
 summary['Only output peptides'] = params.onlypeptides
 summary['Do not quantify'] = params.noquant
-summary['Perform DE analysis'] = params.deqms
 summary['Max Memory']   = params.max_memory
 summary['Max CPUs']     = params.max_cpus
 summary['Max Time']     = params.max_time
@@ -528,6 +529,7 @@ if (params.oldmzmldef) {
   oldmzmls = Channel.from(false).tap { oldmzmls_psmqc } 
 }
 
+// Prepare mzml files (sort, collect) for processes that need all of them
 mzmlfiles
   .toList()
   .map { it.sort( {a, b -> a[1] <=> b[1]}) } // sort on sample for consistent .sh script in -resume
@@ -771,6 +773,7 @@ if (fractionation && complementary_run) {
     .set { scans_platecount }
 } else {
   specfilems2
+    // scans_platecount is not used, format directly for scans_result
     .map { it -> [it[3], 'NA', ['noplates']] }
     .into { scans_platecount; scans_result }
 }
