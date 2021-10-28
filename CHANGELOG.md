@@ -1,5 +1,18 @@
 # lehtiolab/ddamsproteomics: Changelog
 
+## Version 2.6 [2021-10-28]
+- Sort setnames on mergeing output
+- Fixed bug which crashed using multi-set and stabile PTMs
+- Remove X__POOL identifier from sampletable and made it an internal - no output of it either
+- First output all quant channels from all sets, THEN the #/peptide per channel, not interlace them
+- Fix bug where memory quant does not respect the max value, which crashed if mzML were large and exceeding system available memory
+- Add support for TIMSTOF data
+- Autodetect fractionation from mzml definition, not --fractions
+- Added normalization factors as text table for easy copying in QC report
+- Possible to rerun from PSM table inputs without new mzMLs, i.e. change samples, output settings etc
+- QC fixes for reruns and partial reruns (when adding files to set)
+
+
 ## Version 2.5 [2021-03-13]
 - Bugfix in msstitch 3.7 for peptide tables in large datasets
 
