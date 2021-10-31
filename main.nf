@@ -988,7 +988,7 @@ process createPSMTable {
     ${!params.onlypeptides ? '--proteingroup' : ''} \
     ${complementary_run ? "--oldpsms ${cleaned_oldpsms}" : ''}" }
   sed 's/\\#SpecFile/SpectraFile/' -i psmsrefined
-  ${params.hirief && td == 'target' && !is_rerun ? "echo \'${groovy.json.JsonOutput.toJson(params.strips)}\' >> strip.json && peptide_pi_annotator.py -i $trainingpep -p psmsrefined --out $outpsms --stripcolpattern Strip --pepcolpattern Peptide --oldpsms '${cleaned_oldpsms}' --fraccolpattern Fraction --stripdef strip.json --ignoremods \'*\'": "mv psmsrefined ${outpsms}"} 
+  ${params.hirief && td == 'target' && !is_rerun ? "echo \'${groovy.json.JsonOutput.toJson(params.strips)}\' >> strip.json && peptide_pi_annotator.py -i $trainingpep -p psmsrefined --out $outpsms --stripcolpattern Strip --pepcolpattern Peptide --fraccolpattern Fraction --stripdef strip.json --ignoremods \'*\'": "mv psmsrefined ${outpsms}"}
   msstitch split -i ${outpsms} --splitcol bioset
   ${setnames.collect() { "test -f '${it}.tsv' || echo 'No ${td} PSMs found for set ${it}' >> warnings" }.join(' && ') }
   # In decoy PSM table process, also split the target total proteome normalizer table if necessary.
