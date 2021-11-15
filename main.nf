@@ -1373,7 +1373,7 @@ process proteinPeptideSetMerge {
   """
   # exchange sample names on isobaric fields in header
   # First add NO__GROUP marker for no-samplegroups clean sampletable from special chars
-  ${params.sampletable ? 'awk -v OFS="\\t" \'{if (NF==3) print $1,$2,$3,"NO__GROUP"; else print}\' sampletable > tmpsam && mv tmpsam sampletable' : ''}
+  ${params.sampletable ? 'awk -v FS="\\t" -v OFS="\\t" \'{if (NF==3) print $1,$2,$3,"NO__GROUP"; else print}\' sampletable > tmpsam && mv tmpsam sampletable' : ''}
   ${params.deqms ? 'grep -v NO__GROUP sampletable || (>&2 echo "Cannot run DEqMS without specified sample groups" && exit 1)': ''}
   ${params.sampletable ? 'sed "s/[^A-Za-z0-9_\\t]/_/g" sampletable > clean_sampletable' : ''}
 
