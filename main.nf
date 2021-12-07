@@ -984,7 +984,7 @@ process createPSMTable {
   quant = !params.noquant && td == 'target'
   """
   msstitch concat -i psms* -o psms.txt
-  ${!is_rerun ? "tail -n+2 psms.txt | grep . || (>&2 echo 'No ${td} PSMs made the combined PSM / peptide FDR cutoff (${params.psmconflvl} / ${params.pepconflvl})' && exit 1)" : ''}
+  ${!is_rerun ? "tail -n+2 psms.txt | grep . >/dev/null || (>&2 echo 'No ${td} PSMs made the combined PSM / peptide FDR cutoff (${params.psmconflvl} / ${params.pepconflvl})' && exit 1)" : ''}
   # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
   cat lookup > $psmlookup
   sed '0,/\\#SpecFile/s//SpectraFile/' -i psms.txt
