@@ -1266,7 +1266,7 @@ process makePeptides {
     ${denom && denom[0] == 'intensity' ? '--medianintensity' : ''} \
     ${denom && !specialdenom ? "--logisoquant --denompatterns ${setdenoms[setname].join(' ')}" : ''} \
     ${quant && normalize ? "--median-normalize" : ''}
-    ${quant && normalize ? "sed 's/^/$setname'\$'\t/' < normalization_factors_psms > $normfactors" : "touch $normfactors"}
+    ${quant && normalize ? "sed 's/^/$setname'\$'\t/' < normalization_factors_psms > $normfactors" : "touch '$normfactors'"}
   """
 }
 
