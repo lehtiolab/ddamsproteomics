@@ -1521,7 +1521,7 @@ process featQC {
   done
 
   # Remove internal no-group identifier so it isnt output
-  sed '0,/NO__GROUP_/s///' -i feats
+  sed '0,/NO__GROUP_/s///g' -i feats
   """
 }
 
