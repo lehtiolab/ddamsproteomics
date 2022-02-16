@@ -1179,37 +1179,37 @@ process PTMPeptides {
   peptable = "${setname}_ptm_peptides.txt"
   dividebycol = params.onlypeptides ? '^Protein$' : '^Gene Name'
   """
-  # If there is a total proteome PSMs file, prepare two proteins tables for peptide
-  # normalization purposes. Use msstitch isosummarize here so we dont have to deal 
-  # with gene FDR and peptide tables etc. First the non-normalized table
-  ${params.totalproteomepsms && denom ? "msstitch isosummarize -i totalproteomepsms -o tp_prots_nonorm \
+  # If there is a total proteome PSMs file, prepare a gene (or protein) and protein table
+  # for peptide normalization purposes. Use msstitch isosummarize here so we dont have to deal 
+  # with gene FDR and peptide tables etc. First the always non-normalized table to get
+  # proteins with which to median-center the PTM table with (if --normalize is passed)
+  ${params.totalproteomepsms && normalize ? "msstitch isosummarize -i totalproteomepsms -o prots_mediancenter \
     --featcol \$(head -n1 totalproteomepsms | tr '\\t' '\\n' | grep -n '${dividebycol}' | cut -f 1 -d':') \
     --isobquantcolpattern plex --minint 0.1 \
     ${denom && denom[0] == 'sweep' ? '--mediansweep --logisoquant': ''} \
     ${denom && !specialdenom ? "--logisoquant --denompatterns ${setdenoms[setname].join(' ')}": ''} \
 " : ''}
   # PSM ID table is without master protein in onlypeptides
-  ${params.onlypeptides ? "sed -i '0,/Protein/s//Protein ID/' tp_prots_nonorm" : ''}
+  ${params.onlypeptides ? "sed -i '0,/Protein/s//Protein ID/' prots_mediancenter" : ''}
   
-  # Then the median-centered table if that is specified in the experiment, then we can
-  # use this one instead of the tp_prots_nonorm (which will then be used for median centering
-  # the PTM peptides instead).
-  ${params.totalproteomepsms && normalize ? "msstitch isosummarize -i totalproteomepsms -o tp_prots_norm \
+  # Then as above but output the median-centered (if applicable) gene (default) or protein 
+  # (in case of --onlypeptides) table for relating the peptides to their gene/protein
+  ${params.totalproteomepsms && denom ? "msstitch isosummarize -i totalproteomepsms -o tp_accessions \
     --featcol \$(head -n1 totalproteomepsms | tr '\\t' '\\n' | grep -n '${dividebycol}' | cut -f 1 -d':') \
     --isobquantcolpattern plex --minint 0.1 \
     ${normalize ? "--median-normalize" : ''} \
     ${denom && denom[0] == 'sweep' ? '--mediansweep --logisoquant': ''} \
     ${denom && !specialdenom ? "--logisoquant --denompatterns ${setdenoms[setname].join(' ')}": ''} \
 " : ''}
-  ${params.onlypeptides ? "sed -i '0,/Protein/s//Protein ID/' tp_prots_norm" : ''}
+  ${params.onlypeptides ? "sed -i '0,/Protein/s//Protein ID/' tp_accessions" : ''}
 
   msstitch peptides -i "ptms.txt" -o "${peptable}" --scorecolpattern svm --spectracol 1 \
     ${!params.noquant && params.noms1quant ? '--ms1quantcolpattern area' : ''} \
     ${denom ? '--isobquantcolpattern plex --minint 0.1 --keep-psms-na-quant' : ''} \
     ${denom && denom[0] == 'sweep' ? '--mediansweep --logisoquant': ''} \
     ${denom && denom[0] == 'intensity' ? '--medianintensity' : ''} \
-    ${denom && params.totalproteomepsms && !normalize ? "--totalproteome tp_prots_nonorm" : ''} \
-    ${denom && params.totalproteomepsms && normalize ? "--totalproteome tp_prots_norm --normalization-factors-table tp_prots_nonorm" : ''} \
+    ${denom && params.totalproteomepsms ? "--totalproteome tp_accessions" : ''} \
+    ${denom && params.totalproteomepsms && normalize ? "--normalization-factors-table prots_mediancenter" : ''} \
     ${denom && !specialdenom ? "--logisoquant --denompatterns ${setdenoms[setname].join(' ')}": ''}
   """
 }
