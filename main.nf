@@ -910,8 +910,8 @@ process percolator {
   val(mzmlcount) from mzmlcount_percolator
 
   output:
-  set path('target.tsv'), val('target') into tmzidtsv_perco
-  set path('decoy.tsv'), val('decoy') into dmzidtsv_perco
+  set path('target.tsv'), val('target') into tmzidtsv_perco optional true
+  set path('decoy.tsv'), val('decoy') into dmzidtsv_perco optional true
   set val(setname), file('allpsms') optional true into unfiltered_psms
   file('warnings') optional true into percowarnings
 
@@ -941,6 +941,7 @@ tmzidtsv_perco
   // Mix in the reruns here if any (in that case there are no percolators run.
   .concat(rerun_tmzidtsv_perco)
   .concat(rerun_dmzidtsv_perco)
+  .ifEmpty([false, 'target'])
   .groupTuple(by: 1) // group by TD
   .join(specquant_lookups, by: 1) // join on TD
   .combine(psmdbs)
