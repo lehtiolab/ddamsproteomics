@@ -1,4 +1,10 @@
 # lehtiolab/ddamsproteomics: Changelog
+## Version 2.7 [2022-02-15]
+- Median-center normalizing of PTM tables with total proteome table enabled
+- No recalculating FDR from percolator, and output PEP in PSMs/peptides
+- Small bug fixes (quoting etc)
+- Pipeline does not crash when e.g. a single set has no decoy PSMs, will warn in QC, crash when no target PSMs at all are found
+
 
 ## Version 2.6 [2021-10-28]
 - Sort setnames on mergeing output

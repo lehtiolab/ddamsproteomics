@@ -1,4 +1,4 @@
-name: ddamsproteomics-2.6
+name: ddamsproteomics-2.7
 channels:
   - bioconda
   - conda-forge
