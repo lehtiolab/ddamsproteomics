@@ -913,6 +913,7 @@ process percolator {
   set path('target.tsv'), val('target') into tmzidtsv_perco
   set path('decoy.tsv'), val('decoy') into dmzidtsv_perco
   set val(setname), file('allpsms') optional true into unfiltered_psms
+  file('warnings') optional true into percowarnings
 
   script:
   """
@@ -928,6 +929,7 @@ process percolator {
     "msstitch conffilt -i allpsms -o filtpsm --confcolpattern 'PSM q-value' --confidence-lvl ${params.psmconflvl} --confidence-better lower && \
     msstitch conffilt -i filtpsm -o psms --confcolpattern 'peptide q-value' --confidence-lvl ${params.pepconflvl} --confidence-better lower" : 'mv allpsms psms'}
   msstitch split -i psms --splitcol \$(head -n1 psms | tr '\t' '\n' | grep -n ^TD\$ | cut -f 1 -d':')
+  ${['target', 'decoy'].collect() { "test -f '${it}.tsv' || echo 'No ${it} PSMs found for set ${setname} at PSM FDR ${params.psmconflvl} and peptide FDR ${params.pepconflvl} (not possible to output protein/gene FDR)' >> warnings" }.join(' && ') }
   """
 }
 
@@ -975,7 +977,6 @@ process createPSMTable {
   set val(td), file({setnames.collect() { "${it}.tsv" }}) optional true into setpsmtables
   file({setnames.collect() { "tppsms/${it}.tsv" }}) optional true into totalprotpsms_allsets
   set val(td), file("${psmlookup}") into psmlookup
-  file('warnings') optional true into psmwarnings
 
   script:
   psmlookup = "${td}_psmlookup.sql"
@@ -996,7 +997,6 @@ process createPSMTable {
   sed 's/\\#SpecFile/SpectraFile/' -i psmsrefined
   ${params.hirief && td == 'target' && !is_rerun ? "echo \'${groovy.json.JsonOutput.toJson(params.strips)}\' >> strip.json && peptide_pi_annotator.py -i $trainingpep -p psmsrefined --out $outpsms --stripcolpattern Strip --pepcolpattern Peptide --fraccolpattern Fraction --stripdef strip.json --ignoremods \'*\'": "mv psmsrefined ${outpsms}"}
   msstitch split -i ${outpsms} --splitcol bioset
-  ${setnames.collect() { "test -f '${it}.tsv' || echo 'No ${td} PSMs found for set ${it}' >> warnings" }.join(' && ') }
   # In decoy PSM table process, also split the target total proteome normalizer table if necessary.
   # Doing it in decoy saves time, since target is usally largest table and slower
   ${params.totalproteomepsms && td == 'decoy' ? "mkdir tppsms && msstitch split -i tppsms.txt -d tppsms --splitcol bioset" : ''}
@@ -1331,7 +1331,7 @@ process proteinGeneSymbolTableFDR {
     else
       scpat="svm"
       logflag=""
-      echo 'Not enough q-values or linear-model q-values for peptides to calculate FDR for ${acctype} of set ${setname}, using svm score instead.' >> warnings
+      echo 'Not enough q-values or linear-model q-values for peptides to calculate FDR for ${acctype} of set ${setname}, using svm score instead to calculate FDR.' >> warnings
   fi
   msstitch ${acctype} -i tpeptides --decoyfn dpeptides -o "${setname}_protfdr" --scorecolpattern "\$scpat" \$logflag \
     ${acctype != 'proteins' ? "--targetfasta '$tfasta' --decoyfasta '$dfasta' ${params.fastadelim ? "--fastadelim '${params.fastadelim}' --genefield '${params.genefield}'": ''}" : ''} \
@@ -1347,7 +1347,7 @@ process proteinGeneSymbolTableFDR {
 }
     
 
-psmwarnings
+percowarnings
   .concat(pepwarnings)
   .concat(fdrwarnings)
   .concat(ptmwarnings)
