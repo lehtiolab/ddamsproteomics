@@ -76,7 +76,7 @@ reports the following differing fields
 * SAMPLE_SETNAME_PTM FLR (the FLR of the PTM-peptide in a sample set)
 
 Note that when `--totalproteomepsms` is passed, the isobaric ratios in this table will be offset to the
-global search gene ratios, by subtracting those.
+global search gene (default, proteins used if no genes exist) ratios, by subtracting those. When also `--normalize` is used the medians of the totalproteome proteins (derived from that total proteome PSM table) are used for median-centering the PTM table.
 
 
 ## Pipeline and tools 

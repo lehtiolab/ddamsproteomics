@@ -164,8 +164,9 @@ N.B. Even when not using DEqMS you can provide a sample table for annotation of 
 
 ### PTM analysis
 As mentioned, labile PTMS reported by the search engine will be scored using Luciphor2, which will output the best scoring PTM localization and a false localization rate. Note that this is only beneficial for labile PTMs. Aside from that if any high-scoring PTMs are found by luciphor the pipeline will report these as well. All of this will end up in a separate PTM PSM table and a PTM peptide table.
-When passing `--totalproteomepsms`, the isobaric quant ratios for matching genes from a global search (i.e. no modifications) will be subtracted from the PTM peptide table quant.
-If `--onlypeptides` is used, quant from proteins will be used as a denominator.
+When passing `--totalproteomepsms`, the isobaric quant ratios for matching genes from a global search (i.e. no modifications) will be subtracted from the PTM peptide table quant. If `--onlypeptides` is used, quant from proteins will be used as a denominator.
+
+For normalizing PTM tables, `--normalize` can be used for median-centering. Since PTM tables can be somewhat small and possibly skewed in their quantitation, a separate protein table is prepared from the PSMs in `--totalproteomepsms`, to get the channel median normalization factors from.
 
 
 ### Reusing data

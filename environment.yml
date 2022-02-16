@@ -21,7 +21,7 @@ dependencies:
   - conda-forge::r-ggrepel=0.8.2
   - conda-forge::r-reshape2=1.4.4
   - conda-forge::r-forcats=0.5.0
-  - conda-forge::r-rmarkdown=2.2
+  - conda-forge::r-markdown=1.1
   - conda-forge::r-matrixstats=0.56.0
   - bioconda::bioconductor-deqms=1.6.0
   - conda-forge::r-cairo=1.5_12
