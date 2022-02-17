@@ -1221,7 +1221,7 @@ process PTMPeptides {
     ${denom ? '--isobquantcolpattern plex --minint 0.1 --keep-psms-na-quant' : ''} \
     ${denom && denom[0] == 'sweep' ? '--mediansweep --logisoquant': ''} \
     ${denom && denom[0] == 'intensity' ? '--medianintensity' : ''} \
-    ${denom && !specialdenom ? "--logisoquant --denompatterns ${setdenoms[setname].join(' ')}": ''}
+    ${denom && !specialdenom ? "--logisoquant --denompatterns ${setdenoms[setname].join(' ')}": ''} \
     ${denom && params.totalproteomepsms && normalize ? "--median-normalize --normalization-factors-table prots_mediancenter" : ''} \
   """
 }
