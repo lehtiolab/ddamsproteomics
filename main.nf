@@ -1172,7 +1172,7 @@ process PTMPeptides {
   tuple val(setname), path('ptms.txt'), file('totalproteomepsms') from ptm2peps
 
   output:
-  tuple val(setname), path(peptable) into ptmpeps
+  tuple val(setname), path(peptable), path("${peptable}_no_tp_normalized") into ptmpeps
 
   script:
   denom = !params.noquant && setdenoms ? setdenoms[setname] : false
@@ -1210,9 +1210,19 @@ process PTMPeptides {
     ${denom ? '--isobquantcolpattern plex --minint 0.1 --keep-psms-na-quant' : ''} \
     ${denom && denom[0] == 'sweep' ? '--mediansweep --logisoquant': ''} \
     ${denom && denom[0] == 'intensity' ? '--medianintensity' : ''} \
+    ${denom && !specialdenom ? "--logisoquant --denompatterns ${setdenoms[setname].join(' ')}": ''} \
     ${denom && params.totalproteomepsms ? "--totalproteome tp_accessions" : ''} \
     ${denom && params.totalproteomepsms && normalize ? "--median-normalize --normalization-factors-table prots_mediancenter" : ''} \
+  
+  # And another one with the non-normalized isobaric quant (but with median-centering if specified)
+  # this is not strictly necessary to do if there is no --totalproteomepsms, but will not be output 
+  # in next step (merge) anyway then.
+  msstitch peptides -i "ptms.txt" -o "${peptable}_no_tp_normalized" --scorecolpattern svm --spectracol 1 \
+    ${denom ? '--isobquantcolpattern plex --minint 0.1 --keep-psms-na-quant' : ''} \
+    ${denom && denom[0] == 'sweep' ? '--mediansweep --logisoquant': ''} \
+    ${denom && denom[0] == 'intensity' ? '--medianintensity' : ''} \
     ${denom && !specialdenom ? "--logisoquant --denompatterns ${setdenoms[setname].join(' ')}": ''}
+    ${denom && params.totalproteomepsms && normalize ? "--median-normalize --normalization-factors-table prots_mediancenter" : ''} \
   """
 }
 
@@ -1230,14 +1240,16 @@ process mergePTMPeps {
   publishDir "${params.outdir}", mode: 'copy', overwrite: true
 
   input:
-  tuple val(setnames), path(peptides), path('ptmlup.sql'), path('ptmpsms.txt') from ptmpeps2merge
+  tuple val(setnames), path(peptides), path(notp_adjust_peps), path('ptmlup.sql'), path('ptmpsms.txt') from ptmpeps2merge
 
   output:
   path peptable
+  path peptable_no_adjust optional true
   path "ptmqc.html" into ptmqc
 
   script:
-  peptable = 'ptm_peptidetable.txt'
+  peptable = params.totalproteomepsms ? 'ptm_peptides_total_proteome_adjusted.txt' : 'ptm_peptides_not_adjusted.txt'
+  peptable_no_adjust = 'ptm_peptides_not_adjusted.txt'
   """
   cat ptmlup.sql > pepptmlup.sql
   msstitch merge -i ${peptides.join(' ')} --setnames ${setnames.sort().join(' ')} --dbfile pepptmlup.sql -o mergedtable --no-group-annotation \
@@ -1246,9 +1258,21 @@ process mergePTMPeps {
     ${!params.noquant && setisobaric ? "--isobquantcolpattern plex" : ''}
   # Add master/genes/gene count to peptide table, cant store in SQL because cant protein group on small PTM table
   ${!params.onlypeptides ? "head -n1 mergedtable | sed \$'s/Peptide sequence/Peptide sequence\tMaster protein(s)\tGene name(s)\t# matching genes/;s/\\#/Amount/g' > '${peptable}'" : ''}
-  ${!params.onlypeptides ? "geneprotcols=\$(head -1 ptmpsms.txt| tr '\\t' '\\n' | grep -En '(^Peptide|^Master|^Gene Name)' | cut -f 1 -d':' | tr '\\n' ',' | sed 's/\\,\$//')" : ''}
-  ${!params.onlypeptides ? "tail -n+2 ptmpsms.txt | cut -f\$geneprotcols | sort -uk1b,1 > geneprots" : ''}
-  ${!params.onlypeptides ? "join -j1 -o auto -t '\t' <(paste geneprots <(cut -f3 geneprots | tr -dc ';\\n'| awk '{print length+1}')) <(tail -n+2 mergedtable | sort -k1b,1) >> " : 'mv mergedtable '} "${peptable}"
+  ${!params.onlypeptides ? """geneprotcols=\$(head -1 ptmpsms.txt| tr '\\t' '\\n' | grep -En '(^Peptide|^Master|^Gene Name)' | cut -f 1 -d':' | tr '\\n' ',' | sed 's/\\,\$//')
+    tail -n+2 ptmpsms.txt | cut -f\$geneprotcols | sort -uk1b,1 > geneprots
+    join -j1 -o auto -t '\t' <(paste geneprots <(cut -f3 geneprots | tr -dc ';\\n'| awk '{print length+1}')) <(tail -n+2 mergedtable | sort -k1b,1) >> ${peptable}""" : "mv mergedtable ${peptable}"}
+
+  # If there is a total-proteome peptide quant adjustment, also create a second merged NON-adjusted peptide tables
+  ${params.totalproteomepsms ?  "msstitch merge -i ${notp_adjust_peps.join(' ')} --setnames ${setnames.sort().join(' ')} \
+    --dbfile pepptmlup.sql -o mergedtable --no-group-annotation \
+    --fdrcolpattern '^q-value' --flrcolpattern 'FLR' \
+    ${!params.noquant && !params.noms1quant ? "--ms1quantcolpattern area" : ''} \
+    ${!params.noquant && setisobaric ? "--isobquantcolpattern plex" : ''}" : ''}
+  # Add master/genes/gene count to peptide table, cant store in SQL because cant protein group on small PTM table
+  ${!params.onlypeptides  && params.totalproteomepsms ? """head -n1 mergedtable | sed \$'s/Peptide sequence/Peptide sequence\tMaster protein(s)\tGene name(s)\t# matching genes/;s/\\#/Amount/g' > '${peptable_no_adjust}'
+    geneprotcols=\$(head -1 ptmpsms.txt| tr '\\t' '\\n' | grep -En '(^Peptide|^Master|^Gene Name)' | cut -f 1 -d':' | tr '\\n' ',' | sed 's/\\,\$//')
+    tail -n+2 ptmpsms.txt | cut -f\$geneprotcols | sort -uk1b,1 > geneprots
+    join -j1 -o auto -t '\t' <(paste geneprots <(cut -f3 geneprots | tr -dc ';\\n'| awk '{print length+1}')) <(tail -n+2 mergedtable | sort -k1b,1) >> ${peptable_no_adjust}""" : "mv mergedtable ${peptable_no_adjust}"}
 
   qc_ptms.R "${setnames.size()}" "${params.locptms ? params.locptms : ''}${params.ptms ? ";${params.ptms}": ''}" ptmpsms.txt "${peptable}"
   echo "<html><body>" > ptmqc.html
