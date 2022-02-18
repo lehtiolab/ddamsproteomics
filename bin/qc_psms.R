@@ -91,6 +91,7 @@ if (oldmzmldef) {
   oldmzmls = read.table(oldmzmlfn, colClasses=c(NA, NA, NA, NA, 'factor'), header=F, sep='\t')[,c(1,3,4,5)]
   # TODO columns maybe added/disappea in future old/mzmldef file
   colnames(oldmzmls) = c('SpectraFile', 'setname', 'strip', 'Fraction')
+  oldmzmls$setname = trimws(oldmzmls$setname)
   allfilefractions = rbind(allfilefractions, oldmzmls)
 }
 allfilefractions$plateID = paste(allfilefractions$setname, allfilefractions$strip, sep='_')

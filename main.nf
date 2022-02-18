@@ -481,7 +481,7 @@ def plate_or_no(it, length) {
 // Set fraction name to NA if not specified
 mzml_in
   .tap { mzmlfiles_counter; mzmlfiles_qlup_sets } // for counting-> timelimits; getting sets from supplied lookup
-  .map { it -> [it[2], file(it[0]).baseName.replaceAll('[&<>\'"]', '_'), file(it[0]), it[1], plate_or_no(it, 3), fr_or_file(it, 4)] }
+  .map { it -> [it[2].replaceAll('[ ]+$', '').replaceAll('^[ ]+', ''), file(it[0]).baseName.replaceAll('[&<>\'"]', '_'), file(it[0]), it[1], plate_or_no(it, 3), fr_or_file(it, 4)] }
   .tap { mzmlfiles; mzml_luciphor; mzml_quant }
   .combine(concatdb)
   .set { mzml_msgf }
