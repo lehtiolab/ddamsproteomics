@@ -29,7 +29,7 @@ if (has_fractions) {
 ##### PSM-scans
 set_amount_psms = aggregate(SpecID~Biological.set, feats, length)
 names(set_amount_psms) = c('Set', 'psmcount')
-write.table(set_amount_psms, 'summary.txt', row.names=F, quote=F, sep='\t')
+write.table(set_amount_psms, 'psmtable_summary.txt', row.names=F, quote=F, sep='\t')
 
 amount_psms = aggregate(SpecID~get(xcol), feats, length)
 mscol = 'MS2 scans'
