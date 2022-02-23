@@ -531,9 +531,17 @@ process quantifySpectra {
 
 // Collect all mzMLs into single item to pass to lookup builder and spectra counter
 if (params.oldmzmldef) { 
+  oldmzml_lines = file("${params.oldmzmldef}").readLines().collect { it.tokenize('\t') }
+  Channel
+    .from(oldmzml_lines)
+    .map { it -> it[2].replaceAll('[ ]+$', '').replaceAll('^[ ]+', '') }
+    .unique()
+    .toList()
+    .set { oldmzml_sets }
   oldmzmls = Channel.fromPath(params.oldmzmldef).tap { oldmzmls_psmqc } 
 } else {
-  oldmzmls = Channel.from(false).tap { oldmzmls_psmqc } 
+  oldmzmls = Channel.from(false).tap { oldmzmls_psmqc }
+  oldmzmls = Channel.from([]).tap { oldmzml_sets }
 }
 
 // Prepare mzml files (sort, collect) for processes that need all of them
@@ -1452,14 +1460,14 @@ psm_result
   .set { targetpsm_result }
 
 
-mzmlfiles_psmqc.combine(oldmzmls_psmqc).set { mzmlfiles_psmqc_oldmzmls }
+mzmlfiles_psmqc.combine(oldmzmls_psmqc).combine(oldmzml_sets).set { mzmlfiles_psmqc_oldmzmls }
 
 process psmQC {
 
   input:
   set val(td), file('psms'), file('filescans'), file('platescans'), val(plates) from targetpsm_result
   val(setnames) from setnames_psmqc
-  set val(plicate_sets), val(mzmlpaths), val(mzmlplates), val(mzmlbasenames), val(fractions), file('oldmzmldef') from mzmlfiles_psmqc_oldmzmls
+  set val(plicate_sets), val(mzmlpaths), val(mzmlplates), val(mzmlbasenames), val(fractions), file('oldmzmldef'), val(oldmzml_sets) from mzmlfiles_psmqc_oldmzmls
 
   output:
   set val('psms'), file('psmqc.html'), file('summary.txt') into psmqccollect
@@ -1470,7 +1478,7 @@ process psmQC {
   paste <(echo ${mzmlpaths.collect() { "${it.baseName}.${it.extension}" }.join('\\t')} | tr '\\t' '\\n' ) <(echo ${plicate_sets.join('\\t')} | tr '\\t' '\\n') <( echo ${mzmlplates.join('\\t')} | tr '\\t' '\\n') <(echo ${fractions.join('\\t')} | tr '\\t' '\\n') > mzmlfrs
   qc_psms.R ${setnames[0].size()} ${fractionation ? 'TRUE' : 'FALSE'} ${params.oldmzmldef ? 'oldmzmldef' : 'nofile'} ${plates.join(' ')}
   # If any sets have zero (i.e. no PSMs, so no output from R), output them here by joining and filling in
-  join -a1 -e0 -o auto -t \$'\\t' <(echo Set\$\'\\t${plicate_sets.join("\\t")}' | tr '\\t' '\\n' | sort) <(sort -k1b,1 psmtable_summary.txt) > summary.txt
+  cat <(head -n1 psmtable_summary.txt) <(join -a1 -e0 -o auto -t \$'\\t' <(echo \$\'${plicate_sets.unique().plus(oldmzml_sets).join("\\t")}' | tr '\\t' '\\n' | sort) <(tail -n+2 psmtable_summary.txt | sort -k1b,1)) > summary.txt
   sed -Ei 's/[^A-Za-z0-9_\\t]/./' summary.txt
   echo "<html><body>" > psmqc.html
   for graph in psm-scans missing-tmt miscleav
