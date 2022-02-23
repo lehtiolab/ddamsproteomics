@@ -1,5 +1,5 @@
 # lehtiolab/ddamsproteomics: Changelog
-## Version 2.7 [2022-02-15]
+## Version 2.7 [2022-02-23]
 - Median-center normalizing of PTM tables with total proteome table enabled
 - No recalculating FDR from percolator, and output PEP in PSMs/peptides
 - Small bug fixes (quoting etc)
