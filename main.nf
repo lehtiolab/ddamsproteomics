@@ -50,6 +50,9 @@ def helpMessage() {
                                     median-summarized to the output features (e.g. proteins).
                                     Available types are tmtpro, tmt10plex, tmt6plex, itraq8plex, itraq4plex
                                     E.g. --isobaric 'set1:tmt10plex:126:127N set2:tmtpro:127C:131 set3:tmt10plex:sweep set4:itraq8plex:intensity'
+      --psmconflvl                  Cutoff for PSM FDR on PSM table, default is 0.01
+      --pepconflvl                  Cutoff for peptide FDR on PSM table, default is 0.01
+      --proteinconflvl              Cutoff for protein/gene FDR in respective output tables, default is 0.01
       --activation VALUE            Specify activation protocol for isobaric quantitation (NOT for identification):
                                     choose from hcd (DEFAULT), cid, etd 
       --fastadelim VALUE            FASTA header delimiter in case non-standard FASTA is used, to be used with
@@ -161,6 +164,7 @@ params.mincharge = 2
 params.maxcharge = 6
 params.psmconflvl = 0.01
 params.pepconflvl = 0.01
+params.proteinconflvl = 0.01
 params.activation = 'hcd' // Only for isobaric quantification
 params.outdir = 'results'
 params.normalize = false
@@ -1527,6 +1531,7 @@ process featQC {
   qc_protein.R --sets ${setnames.collect() { "'$it'" }.join(' ')} \
      --feattype ${acctype} --peptable $peptable \
      ${params.sampletable ? "--sampletable $sampletable" : ''} \
+     --conflvl ${acctype == 'peptides' ? params.pepconflvl : params.proteinconflvl} \
      ${show_normfactors ? '--normtable allnormfacs' : ''}
   # Remove X from R's columns if they do not start with [A-Z]
   sed -Ei 's/^X([^A-Za-z])/\\1/' summary.txt

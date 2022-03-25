@@ -12,6 +12,7 @@ parser$add_argument('--feattype', type='character')
 parser$add_argument('--peptable', type='character')
 parser$add_argument('--sampletable', type='character', default=FALSE)
 parser$add_argument('--normtable', type='character', default=FALSE)
+parser$add_argument('--conflvl', type='double')
 opt = parser$parse_args()
 
 nrsets = length(opt$sets)
@@ -20,6 +21,7 @@ setnames = gsub('[^a-zA-Z0-9_]', '.', setnames)
 setnames = sub('^([0-9])', 'X\\1', setnames)
 feattype = opt$feattype
 peptable = opt$peptable
+conflvl = opt$conflvl
 sampletable = opt$sampletable
 feats = read.table("feats", header=T, sep="\t", comment.char = "", quote = "")
 
@@ -55,7 +57,7 @@ if (is_isobaric) {
 # Amount of features
 qcols = colnames(feats)[grep('_q.value', colnames(feats))]
 overlap = na.exclude(feats[qcols])
-overlap = dim(overlap[apply(overlap, 1, function(x) any(x<0.01)),])[1]
+overlap = dim(overlap[apply(overlap, 1, function(x) any(x<conflvl)),])[1]
 if (feattype == 'peptides') {
   am_prots = melt(feats, id.vars=c(featcol, "Protein.s."), measure.vars=qcols)
   am_prots$nrprots = lengths(regmatches(am_prots$Protein.s., gregexpr(';', am_prots$Protein.s.))) + 1
@@ -69,7 +71,7 @@ if (feattype == 'peptides') {
   colnames(pepmed) = c('Set', paste('no_pep_', feattype, sep=''))
 }
 am_prots = am_prots[!is.na(am_prots$value),]
-am_prots = am_prots[am_prots$value < 0.01,]
+am_prots = am_prots[am_prots$value < conflvl,]
 am_prots$Set = sub('_q.value', '', am_prots$variable)
 svg('featyield', height=(nrsets + 2), width=width)
 if (feattype == 'peptides') {
@@ -104,7 +106,7 @@ if (feattype == 'peptides') {
     not_fullna = feats[rowSums(is.na(feats[,tmtcols])) != length(tmtcols),]
     sum_prots = melt(not_fullna, id.vars=featcol, measure.vars=qcols)
     sum_prots = sum_prots[!is.na(sum_prots$value),]
-    sum_prots = sum_prots[sum_prots$value < 0.01,]
+    sum_prots = sum_prots[sum_prots$value < conflvl,]
     sum_prots$Set = sub('_q.value', '', sum_prots$variable)
     sum_prots = aggregate(get(featcol) ~ Set, sum_prots, length)
     summary = merge(pepmed, sum_prots, by='Set', all.y=T)
@@ -151,7 +153,7 @@ if (is.character(sampletable)) {
 if (is_isobaric) {
   # First produce the boxplots
   overlap = na.exclude(feats[c(tmtcols, qcols)])
-  overlap = dim(overlap[apply(overlap[qcols], 1, function(x) any(x<0.01)),])[1]
+  overlap = dim(overlap[apply(overlap[qcols], 1, function(x) any(x<conflvl)),])[1]
   tmt = melt(feats, id.vars=featcol, measure.vars = tmtcols)
   if (use_sampletable) {
     tmt$Set = apply(tmt, 1, function(x) { key = sub('_[a-z0-9]*plex', '', x[["variable"]]); return (setlookup[[key]]) })
@@ -189,7 +191,7 @@ if (is_isobaric) {
 if (is_isobaric) {
   qcols = colnames(feats)[grep('_q.value', colnames(feats))]
   overlap = na.exclude(feats[c(featcol, tmtcols, qcols, nrpsmscols)])
-  overlap = overlap[apply(overlap[qcols], 1, function(x) any(x<0.01)),]
+  overlap = overlap[apply(overlap[qcols], 1, function(x) any(x<conflvl)),]
   if (nrow(overlap) > 0) {
     nrpsms = melt(overlap, id.vars=featcol, measure.vars = nrpsmscols)
     nrpsms$Set = sub('_Amount.fully.quanted.PSMs', '', nrpsms$variable)
