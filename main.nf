@@ -1200,6 +1200,7 @@ process PTMPeptides {
     --featcol \$(head -n1 totalproteomepsms | tr '\\t' '\\n' | grep -n '${dividebycol}' | cut -f 1 -d':') \
     --isobquantcolpattern plex --minint 0.1 \
     ${denom && denom[0] == 'sweep' ? '--mediansweep --logisoquant': ''} \
+    ${denom && params.keepnapsmsquant ? '--keep-psms-na-quant' : ''} \
     ${denom && !specialdenom ? "--logisoquant --denompatterns ${setdenoms[setname].join(' ')}": ''} \
 " : ''}
   # PSM ID table is without master protein in onlypeptides
@@ -1212,6 +1213,7 @@ process PTMPeptides {
     --isobquantcolpattern plex --minint 0.1 \
     ${normalize ? "--median-normalize" : ''} \
     ${denom && denom[0] == 'sweep' ? '--mediansweep --logisoquant': ''} \
+    ${denom && params.keepnapsmsquant ? '--keep-psms-na-quant' : ''} \
     ${denom && !specialdenom ? "--logisoquant --denompatterns ${setdenoms[setname].join(' ')}": ''} \
 " : ''}
   ${params.onlypeptides ? "sed -i '0,/Protein/s//Protein ID/' tp_accessions" : ''}
