@@ -1442,6 +1442,7 @@ process proteinPeptideSetMerge {
   cat $lookup > db.sqlite
   msstitch merge -i ${tables.join(' ')} --setnames ${setnames.join(' ')} --dbfile db.sqlite -o mergedtable \
     --fdrcolpattern '^q-value\$' ${acctype != 'peptides' ? "--mergecutoff ${params.proteinconflvl}" : ''} \
+    ${acctype == 'peptides' ? "--pepcolpattern 'peptide PEP'" : ''} \
     ${!params.noquant && !params.noms1quant ? "--ms1quantcolpattern area" : ''} \
     ${!params.noquant && setisobaric ? "--isobquantcolpattern plex" : ''} \
     ${params.onlypeptides ? "--no-group-annotation" : ''}
