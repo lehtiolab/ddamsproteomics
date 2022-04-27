@@ -1251,7 +1251,7 @@ ptmpeps
   
 
 process mergePTMPeps {
-  publishDir "${params.outdir}", mode: 'copy', overwrite: true
+  publishDir "${params.outdir}", mode: 'copy', overwrite: true, saveAs: {it != 'ptmqc.html' ? it : null}
 
   input:
   tuple val(setnames), path(peptides), path(notp_adjust_peps), path('ptmlup.sql'), path('ptmpsms.txt') from ptmpeps2merge
