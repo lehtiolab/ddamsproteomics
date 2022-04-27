@@ -30,8 +30,8 @@ featcol = list(peptides='Peptide.sequence', proteins='Protein.ID', genes='Gene.N
 is_isobaric = length(grep('plex', names(feats)))
 
 if (is_isobaric) {
-  tmtcols = colnames(feats)[setdiff(grep('plex', colnames(feats)), grep('quanted', colnames(feats)))]
-  nrpsmscols = colnames(feats)[grep('_Amount.fully.quanted.PSMs', colnames(feats))]
+  tmtcols = colnames(feats)[setdiff(grep('plex', colnames(feats)), grep('[qQ]uanted', colnames(feats)))]
+  nrpsmscols = colnames(feats)[grep('_Fully.quanted.PSM.count', colnames(feats))]
 }
 
 width = 4
@@ -40,7 +40,7 @@ height = 4
 # nrpsms used for isobaric quant
 if (is_isobaric) {
   nrpsms = melt(feats, id.vars=featcol, measure.vars = nrpsmscols)
-  nrpsms$Set = sub('_Amount.fully.quanted.PSMs', '', nrpsms$variable)
+  nrpsms$Set = sub('_Fully.quanted.PSM.count', '', nrpsms$variable)
   summary_psms = aggregate(value~Set, nrpsms, median)
   colnames(summary_psms) = c('Set', paste('no_psm_', feattype, sep=''))
   nrpsms = aggregate(value~get(featcol)+Set, nrpsms, max)
@@ -64,9 +64,9 @@ if (feattype == 'peptides') {
   # aggregate feats and remove col with ; where?
 } else {
   am_prots = melt(feats, id.vars=featcol, measure.vars=qcols)
-  pepcols = colnames(feats)[grep('Amount.Unique', colnames(feats))]
+  pepcols = colnames(feats)[grep('Unique.peptide.count', colnames(feats))]
   pepprots = melt(feats, id.vars=featcol, measure.vars=pepcols)
-  pepprots$variable = sub('_Amount.Unique.peptides', '', pepprots$variable)
+  pepprots$variable = sub('_Unique.peptide.count', '', pepprots$variable)
   pepmed = aggregate(value~variable, pepprots, median)
   colnames(pepmed) = c('Set', paste('no_pep_', feattype, sep=''))
 }
@@ -194,7 +194,7 @@ if (is_isobaric) {
   overlap = overlap[apply(overlap[qcols], 1, function(x) any(x<conflvl)),]
   if (nrow(overlap) > 0) {
     nrpsms = melt(overlap, id.vars=featcol, measure.vars = nrpsmscols)
-    nrpsms$Set = sub('_Amount.fully.quanted.PSMs', '', nrpsms$variable)
+    nrpsms$Set = sub('_Fully.quanted.PSM.count', '', nrpsms$variable)
     if (feattype == 'peptides') {
       nrpsms = aggregate(value~Peptide.sequence+Set, nrpsms, max)
     } else {
@@ -215,7 +215,7 @@ if (is_isobaric) {
 if (is_isobaric) {
   if (nrow(overlap) > 0) {
     nrpsms = melt(overlap, id.vars=featcol, measure.vars = nrpsmscols)
-    nrpsms$Set = sub('_Amount.fully.quanted.PSMs', '', nrpsms$variable)
+    nrpsms$Set = sub('_Fully.quanted.PSM.count', '', nrpsms$variable)
     feats_in_set = aggregate(value~Set, data=nrpsms, length) 
     feats_in_set$percent_single = aggregate(value~Set, data=nrpsms, function(x) length(grep('[^01]', x)))$value / feats_in_set$value * 100
     svg('percentage_onepsm', width=width, height=height)

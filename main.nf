@@ -1271,7 +1271,7 @@ process mergePTMPeps {
     ${!params.noquant && !params.noms1quant ? "--ms1quantcolpattern area" : ''} \
     ${!params.noquant && setisobaric ? "--isobquantcolpattern plex" : ''}
   # Add master/genes/gene count to peptide table, cant store in SQL because cant protein group on small PTM table
-  ${!params.onlypeptides ? "head -n1 mergedtable | sed \$'s/Peptide sequence/Peptide sequence\tMaster protein(s)\tGene name(s)\t# matching genes/;s/\\#/Amount/g' > '${peptable}'" : ''}
+  ${!params.onlypeptides ? "head -n1 mergedtable | sed \$'s/Peptide sequence/Peptide sequence\tMaster protein(s)\tGene name(s)\tMatching gene count/'> '${peptable}'" : ''}
   ${!params.onlypeptides ? """geneprotcols=\$(head -1 ptmpsms.txt| tr '\\t' '\\n' | grep -En '(^Peptide|^Master|^Gene Name)' | cut -f 1 -d':' | tr '\\n' ',' | sed 's/\\,\$//')
     tail -n+2 ptmpsms.txt | cut -f\$geneprotcols | sort -uk1b,1 > geneprots
     join -j1 -o auto -t '\t' <(paste geneprots <(cut -f3 geneprots | tr -dc ';\\n'| awk '{print length+1}')) <(tail -n+2 mergedtable | sort -k1b,1) >> ${peptable}""" : "mv mergedtable ${peptable}"}
@@ -1283,7 +1283,7 @@ process mergePTMPeps {
     ${!params.noquant && !params.noms1quant ? "--ms1quantcolpattern area" : ''} \
     ${!params.noquant && setisobaric ? "--isobquantcolpattern plex" : ''}" : ''}
   # Add master/genes/gene count to peptide table, cant store in SQL because cant protein group on small PTM table
-  ${!params.onlypeptides  && params.totalproteomepsms ? """head -n1 mergedtable | sed \$'s/Peptide sequence/Peptide sequence\tMaster protein(s)\tGene name(s)\t# matching genes/;s/\\#/Amount/g' > '${peptable_no_adjust}'
+  ${!params.onlypeptides && params.totalproteomepsms ? """head -n1 mergedtable | sed \$'s/Peptide sequence/Peptide sequence\tMaster protein(s)\tGene name(s)\tMatching gene count/'> '${peptable_no_adjust}'
     geneprotcols=\$(head -1 ptmpsms.txt| tr '\\t' '\\n' | grep -En '(^Peptide|^Master|^Gene Name)' | cut -f 1 -d':' | tr '\\n' ',' | sed 's/\\,\$//')
     tail -n+2 ptmpsms.txt | cut -f\$geneprotcols | sort -uk1b,1 > geneprots
     join -j1 -o auto -t '\t' <(paste geneprots <(cut -f3 geneprots | tr -dc ';\\n'| awk '{print length+1}')) <(tail -n+2 mergedtable | sort -k1b,1) >> ${peptable_no_adjust}""" : "mv mergedtable ${peptable_no_adjust}"}
@@ -1447,15 +1447,14 @@ process proteinPeptideSetMerge {
     ${!params.noquant && setisobaric ? "--isobquantcolpattern plex" : ''} \
     ${params.onlypeptides ? "--no-group-annotation" : ''}
    
-  # make a header for sample names, first clean it from #-sign
-  head -n1 mergedtable | sed 's/\\#/Amount/g' > header
   # Put annotation on header, use normal setname for finding, replace with clean name
+  # "sed '0,/{RE}//{substitute}/..."  for only first line (0,/{RE} = read from 0 until RE,
+  # then the empty // means use the previous RE (you could specify a new RE)
   ${params.sampletable && setisobaric ?  
-    'while read line ; do read -a arr <<< $line ; sed -i "s/"\$"\\t${arr[0]}_\\([a-z0-9]*plex\\)_${arr[1]}/\t${arr[4]}_${arr[3]}_${arr[2]}_\\1_${arr[1]}/" header ; done < <(paste <(cut -f2 sampletable) clean_sampletable)' \
+    'while read line ; do read -a arr <<< $line ; sed -i "0,/"\$"\\t${arr[0]}_\\([a-z0-9]*plex\\)_${arr[1]}/s//\t${arr[4]}_${arr[3]}_${arr[2]}_\\1_${arr[1]}/" mergedtable; done < <(paste <(cut -f2 sampletable) clean_sampletable)' \
   :  ''}
-  cat header <(tail -n+2 mergedtable) > feats
   # Run DEqMS if needed, use original sample table with NO__GROUP
-  ${params.deqms ? "numfields=\$(head -n1 feats | tr '\t' '\n' | wc -l) && deqms.R && paste <(head -n1 feats) <(head -n1 deqms_output | cut -f \$(( numfields+1 ))-\$(head -n1 deqms_output|wc -w)) > tmpheader && cat tmpheader <(tail -n+2 deqms_output) > proteintable" : 'mv feats proteintable'}
+  ${params.deqms ? "numfields=\$(head -n1 mergedtable | tr '\t' '\n' | wc -l) && deqms.R && paste <(head -n1 mergedtable) <(head -n1 deqms_output | cut -f \$(( numfields+1 ))-\$(head -n1 deqms_output|wc -w)) > tmpheader && cat tmpheader <(tail -n+2 deqms_output) > proteintable" : 'mv mergedtable proteintable'}
   """
 }
 
