@@ -72,7 +72,7 @@ def main():
                 # be treated by luciphor)
                 continue
             barepep += psm['Peptide'][start:]
-            psm[lucp.TOPPTM] = ';'.join(['{}:{}'.format(name, ','.join(['{}{}'.format(x[0], x[1]) for x in resmods])) for 
+            psm[lucp.TOPPTM] = '_'.join(['{}:{}'.format(name, ','.join(['{}{}'.format(x[0], x[1]) for x in resmods])) for 
                     name, resmods in modresidues.items() if len(resmods)])
             # Add protein location annotation
             if lucp.MASTER_PROTEIN in psm:
@@ -90,8 +90,8 @@ def main():
                             site_protlocs = [res_loc[1] + x for x in peplocs]
                             protlocs = '/'.join([str(x) for x in site_protlocs])
                             protptms.append(f'{res_loc[0]}{protlocs}')
-                        proteins_loc[p].append('{}_{}'.format(ptmname, ','.join(protptms)))
-                psm[lucp.MASTER_PROTEIN] = ';'.join(['{}:{}'.format(p, ':'.join(ptmloc)) for p, ptmloc in proteins_loc.items()])
+                        proteins_loc[p].append('{}:{}'.format(ptmname, ','.join(protptms)))
+                psm[lucp.MASTER_PROTEIN] = ';'.join(['{}__{}'.format(p, '_'.join(ptmloc)) for p, ptmloc in proteins_loc.items()])
             psm[lucp.SE_PEPTIDE] = psm.pop(lucp.PEPTIDE)
             psm[lucp.PEPTIDE] = '{}_{}'.format(barepep, psm[lucp.TOPPTM])
             wfp.write('\n{}'.format('\t'.join([psm[k] for k in outheader])))

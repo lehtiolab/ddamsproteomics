@@ -41,11 +41,12 @@ dev.off()
 if ('Master.protein.s.' %in% names(psms)) {
     prots = psms[c('Master.protein.s.', 'Biological.set')]
     prots = subset(prots, !grepl(';', Master.protein.s., fixed=T))
-    prots = prots[!duplicated(prots),]
-    set_amount_prots = aggregate(Master.protein.s.~Biological.set, prots, length)
+    proteins = data.frame(bioset=prots$Biological.set, bareprot=sub('__.*', '', prots$Master.protein.s.))
+    proteins = proteins[!duplicated(proteins), ]
+    set_amount_prots = aggregate(bareprot~bioset, proteins, length)
     svg('ptmprotfeats', width=width, height=nrsets+2)
       print(ggplot(set_amount_prots) +
-        geom_bar(aes(Biological.set, y=Master.protein.s.), stat='identity') +
+        geom_bar(aes(bioset, y=bareprot), stat='identity') +
         coord_flip() + ylab('# proteins with PTM') + theme_bw() + theme(axis.title=element_text(size=15), axis.text=element_text(size=10), axis.title.y=element_blank(), legend.text=element_text(size=10), legend.title=element_blank(), legend.position='top', plot.title=element_text(size=15))
       )
     dev.off()
@@ -53,7 +54,7 @@ if ('Master.protein.s.' %in% names(psms)) {
 
 
 sites = psms[c('Biological.set', 'Top.luciphor.PTM')]
-multiptms = strsplit(sites[,2], ';', fixed=T)
+multiptms = strsplit(sites[,2], '_', fixed=T)
 sites = data.frame(sites=unlist(multiptms), bioset=rep(psms$Biological.set, sapply(multiptms, FUN=length)))
 sites = cbind(sites$bioset, stringr::str_split_fixed(sites$sites, ':', 2))
 multisites = strsplit(sites[,3], ',', fixed=T)
@@ -75,7 +76,7 @@ dev.off()
 
 
 set_amount_pep$sites = sub('.*_', '', set_amount_pep$Peptide.sequence)
-multiptms = strsplit(set_amount_pep$sites, ';', fixed=T)
+multiptms = strsplit(set_amount_pep$sites, '_', fixed=T)
 sites = data.frame(sites=unlist(multiptms), bioset=rep(set_amount_pep$variable, sapply(multiptms, FUN=length)))
 sites = cbind(sites$bioset, stringr::str_split_fixed(sites$sites, ':', 2))
 multisites = strsplit(sites[,3], ',', fixed=T)

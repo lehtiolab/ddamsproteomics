@@ -77,7 +77,7 @@ def main():
                 modresidues[ptmmasses[int(x.group(2))]].append((x.group(1), len(barepep)))
             barepep += modpep[start:]
             ptm.update({'barepep': barepep, 'modres': modresidues})
-            ptm[TOPPTM] = ';'.join(['{}:{}'.format(name, ','.join(['{}{}'.format(x[0], x[1]) for x in resmods])) for 
+            ptm[TOPPTM] = '_'.join(['{}:{}'.format(name, ','.join(['{}{}'.format(x[0], x[1]) for x in resmods])) for 
                     name, resmods in modresidues.items() if len(resmods)])
             # Get other highscoring permutations
             extrapeps = []
@@ -125,8 +125,8 @@ def main():
                                 site_protlocs = [res_loc[1] + x for x in peplocs]
                                 protlocs = '/'.join([str(x) for x in site_protlocs])
                                 protptms.append(f'{res_loc[0]}{protlocs}')
-                            proteins_loc[p].append('{}_{}'.format(ptmname, ','.join(protptms)))
-                    psm[MASTER_PROTEIN] = ';'.join(['{}:{}'.format(p, ':'.join(ptmloc)) for p, ptmloc in proteins_loc.items()])
+                            proteins_loc[p].append('{}:{}'.format(ptmname, ','.join(protptms)))
+                    psm[MASTER_PROTEIN] = ';'.join(['{}__{}'.format(p, '_'.join(ptmloc)) for p, ptmloc in proteins_loc.items()])
                     psm[FLANKING_SEQS] = ';'.join(flankseqs)
                 outpsm = {k: v for k,v in psm.items()}
                 outpsm.update(ptm)
