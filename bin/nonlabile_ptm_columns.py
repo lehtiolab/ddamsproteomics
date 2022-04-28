@@ -76,17 +76,21 @@ def main():
                     name, resmods in modresidues.items() if len(resmods)])
             # Add protein location annotation
             if lucp.MASTER_PROTEIN in psm:
-                proteins = psm[lucp.MASTER_PROTEIN].split(';')
-                proteins = {p: tdb[p].seq.find(barepep) for p in proteins}
-                proteins_loc = {p: [] for p, peploc in proteins.items() if peploc > -1}
-                for p, peploc in proteins.items():
+                proteins_peploc = {}
+                for p in psm[lucp.MASTER_PROTEIN].split(';'):
+                    proteins_peploc[p] = [x.start() for x in re.finditer(barepep, str(tdb[p].seq))]
+                proteins_loc = {p: [] for p, peplocs in proteins_peploc.items() if len(peplocs)}
+                for p, peplocs in proteins_peploc.items():
+                    # peplocs = [4, 120, ..] # unusual to have multiple mathces?
                     for ptmname, ptmlocs in modresidues.items():
                         if ptmname not in ptms:
                             continue
                         protptms = []
                         for res_loc in ptmlocs:
-                            protptms.append('{}{}'.format(res_loc[0], res_loc[1] + peploc))
-                            proteins_loc[p].append('{}_{}'.format(ptmname, ','.join(protptms)))
+                            site_protlocs = [res_loc[1] + x for x in peplocs]
+                            protlocs = '/'.join([str(x) for x in site_protlocs])
+                            protptms.append(f'{res_loc[0]}{protlocs}')
+                        proteins_loc[p].append('{}_{}'.format(ptmname, ','.join(protptms)))
                 psm[lucp.MASTER_PROTEIN] = ';'.join(['{}:{}'.format(p, ':'.join(ptmloc)) for p, ptmloc in proteins_loc.items()])
             psm[lucp.SE_PEPTIDE] = psm.pop(lucp.PEPTIDE)
             psm[lucp.PEPTIDE] = '{}_{}'.format(barepep, psm[lucp.TOPPTM])

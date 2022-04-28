@@ -62,7 +62,7 @@ sites = data.frame(site=unlist(multisites),
                    ptm=rep(sites[,2], sapply(multisites, FUN=length))
                    )
 sites = subset(sites, ptm %in% usedptms)
-sites$site = sub('[0-9]+', '', sites$site)
+sites$site = sub('[0-9/]+', '', sites$site)
 sites$value=1
 sites$site = paste(sites$ptm, sites$site)
 sitenums = aggregate(value~site+bioset, sites, sum)
@@ -84,7 +84,7 @@ sites = data.frame(site=unlist(multisites),
                    ptm=rep(sites[,2], sapply(multisites, FUN=length))
                    )
 sites = subset(sites, ptm %in% usedptms)
-sites$site = sub('[0-9]+', '', sites$site)
+sites$site = sub('[0-9/]+', '', sites$site)
 sites$value=1
 sites$site = paste(sites$ptm, sites$site)
 pepsitenums = aggregate(value~site+bioset, sites, sum)
