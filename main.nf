@@ -1277,8 +1277,8 @@ process mergePTMPeps {
     ${!params.noquant && !params.noms1quant ? "--ms1quantcolpattern area" : ''} \
     ${!params.noquant && setisobaric ? "--isobquantcolpattern plex" : ''}
   # Add master/genes/gene count to peptide table, cant store in SQL because cant protein group on small PTM table
-  ${!params.onlypeptides ? "head -n1 mergedtable | sed \$'s/Peptide sequence/Peptide sequence\tMaster protein(s)\tGene name(s)\tMatching gene count/'> '${peptable}'" : ''}
-  ${!params.onlypeptides ? """geneprotcols=\$(head -1 ptmpsms.txt| tr '\\t' '\\n' | grep -En '(^Peptide|^Master|^Gene Name)' | cut -f 1 -d':' | tr '\\n' ',' | sed 's/\\,\$//')
+  ${!params.onlypeptides ? "head -n1 mergedtable | sed \$'s/Peptide sequence/Peptide sequence\tMaster protein(s)\tGene name(s)\tMatching gene count\tPTM flanking sequence(s)/'> '${peptable}'" : ''}
+  ${!params.onlypeptides ? """geneprotcols=\$(head -1 ptmpsms.txt| tr '\\t' '\\n' | grep -En '(^Peptide|^Master|^Gene Name|^PTM flanking)' | cut -f 1 -d':' | tr '\\n' ',' | sed 's/\\,\$//')
     tail -n+2 ptmpsms.txt | cut -f\$geneprotcols | sort -uk1b,1 > geneprots
     join -j1 -o auto -t '\t' <(paste geneprots <(cut -f3 geneprots | tr -dc ';\\n'| awk '{print length+1}')) <(tail -n+2 mergedtable | sort -k1b,1) >> ${peptable}""" : "mv mergedtable ${peptable}"}
 
@@ -1289,8 +1289,8 @@ process mergePTMPeps {
     ${!params.noquant && !params.noms1quant ? "--ms1quantcolpattern area" : ''} \
     ${!params.noquant && setisobaric ? "--isobquantcolpattern plex" : ''}" : ''}
   # Add master/genes/gene count to peptide table, cant store in SQL because cant protein group on small PTM table
-  ${!params.onlypeptides && params.totalproteomepsms ? """head -n1 mergedtable | sed \$'s/Peptide sequence/Peptide sequence\tMaster protein(s)\tGene name(s)\tMatching gene count/'> '${peptable_no_adjust}'
-    geneprotcols=\$(head -1 ptmpsms.txt| tr '\\t' '\\n' | grep -En '(^Peptide|^Master|^Gene Name)' | cut -f 1 -d':' | tr '\\n' ',' | sed 's/\\,\$//')
+  ${!params.onlypeptides && params.totalproteomepsms ? """head -n1 mergedtable | sed \$'s/Peptide sequence/Peptide sequence\tMaster protein(s)\tGene name(s)\tMatching gene count\tPTM flanking sequence(s)/'> '${peptable_no_adjust}'
+    geneprotcols=\$(head -1 ptmpsms.txt| tr '\\t' '\\n' | grep -En '(^Peptide|^Master|^Gene Name|^PTM flanking)' | cut -f 1 -d':' | tr '\\n' ',' | sed 's/\\,\$//')
     tail -n+2 ptmpsms.txt | cut -f\$geneprotcols | sort -uk1b,1 > geneprots
     join -j1 -o auto -t '\t' <(paste geneprots <(cut -f3 geneprots | tr -dc ';\\n'| awk '{print length+1}')) <(tail -n+2 mergedtable | sort -k1b,1) >> ${peptable_no_adjust}""" : "mv mergedtable ${peptable_no_adjust}"}
 
