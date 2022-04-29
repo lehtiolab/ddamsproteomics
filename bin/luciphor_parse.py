@@ -18,7 +18,8 @@ OTHERPTMS = 'High-scoring PTMs'
 SE_PEPTIDE = 'SearchEnginePeptide'
 PEPTIDE = 'Peptide'
 MASTER_PROTEIN = 'Master protein(s)'
-PTMFIELDS = [SE_PEPTIDE, TOPPTM, TOPSCORE, TOPFLR, OTHERPTMS]
+FLANKING_SEQS = 'PTM flanking seq(s)'
+PTMFIELDS = [SE_PEPTIDE, TOPPTM, TOPSCORE, TOPFLR, OTHERPTMS, FLANKING_SEQS]
 
 def main():
     parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
@@ -165,7 +166,9 @@ def main():
                         stabilefixptms = '_'.join([f'{mass_to_name[mass]}:{s}' for mass, s in sites.items()])
                         ptm[TOPPTM] = f'{ptm[TOPPTM]}_{stabilefixptms}'
 
+                # Get protein site location of mods
                 if MASTER_PROTEIN in psm:
+                    flankseqs = set()
                     proteins_peploc = {}
                     for p in psm[MASTER_PROTEIN].split(';'):
                         proteins_peploc[p] = [x.start() for x in re.finditer(ptm['barepep'], str(tdb[p].seq))]
@@ -175,11 +178,15 @@ def main():
                         for ptmname, ptmlocs in ptm['modres'].items():
                             if ptmname not in labileptms:
                                 continue
+                            protseq = tdb[p].seq
                             protptms = []
                             for res_loc in ptmlocs:
                                 site_protlocs = [res_loc[1] + x for x in peplocs]
                                 protlocs = '/'.join([str(x) for x in site_protlocs])
                                 protptms.append(f'{res_loc[0]}{protlocs}')
+                                flankpos = [(max(x-8, 0) , min(x+7, len(protseq))) for x in site_protlocs]
+                                flankseqs.update([str(protseq[x[0]:x[1]]) for x in flankpos])
+
                             proteins_loc[p].append('{}:{}'.format(ptmname, ','.join(protptms)))
                     psm[MASTER_PROTEIN] = ';'.join(['{}__{}'.format(p, '_'.join(ptmloc)) for p, ptmloc in proteins_loc.items()])
                     psm[FLANKING_SEQS] = ';'.join(flankseqs)
