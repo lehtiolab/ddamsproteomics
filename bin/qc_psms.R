@@ -38,15 +38,23 @@ names(amount_ms2) = c(xcol, mscol)
 names(amount_psms) = c(xcol, psmcol)
 amount_id=merge.data.frame(amount_ms2[c(xcol, mscol)], amount_psms[c(xcol, psmcol)], by.x=xcol, by.y=xcol, all=T)
 amount_id = melt(amount_id, measure.vars=c(mscol, psmcol))
+
 procents = dcast(amount_id, get(xcol)~variable, value.var=ycol)
-procents$p = procents$`PSMs IDed` / procents$`MS2 scans`
+colnames(procents)[1] = xcol
+procents$p= procents$`PSMs IDed` / procents$`MS2 scans`
+amount_id = merge(amount_id, procents[, c(xcol, 'p')])
+amount_id$labeltext = ifelse(amount_id$variable == psmcol, paste(round(100 * amount_id$p, 2), '%'), '')
+
+# FIXME move percent to be on tip of bar
 svg('psm-scans', width=width, height=nrsets + 2) 
 print(ggplot(amount_id) +
-  geom_bar(aes_string(x=xcol, y=ycol, fill='variable'), stat='identity', position='dodge') + coord_flip() +
-    ylab('# PSMs') + theme_bw() + theme(axis.title.x=element_text(size=15), axis.text=element_text(size=10), axis.title.y=element_blank(), legend.position="top", legend.text=element_text(size=10), legend.title=element_blank()) +
-  geom_text(data=subset(amount_id, variable==psmcol), aes(y=value * 1.5, x=!!ensym(xcol), label=paste(100*round(procents$p, 2), '%')), nudge_x=.25, colour="black", size=8))
+  geom_bar(aes(x=!!ensym(xcol), y=value, fill=variable, group=variable), stat='identity', position='dodge') + coord_flip() +
+    ylab('# spectra') + theme_bw() + theme(axis.title.x=element_text(size=15), axis.text=element_text(size=10), axis.title.y=element_blank(), legend.position="top", legend.text=element_text(size=10), legend.title=element_blank()) +
+  geom_text(position=position_dodge(width=0.9), aes(y=value, x=!!ensym(xcol), group=variable, label=labeltext), hjust=0, colour="black", size=6))
 dev.off()
 
+
+# Missing isobaric values
 if (length(grep('plex', names(feats)))) {
   channels = names(feats)[grepl('plex', names(feats))]
   psm_empty = melt(feats[c(xcol, channels)], id.vars=xcol)
@@ -63,17 +71,22 @@ if (length(grep('plex', names(feats)))) {
 
 mcl = aggregate(as.formula(paste('SpecID~', xcol, '+ missed_cleavage')), feats, length)
 mcl$missed_cleavage = as.factor(mcl$missed_cleavage)
-svg('miscleav', width=width, height=(nrsets + 2))
-mcplot = ggplot(subset(mcl, missed_cleavage %in% c(1,2,3)), aes_string(xcol, 'SpecID')) + geom_bar(aes(fill=missed_cleavage), position='dodge', stat='identity') + coord_flip() + ylab('# PSMs') + theme_bw() + theme(axis.title.x=element_text(size=15), axis.title.y=element_blank(), axis.text=element_text(size=10), legend.position="top", legend.text=element_text(size=10), legend.title=element_blank())
 
-if (nrow(subset(mcl, missed_cleavage == 1))) {
-  mcl_am = merge(subset(mcl, missed_cleavage == 1), amount_psms, by=xcol)
-  procents = mcl_am$SpecID / mcl_am$"PSMs IDed"
-  mcplot = mcplot + geom_text(data=subset(mcl, missed_cleavage == 1), aes(x=!!ensym(xcol), y=SpecID/2, label=paste(100*round(procents, 2), '%')), nudge_x=-0.333, colour="white", size=8)
-}
+mcl_am = subset(merge(mcl, amount_psms, by=xcol), missed_cleavage %in% c(0,1,2,3))
+mcl_am$percent = mcl_am$SpecID / mcl_am$"PSMs IDed" * 100
+mcl_am$textycoord = ifelse(mcl_am$missed_cleavage!=0, mcl_am$percent, 10)
+
+svg('miscleav', width=width, height=(nrsets + 2))
+mcplot = ggplot(mcl_am) +
+    geom_bar(aes(x=!!ensym(xcol), y=percent, fill=missed_cleavage, group=missed_cleavage), position='dodge', stat='identity') +
+    # 0.9 is the default dodge (90% of 1, 1 used bc all same value) but when not spec -> no dodge at all?
+    geom_text(position=position_dodge(width=0.9), aes(x=!!ensym(xcol), y=textycoord+3, group=missed_cleavage, label=paste(SpecID, 'PSMs,', round(percent, 2), '%')), hjust=0, colour="black", size=4, inherit.aes=T) +
+    ylim(c(0, 100)) + ylab('% of PSMs') +
+    theme_bw() +
+    theme(axis.title.x=element_text(size=15), axis.title.y=element_blank(), axis.text=element_text(size=10), legend.position="top", legend.text=element_text(size=10), legend.title=element_blank()) +
+    coord_flip() 
 print(mcplot)
 dev.off()
-
 
 # Now the per-fraction or per-file stats
 if (has_fractions) {

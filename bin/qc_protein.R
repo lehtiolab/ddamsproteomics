@@ -301,7 +301,12 @@ if (is_isobaric && use_sampletable) {
     pca_ana <- prcomp(t(topca), scale. = TRUE)
     score.df <- as.data.frame(pca_ana$x)
     rownames(score.df) = sub('_[a-z0-9]*plex', '', rownames(score.df))
-    score.df$type = sampletable[rownames(score.df), "group"]
+    if (length(sampletable[sampletable$group != 'NO__GROUP', 'group'])) {
+        colortype = 'group'
+    } else {
+        colortype = 'set'
+    }
+    score.df$type = sampletable[rownames(score.df), colortype]
   
     #Scree plot
     contributions <- data.frame(contrib=round(summary(pca_ana)$importance[2,] * 100, 2)[1:20])
