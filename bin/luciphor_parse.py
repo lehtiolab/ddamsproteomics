@@ -3,10 +3,11 @@
 import sys
 import os
 import re
+import argparse
 from Bio import SeqIO
 
-from luciphor_prep import aa_weights_monoiso
-from create_modfile import get_msgfmods
+from luciphor_prep import aa_weights_monoiso, parse_mods_msgf_pep, add_mods_translationtable
+from create_modfile import get_msgfmods, parse_cmd_mod, categorize_mod, modpos, NON_BLOCKING_MODS
 
 
 # PTM input/output header fields
@@ -20,33 +21,40 @@ MASTER_PROTEIN = 'Master protein(s)'
 PTMFIELDS = [SE_PEPTIDE, TOPPTM, TOPSCORE, TOPFLR, OTHERPTMS]
 
 def main():
-    minscore_high = float(sys.argv[1])
-    outfile = sys.argv[2]
-    modfile = sys.argv[3]
-    ptms = sys.argv[4].split(';')
-    mods = sys.argv[5].split(';')
-    fasta = sys.argv[6]
+    parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
+    parser.add_argument('--minscore', type=float)
+    parser.add_argument('-o', dest='outfile')
+    parser.add_argument('--modfile')
+    parser.add_argument('--labileptms', nargs='+', default=[])
+    parser.add_argument('--stabileptms', nargs='+', default=[])
+    parser.add_argument('--mods', nargs='+', default=[])
+    parser.add_argument('--fasta')
+    args = parser.parse_args(sys.argv[1:])
 
-    ptmmods = ptms + mods
+    minscore_high = args.minscore
+    labileptms = args.labileptms
+
     # First prepare a residue + PTM weight -> PTM name dict for naming mods
-    ptmmasses = {}
-    msgfmods = get_msgfmods(modfile)
-    for ptmname in ptmmods:
+    mass_to_name, ptmmasses = {}, {}
+    msgfmods = get_msgfmods(args.modfile)
+    for ptmname in labileptms + args.stabileptms + args.mods:
         for modline in msgfmods[ptmname.lower()]:
             modline = modline.split(',')
             if modline[2] == 'fix':
                 continue
+            modmass = float(modline[0])
             if modline[1] == '*':
-                mass = float(modline[0])
-                ptmmasses[int(round(mass, 0))] = ptmname
+                ptmmasses[int(round(modmass, 0))] = ptmname
             else:
                 for res in modline[1]:
-                    mass = aa_weights_monoiso[res] + float(modline[0])
+                    mass = aa_weights_monoiso[res] + modmass
                     ptmmasses[int(round(mass, 0))] = ptmname
+            mass_to_name[modmass] = ptmname
+
     # load sequences
-    tdb = SeqIO.index(fasta, 'fasta')
+    tdb = SeqIO.index(args.fasta, 'fasta')
     # Now go through scores, luciphor and PSM table
-    with open('all_scores.debug') as scorefp, open('luciphor.out') as fp, open('psms') as psms, open(outfile, 'w') as wfp:
+    with open('all_scores.debug') as scorefp, open('luciphor.out') as fp, open('psms') as psms, open(args.outfile, 'w') as wfp:
         header = next(fp).strip('\n').split('\t')
         scoreheader = next(scorefp).strip('\n').split('\t')
         psmheader = next(psms).strip('\n').split('\t')
@@ -65,7 +73,7 @@ def main():
                 OTHERPTMS: 'NA',
                 }
             # match the modified residues and group:
-            modresidues = {x: [] for x in ptmmods}
+            modresidues = {x: [] for x in labileptms}
             barepep, start = '', 0
             modpep = line['predictedPep1']
             for x in re.finditer('([A-Z]){0,1}\[([0-9]+)\]', modpep):
@@ -74,11 +82,16 @@ def main():
                 else:
                     barepep += modpep[start:x.start()]
                 start = x.end()
-                modresidues[ptmmasses[int(x.group(2))]].append((x.group(1), len(barepep)))
+                ptmname = ptmmasses[int(x.group(2))]
+                if ptmname in labileptms:
+                    modresidues[ptmname].append((x.group(1), len(barepep)))
+            # Remove PTMs if not found on PSM
+            modresidues = {pn: res for pn, res in modresidues.items() if len(res)}
+
             barepep += modpep[start:]
             ptm.update({'barepep': barepep, 'modres': modresidues})
             ptm[TOPPTM] = '_'.join(['{}:{}'.format(name, ','.join(['{}{}'.format(x[0], x[1]) for x in resmods])) for 
-                    name, resmods in modresidues.items() if len(resmods)])
+                    name, resmods in modresidues.items()])
             # Get other highscoring permutations
             extrapeps = []
             if scorepep['specId'] == specid:
@@ -102,14 +115,56 @@ def main():
                 if len(extrapeps):
                     ptm[OTHERPTMS] = ';'.join(extrapeps)
             lucptms[specid] = ptm
+
         # With that parsed, take the PSMs
+        # First see if we have a stabile PTM that if on a fixed mod residue, 
+        # because that needs parsing from PSM table (luciphor throws them out)
+        fixedmods, varmods, masslookup, varfixmods_masses = {}, [], {}, []
+        for modname in args.stabileptms + args.mods:
+            modlines = parse_cmd_mod(modname, msgfmods)
+            categorize_mod(modlines, fixedmods, varmods)
+        for modlines in fixedmods.values():
+            for mod in modlines:
+                add_mods_translationtable(mod, masslookup)
+        varmod_on_fixmod_res = False
+        for mod in varmods:
+            mmass, mres, mfm, mprotpos, mname = mod
+            mp = modpos(mod)
+            if mp in fixedmods:
+                varmod_on_fixmod_res = True
+                nonblocked_fixed = NON_BLOCKING_MODS.get(mname, [])
+                blocked_fixmass = sum([float(x[0]) for x in fixedmods[mp] if x[-1] not in nonblocked_fixed])
+                mod[0] = str(round(-(blocked_fixmass - float(mod[0])), 6))
+                varfixmods_masses.append(add_mods_translationtable(mod, masslookup))
+            else:
+                add_mods_translationtable(mod, masslookup)
+        for ptmname in labileptms:
+            for ptmdef in parse_cmd_mod(ptmname, msgfmods):
+                # FIXME OPTIONAL competition for multi-residue/line spec, how to know which 
+                # modifications can compete?
+                ptmdef = ptmdef.split(',')
+                if modpos(ptmdef) in fixedmods:
+                    fixmass = sum([float(x[0]) for x in fixedmods[modpos(ptmdef)]])
+                    ptmdef[0] = str(round(-(fixmass - float(ptmdef[0])), 5))
+                add_mods_translationtable(ptmdef, masslookup)
+
         for psm in psms:
             psm = psm.strip('\n').split('\t')
             psm = {k: v for k,v in zip(psmheader, psm)}
             psmid = '{}.{}.{}.{}'.format(os.path.splitext(psm['SpectraFile'])[0], psm['ScanNum'], psm['ScanNum'], psm['Charge'])
             if psmid in lucptms:
                 ptm = lucptms[psmid]
-                # Get protein site location of mod
+                if varmod_on_fixmod_res:
+                    parsedpep = parse_mods_msgf_pep(psm[PEPTIDE], masslookup, varfixmods_masses)
+                    if parsedpep:
+                        sites = {masslookup[x]: [] for x in varfixmods_masses}
+                        for site in parsedpep['sites']:
+                            for modmass in site[2]:
+                                sites[modmass].append(f'{parsedpep["barepeptide"][site[0]]}{site[0]}')
+                        sites = {mass: ','.join(s) for mass, s in sites.items()}
+                        stabilefixptms = '_'.join([f'{mass_to_name[mass]}:{s}' for mass, s in sites.items()])
+                        ptm[TOPPTM] = f'{ptm[TOPPTM]}_{stabilefixptms}'
+
                 if MASTER_PROTEIN in psm:
                     proteins_peploc = {}
                     for p in psm[MASTER_PROTEIN].split(';'):
@@ -118,7 +173,7 @@ def main():
                     for p, peplocs in proteins_peploc.items():
                         # peplocs = [4, 120, ..] # unusual to have multiple mathces?
                         for ptmname, ptmlocs in ptm['modres'].items():
-                            if ptmname not in ptms:
+                            if ptmname not in labileptms:
                                 continue
                             protptms = []
                             for res_loc in ptmlocs:

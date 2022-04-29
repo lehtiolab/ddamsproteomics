@@ -1053,7 +1053,10 @@ process luciphorPTMLocalizationScoring {
   script:
   denom = !params.noquant && setdenoms ? setdenoms[setname] : false
   specialdenom = denom && (denom[0] == 'sweep' || denom[0] == 'intensity')
-  isobtype = setisobaric && setisobaric[setname] ? setisobaric[setname] : ''
+  isobtype = setisobaric && setisobaric[setname] ? "${setisobaric[setname]}" : ''
+  mods = params.mods.tokenize(';').join(' ')
+  stab_ptms = params.ptms.tokenize(';').join(' ')
+  lab_ptms = params.locptms.tokenize(';').join(' ')
 
   """
   ${mzmls.collect() { it.toString() != it.toString().replaceAll('[&<>\'"]', '_') ? "mv '${it}' '${it.toString().replaceAll('[&<>\'"]', '_')}'" : ''}.findAll {it != ''}.join(' && ')}
@@ -1071,7 +1074,10 @@ process luciphorPTMLocalizationScoring {
   cat "$baseDir/assets/luciphor2_input_template.txt" | envsubst > lucinput.txt
   luciphor_prep.py target.tsv lucinput.txt "${params.msgfmods}" "${params.mods}${isobtype ? ";${isobtype}" : ''}${params.ptms ? ";${params.ptms}" : ''}" "${params.locptms}" luciphor.out
   luciphor2 -Xmx${task.memory.toGiga()}G luciphor_config.txt
-  luciphor_parse.py ${params.ptm_minscore_high} labileptms.txt "${params.msgfmods}" "${params.locptms}" "${params.mods}${params.ptms ? ";${params.ptms}" : ''}" "${tdb}"
+  luciphor_parse.py --minscore ${params.ptm_minscore_high} -o labileptms.txt \
+     --modfile "${params.msgfmods}" --labileptms ${lab_ptms} \
+     ${params.ptms ? "--stabileptms ${stab_ptms}": ''} --mods ${mods} ${isobtype} \
+     --fasta "${tdb}"
   """
 }
 // FIXME msgfmods is false? oxidation so probably never.

@@ -39,6 +39,8 @@ def get_msgf_seq_mass(mass):
 
 
 def add_mods_translationtable(mod, ttab):
+    '''Lookup dict from MSGF+ output on sequence (string with 3 decimals and sign) 
+    to precise float mass of specified mod in mod file'''
     mass = float(mod[0])
     msgf_seq_mass = get_msgf_seq_mass(mass)
     ttab[msgf_seq_mass] = mass
@@ -53,6 +55,55 @@ def get_luci_mod(mod):
     else:
         residue = mod[1]
     return '{} {}'.format(residue, mod[0])
+
+
+def parse_mods_msgf_pep(seq, masslookup, ptm_masses, vmod_masses=False):
+    '''Take an MSGF peptide sequence with PTMs e.g. a Phospho and fixed TMT:
+         IAMAPEPT+79.966IDEK+229.163
+    and return a parsed data dict with the bare peptide and sites specified like so:
+
+    {'barepeptide': 'IAMAPEPTIDE',
+     'sites': [[8, residue-mass-including-all-mods, [ptm_masses_found]], [...]] }
+
+    - If no mods are found that are in the passed ptm_masses, returns False
+    - Residues with ONLY fixed modifications are not returned in 'sites': []
+    '''
+    # TODO add C-terminal mods (rare)
+    vmod_masses = vmod_masses or []
+    ptm_in_seq = False
+    sites = []
+    pep = ''
+    start = 0
+    for mod in re.finditer('[\+\-0-9]+.[\+\-.0-9]+', seq):
+        modtxt = mod.group()
+        if modtxt.count('+') + modtxt.count('-') > 1:
+            # multi mod on single residue
+            multimods = re.findall('[\+\-][0-9.]+', modtxt)
+        else:
+            multimods = [modtxt]
+        modmass = sum([masslookup[x] for x in multimods])
+        pep += seq[start:mod.start()]
+        if not set(multimods).intersection([*ptm_masses, *vmod_masses]):
+            # When e.g. not annotating fixed mods, skip this mod if not interesting
+            start = mod.end()
+            continue
+        if ptm_masses and set(multimods).intersection(ptm_masses):
+            ptm_in_seq = True
+        if len(pep) == 0:
+            aamass = modmass
+        else:
+            aamass = round(aa_weights_monoiso[pep[-1]] + modmass, 5)
+        ptmmasses_found = [masslookup[x] for x in multimods if x in ptm_masses]
+        sites.append([len(pep)- 1, aamass, ptmmasses_found])
+        start = mod.end()
+    if not ptm_in_seq:
+        return False
+    if start != mod.endpos:
+        pep += seq[start:]
+    if sites[0][0] == -1:
+        sites[0][0] = -100
+    return {'barepeptide': pep, 'sites': sites}
+
 
 def main():
     psmfile = sys.argv[1]
@@ -164,47 +215,11 @@ def main():
         evalue = header.index('PSM q-value')
         wfp.write('srcFile\tscanNum\tcharge\tPSMscore\tpeptide\tmodSites')
         for line in fp:
-            ptm_in_seq = False
-            sites = []
-            pep = ''
-            start = 0
             line = line.strip('\n').split('\t')
-            seq = line[pepcol]
-            #for mod in re.finditer('[\+\-0-9]+.[0-9]+', seq):
-            for mod in re.finditer('[\+\-0-9]+.[\+\-.0-9]+', seq):
-                modtxt = mod.group()
-                if modtxt.count('+') + modtxt.count('-') > 1:
-                    # multi mod on single residue
-                    multimods = re.findall('[\+\-][0-9.]+', modtxt)
-                else:
-                    multimods = [modtxt]
-                modmass = sum([massconversion_msgf[x] for x in multimods])
-                if set(multimods).intersection(ptms_mass):
-                    ptm_in_seq = True
-                    # IF fixed + target -> use the target mass from the msgfmods file
-                    # target + target -> 
-                # FIXME overlapping mods
-    #                if modtxt in ptms_mass:
-    #                    ptm_= True
-                pep += seq[start:mod.start()]
-                if not set(multimods).intersection([*ptms_mass, *varmods_mass]):
-                    # Do not annotate fixed mods
-                    start = mod.end()
-                    continue
-                if len(pep) == 0:
-                    aamass = modmass
-                else:
-                    aamass = round(aa_weights_monoiso[pep[-1]] + modmass, 5)
-                sites.append([len(pep)- 1, aamass])
-                start = mod.end()
-            if not ptm_in_seq:
-                # only output PSMs with PTM for luciphor
-                continue
-            if start != mod.endpos:
-                pep += seq[start:]
-            if sites[0][0] == -1: sites[0][0] = -100
+            parsedpep = parse_mods_msgf_pep(line[pepcol], massconversion_msgf, ptms_mass, varmods_mass)
             # TODO add C-terminal mods (rare)
-            wfp.write('\n{}\t{}\t{}\t{}\t{}\t{}'.format(line[spfile], line[scan], line[charge], line[evalue], pep, ','.join(['{}={}'.format(x[0], x[1]) for x in sites])))
+            if parsedpep:
+                wfp.write('\n{}\t{}\t{}\t{}\t{}\t{}'.format(line[spfile], line[scan], line[charge], line[evalue], parsedpep['barepeptide'], ','.join(['{}={}'.format(x[0], x[1]) for x in parsedpep['sites']])))
 
 
 if __name__ == '__main__':
