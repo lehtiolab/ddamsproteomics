@@ -3,48 +3,32 @@
 import sys
 import re
 from Bio import SeqIO
+import argparse
 
-from luciphor_prep import aa_weights_monoiso
+from luciphor_prep import Mods, PSM, aa_weights_monoiso
 import luciphor_parse as lucp
-from create_modfile import get_msgfmods, modpos, categorize_mod, parse_cmd_mod, NON_BLOCKING_MODS
 
 
 def main():
-    inpsms = sys.argv[1]
-    outfile = sys.argv[2]
-    modfile = sys.argv[3]
-    ptms = sys.argv[4].split(';') if sys.argv[4] else []
-    locptms = sys.argv[5].split(';') if sys.argv[5] else []
-    mods = sys.argv[6].split(';') if sys.argv[6] else []
-    fasta = sys.argv[7]
+    parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
+    parser.add_argument('-o', dest='outfile')
+    parser.add_argument('--psms')
+    parser.add_argument('--modfile')
+    parser.add_argument('--labileptms', nargs='+', default=[])
+    parser.add_argument('--stabileptms', nargs='+', default=[])
+    parser.add_argument('--mods', nargs='+', default=[])
+    parser.add_argument('--fasta')
+    args = parser.parse_args(sys.argv[1:])
 
-    msgfmods = get_msgfmods(modfile)
-    fixedmods = {}
-    varmods = []
-    for passedmod in ptms + locptms + mods:
-        mod = parse_cmd_mod(passedmod, msgfmods)
-        try:
-            categorize_mod(mod, fixedmods, varmods)
-        except Exception:
-            sys.stderr.write('Could not identify modification "{}", use one of [{}]\n'.format(passedmod, ', '.join(msgfmods.keys())))
-            sys.exit(1)
-    varmods = {x[4].lower(): x for x in varmods}
-    ptmmasses = {}
-    for ptmname in ptms + locptms:
-        modline = varmods[ptmname.lower()][:]
-        for res in modline[1]:
-            modline = [float(modline[0]), res, modline[2], modline[3], modline[4]]
-            mp = modpos(modline)
-            if mp in fixedmods:
-                mmass, mres, mfm, mprotpos, mname = modline
-                nonblocked_fixed = NON_BLOCKING_MODS[mname] if mname in NON_BLOCKING_MODS else []
-                blocked_fixmass = sum([float(x[0]) for x in fixedmods[mp] if x[-1] not in nonblocked_fixed])
-                ptmmasses[str(round(-(blocked_fixmass - mmass), 3))] = ptmname
-            else:
-                ptmmasses[str(round(modline[0], 3))] = ptmname
+    ptms = [x.lower() for x in args.stabileptms]
+    locptms = [x.lower() for x in args.labileptms]
+    mods = [x.lower() for x in args.mods]
 
-    tdb = SeqIO.index(fasta, 'fasta')
-    with open(inpsms) as fp, open(outfile, 'w') as wfp:
+    msgfmods = Mods()
+    msgfmods.parse_msgf_modfile(args.modfile, locptms, [*ptms, *mods])
+    msgf_mod_map = msgfmods.msgfmass_mod_dict()
+    tdb = SeqIO.index(args.fasta, 'fasta')
+    with open(args.psms) as fp, open(args.outfile, 'w') as wfp:
         header = next(fp).strip('\n').split('\t')
         outheader = header + lucp.PTMFIELDS
         wfp.write('\t'.join(outheader))
@@ -53,48 +37,16 @@ def main():
             psm = psm.strip('\n').split('\t')
             psm = {k: v for k,v in zip(header, psm)}
             psm.update({x: 'NA' for x in lucp.PTMFIELDS})
-            modresidues = {x: [] for x in ptms + locptms}
-            barepep, start = '', 0
-            for x in re.finditer('([A-Z]){0,1}[+-]([0-9\.+\-]+)', psm['Peptide']):
-                if x.group(1) is not None:
-                    # mod is on a residue
-                    barepep += psm['Peptide'][start:x.start()+1]
-                else:
-                    # mod is on protein N-term
-                    barepep += psm['Peptide'][start:x.start()]
-                start = x.end()
-                for mass in re.sub('([+-])', ' \\1', x.group(2)).replace('+', '').split(' '):
-                    if mass in ptmmasses:
-                        modresidues[ptmmasses[mass]].append((x.group(1), len(barepep)))
-            modsfound = set([k for k,v in modresidues.items() if len(v)])
-            if not modsfound.intersection(ptms) or modsfound.intersection(locptms):
-                # remove peptides without PTM and those with labile PTM (the latter will
-                # be treated by luciphor)
-                continue
-            barepep += psm['Peptide'][start:]
-            psm[lucp.TOPPTM] = '_'.join(['{}:{}'.format(name, ','.join(['{}{}'.format(x[0], x[1]) for x in resmods])) for 
-                    name, resmods in modresidues.items() if len(resmods)])
-            # Add protein location annotation
-            if lucp.MASTER_PROTEIN in psm:
-                proteins_peploc = {}
-                for p in psm[lucp.MASTER_PROTEIN].split(';'):
-                    proteins_peploc[p] = [x.start() for x in re.finditer(barepep, str(tdb[p].seq))]
-                proteins_loc = {p: [] for p, peplocs in proteins_peploc.items() if len(peplocs)}
-                for p, peplocs in proteins_peploc.items():
-                    # peplocs = [4, 120, ..] # unusual to have multiple mathces?
-                    for ptmname, ptmlocs in modresidues.items():
-                        if ptmname not in ptms:
-                            continue
-                        protptms = []
-                        for res_loc in ptmlocs:
-                            site_protlocs = [res_loc[1] + x for x in peplocs]
-                            protlocs = '/'.join([str(x) for x in site_protlocs])
-                            protptms.append(f'{res_loc[0]}{protlocs}')
-                        proteins_loc[p].append('{}:{}'.format(ptmname, ','.join(protptms)))
-                psm[lucp.MASTER_PROTEIN] = ';'.join(['{}__{}'.format(p, '_'.join(ptmloc)) for p, ptmloc in proteins_loc.items()])
-            psm[lucp.SE_PEPTIDE] = psm.pop(lucp.PEPTIDE)
-            psm[lucp.PEPTIDE] = '{}_{}'.format(barepep, psm[lucp.TOPPTM])
-            wfp.write('\n{}'.format('\t'.join([psm[k] for k in outheader])))
+            ptmpsm = PSM()
+            ptmpsm.parse_msgf_peptide(psm[lucp.PEPTIDE], msgf_mod_map, locptms, ptms)
+            if ptmpsm.has_stableptms() and not ptmpsm.has_labileptms():
+                psm[lucp.TOPPTM] = ptmpsm.topptm_output()
+                # Add protein location annotation
+                if lucp.MASTER_PROTEIN in psm:
+                    lucp.annotate_protein_and_flanks(psm, ptmpsm, tdb, ptms)
+                psm[lucp.SE_PEPTIDE] = psm.pop(lucp.PEPTIDE)
+                psm[lucp.PEPTIDE] = '{}_{}'.format(ptmpsm.sequence, psm[lucp.TOPPTM])
+                wfp.write('\n{}'.format('\t'.join([psm[k] for k in outheader])))
 
 
 if __name__ == '__main__':

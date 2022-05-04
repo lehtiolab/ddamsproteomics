@@ -879,7 +879,7 @@ process msgfPlus {
 
   output:
   set val(setname), val(sample), file("${sample}.mzid"), file("${sample}.mzid.tsv") into mzids
-  set val(setname), path('mods.txt') into luci_mods
+  set val(setname), path('mods.txt') into ptm_mods
   
   script:
   isobtype = setisobaric && setisobaric[setname] ? setisobaric[setname] : false
@@ -1030,6 +1030,7 @@ setpsmtables
   .filter { it -> it[0] == 'target' }
   .combine(ptmdbs)
   .map { it -> it[1..3] }
+  .join(ptm_mods)
   .into { psm_ptm; stabileptm_prep }
 
 mzml_luciphor
@@ -1037,7 +1038,6 @@ mzml_luciphor
   .groupTuple()
   .join(psm_ptm)
   .join(unfiltered_psms)
-  .join(luci_mods)
   .set { psm_luciphor }
 
 
@@ -1047,7 +1047,7 @@ process luciphorPTMLocalizationScoring {
   when: params.locptms
 
   input:
-  set val(setname), path(mzmls), path('psms'), path(tdb), path(allpsms), path(modfile) from psm_luciphor
+  set val(setname), path(mzmls), path('psms'), path(tdb), path(modfile), path(allpsms) from psm_luciphor
 
   output:
   set val(setname), path('labileptms.txt') into luciphor_all
@@ -1092,15 +1092,21 @@ process stabilePTMPrep {
   when: params.ptms
   
   input:
-  set val(setname), path('psms'), path(tdb) from stabileptm_prep
+  set val(setname), path('psms'), path(tdb),  path(modfile) from stabileptm_prep
   
   output:
   path('stabileptms.txt') into stabileptms
   
   script:
+  stab_ptms = params.ptms.tokenize(';').join(' ')
+  mods = params.mods.tokenize(';').join(' ')
+  lab_ptms = params.locptms.tokenize(';').join(' ')
   isobtype = setisobaric && setisobaric[setname] ? setisobaric[setname] : ''
   """
-  nonlabile_ptm_columns.py psms stabileptms.txt "${params.msgfmods}" "$params.ptms" "${params.locptms ? "$params.locptms" : ""}" "${params.mods}${isobtype ? ";${isobtype}" : ''}" "${tdb}"
+  nonlabile_ptm_columns.py --psms psms -o stabileptms.txt --modfile "${modfile}" --fasta "${tdb}" \
+      --stabileptms $stab_ptms \
+      ${params.locptms ? "--labileptms $lab_ptms" : ""} \
+      ${params.mods ? "--mods ${isobtype} ${mods}" : ''}
   """
 }
 
