@@ -879,6 +879,7 @@ process msgfPlus {
 
   output:
   set val(setname), val(sample), file("${sample}.mzid"), file("${sample}.mzid.tsv") into mzids
+  set val(setname), path('mods.txt') into luci_mods
   
   script:
   isobtype = setisobaric && setisobaric[setname] ? setisobaric[setname] : false
@@ -1036,6 +1037,7 @@ mzml_luciphor
   .groupTuple()
   .join(psm_ptm)
   .join(unfiltered_psms)
+  .join(luci_mods)
   .set { psm_luciphor }
 
 
@@ -1045,7 +1047,7 @@ process luciphorPTMLocalizationScoring {
   when: params.locptms
 
   input:
-  set val(setname), path(mzmls), path('psms'), path(tdb), path(allpsms) from psm_luciphor
+  set val(setname), path(mzmls), path('psms'), path(tdb), path(allpsms), path(modfile) from psm_luciphor
 
   output:
   set val(setname), path('labileptms.txt') into luciphor_all
@@ -1072,10 +1074,12 @@ process luciphorPTMLocalizationScoring {
   export MS2TOLVALUE=0.025
   export MS2TOLTYPE=Da
   cat "$baseDir/assets/luciphor2_input_template.txt" | envsubst > lucinput.txt
-  luciphor_prep.py target.tsv lucinput.txt "${params.msgfmods}" "${params.mods}${isobtype ? ";${isobtype}" : ''}${params.ptms ? ";${params.ptms}" : ''}" "${params.locptms}" luciphor.out
+  luciphor_prep.py --psmfile target.tsv --template lucinput.txt --modfile "${modfile}" \
+      --labileptms "${params.locptms}" \
+      --mods ${mods} ${isobtype} ${stab_ptms} -o luciphor.out
   luciphor2 -Xmx${task.memory.toGiga()}G luciphor_config.txt
   luciphor_parse.py --minscore ${params.ptm_minscore_high} -o labileptms.txt \
-     --modfile "${params.msgfmods}" --labileptms ${lab_ptms} \
+     --modfile "${modfile}" --labileptms ${lab_ptms} \
      ${params.ptms ? "--stabileptms ${stab_ptms}": ''} --mods ${mods} ${isobtype} \
      --fasta "${tdb}"
   """

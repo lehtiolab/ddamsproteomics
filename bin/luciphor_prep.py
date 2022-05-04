@@ -3,11 +3,13 @@
 import sys
 import re
 from os import environ
+import argparse
 
 from jinja2 import Template
 
-from create_modfile import get_msgfmods, categorize_mod, parse_cmd_mod, modpos, NON_BLOCKING_MODS
-
+NON_BLOCKING_MODS = {
+        'GG': ['TMTpro', 'TMT6plex', 'iTRAQ8plex', 'iTRAQ4plex'],
+        }
 
 aa_weights_monoiso = { # From ExPASY
         'A': 71.03711,
@@ -34,163 +36,291 @@ aa_weights_monoiso = { # From ExPASY
         'O': 237.147727,
         }
 
-def get_msgf_seq_mass(mass):
-    return '{}{}'.format('+' if mass > 0 else '', str(round(mass, 3)))
 
-
-def add_mods_translationtable(mod, ttab):
-    '''Lookup dict from MSGF+ output on sequence (string with 3 decimals and sign) 
-    to precise float mass of specified mod in mod file'''
-    mass = float(mod[0])
-    msgf_seq_mass = get_msgf_seq_mass(mass)
-    ttab[msgf_seq_mass] = mass
-    return msgf_seq_mass
-
-
-def get_luci_mod(mod):
-    if mod[3] == 'N-term':
-        residue = '['
-    elif mod[3] == 'C-term':
-        residue = ']'
-    else:
-        residue = mod[1]
-    return '{} {}'.format(residue, mod[0])
-
-
-def parse_mods_msgf_pep(seq, masslookup, ptm_masses, vmod_masses=False):
-    '''Take an MSGF peptide sequence with PTMs e.g. a Phospho and fixed TMT:
-         IAMAPEPT+79.966IDEK+229.163
-    and return a parsed data dict with the bare peptide and sites specified like so:
-
-    {'barepeptide': 'IAMAPEPTIDE',
-     'sites': [[8, residue-mass-including-all-mods, [ptm_masses_found]], [...]] }
-
-    - If no mods are found that are in the passed ptm_masses, returns False
-    - Residues with ONLY fixed modifications are not returned in 'sites': []
+class Mods:
     '''
-    # TODO add C-terminal mods (rare)
-    vmod_masses = vmod_masses or []
-    ptm_in_seq = False
-    sites = []
-    pep = ''
-    start = 0
-    for mod in re.finditer('[\+\-0-9]+.[\+\-.0-9]+', seq):
-        modtxt = mod.group()
-        if modtxt.count('+') + modtxt.count('-') > 1:
-            # multi mod on single residue
-            multimods = re.findall('[\+\-][0-9.]+', modtxt)
+    name is UNIMOD so tmt10plex is called TMT6plex
+    name_lower is how it can be referred to by e.g. other programs e.g. OpenMS, tmt10plex
+    TODO needs more attention
+    '''
+
+    def __init__(self):
+        self.mods = {}
+        self.fixedmods = []
+        self.varmods = []
+        self.bymass = {}
+        self.has_varmods_on_fixmod_residues = False
+
+    def parse_msgf_modfile(self, modfile, labileptms, othermods):
+        mods_to_find = [*labileptms, *othermods, 'tmt6plex']
+        with open(modfile) as fp:
+            for line in fp:
+                line = line.strip('\n')
+                if line == '' or line[0] == '#' or 'NumMods' in line:
+                    continue
+                # TODO validate line
+                msplit = line.split(',')
+                name = msplit[4]
+                pos = msplit[3]
+                varfix = msplit[2]
+                res = set(msplit[1])
+                # tmt6plex can be hidden tmt10plex, same UNIMOD mass/name
+                if name.lower() not in mods_to_find:
+                    continue
+                # FIXME a mod can have diff mass per residue if it is blocked
+                m_id = f'{name.lower()}__{pos}__{varfix}'
+                if m_id in self.mods:
+                    self.mods[m_id]['residues'].update(res)
+                else:
+                    self.mods[m_id] = {
+                            'name': name, 'mass': float(msplit[0]),
+                            'adjusted_masses': {},
+                            'residues': res, 'var': varfix == 'opt',
+                            'pos': pos, 'name_lower': name.lower()}
+        possible_tmt10, old_tmt6 = {}, []
+        for old_m_id, mod in self.mods.items():
+            if mod['name_lower'] == 'tmt6plex' and 'tmt10plex' in mods_to_find:
+                old_tmt6.append(old_m_id)
+                m_id = f'tmt10plex__{mod["pos"]}__{mod["var"]}'
+                possible_tmt10[m_id]  = {k: v for k,v in mod.items()}
+                possible_tmt10[m_id]['name_lower'] = 'tmt10plex'
+                self.fixedmods.append(possible_tmt10[m_id])
+            elif mod['var']:
+                self.varmods.append(mod)
+            else:
+                self.fixedmods.append(mod)
+        if possible_tmt10:
+            [self.mods.pop(x) for x in old_tmt6]
+            self.mods.update(possible_tmt10)
+
+        # get blocking/nonblocking mods and adjust mass (fake mass)
+        fixedpos = {}
+        for res, fmod in [(r, m) for m in self.fixedmods for r in m['residues']]:
+            if res in fixedpos:
+                fixedpos[res].append(fmod)
+            else:
+                fixedpos[res] = [fmod]
+        for mod in self.varmods:
+            nonblocked_fixed = NON_BLOCKING_MODS.get(mod['name'], []) 
+            for res in mod['residues']:
+                #if res in fixedpos:
+                if res in fixedpos:
+                    self.has_varmods_on_fixmod_residues = True
+                adjustment = 0
+                for fmod in fixedpos.get(res, []):
+                    if fmod['name'] not in nonblocked_fixed:
+                        adjustment += fmod['mass']
+                mod['adjusted_masses'][res] = round(-(adjustment - mod['mass']), 5)
+
+    def get_mass_or_adj(self, mod, residue):
+        return mod['adjusted_masses'].get(residue, mod['mass'])
+ 
+    def get_luci_input_mod_lines(self, mod):
+        '''Doing this for each residue since the adjusted masses can differ
+        per residue (due to competition)'''
+        if mod['pos'] == 'N-term':
+            residues = '['
+        elif mod['pos'] == 'C-term':
+            residues = ']'
         else:
-            multimods = [modtxt]
-        modmass = sum([masslookup[x] for x in multimods])
-        pep += seq[start:mod.start()]
-        if not set(multimods).intersection([*ptm_masses, *vmod_masses]):
-            # When e.g. not annotating fixed mods, skip this mod if not interesting
-            start = mod.end()
-            continue
-        if ptm_masses and set(multimods).intersection(ptm_masses):
-            ptm_in_seq = True
-        if len(pep) == 0:
-            aamass = modmass
+            residues = mod['residues']
+        for res in residues:
+            yield f'{res} {self.get_mass_or_adj(mod, res)}'
+
+    def msgfmass_mod_dict(self):
+        '''Create MSGF output mass (round(x,3) ) to mod lookup'''
+        mod_map = {}
+        for mn, mod, res in [(m['name'], m, r) for mn,m in self.mods.items() for r in m['residues']]:
+            try:
+                mod_map[round(self.get_mass_or_adj(mod, res), 3)].append(mod)
+            except KeyError:
+                mod_map[round(self.get_mass_or_adj(mod, res), 3)] = [mod]
+        return mod_map
+
+    def lucimass_mod_dict(self):
+        '''Create luciphor output mass (int(x+ aa) ) to mod lookup'''
+        modmap = {}
+        for res, mod in [(r, m) for m in self.varmods for r in m['residues']]:
+            # round (, None) generates an int
+            mass = round(aa_weights_monoiso[res] + self.get_mass_or_adj(mod, res))
+            modmap[f'{res}{mass}'] = mod
+        return modmap
+
+
+class PSM: 
+    def __init__(self):
+        self.mods = []
+        self.top_flr = False
+        self.top_score = False
+        self.lucispecid = False
+        self.alt_ptm_locs = []
+        self.sequence = False
+        self.seq_in_scorepep_fmt = False
+
+    def parse_msgf_peptide(self, msgfseq, msgf_mods, labileptmnames, stableptmnames):
+        self.mods = []
+        barepep = ''
+        start = 0
+        for x in re.finditer('([A-Z]){0,1}([0-9\.+\-]+)', msgfseq):
+            if x.group(1) is not None:
+                # mod is on a residue
+                barepep = f'{barepep}{msgfseq[start:x.start()+1]}'
+                residue = barepep[-1]
+                sitenum = len(barepep) - 1
+            else:
+                # mod is on protein N-term
+                residue = '['
+                sitenum = -100
+            # TODO cterm = 100, ']'
+            start = x.end()
+            for mass in re.findall('[\+\-][0-9.]+', x.group(2)):
+                mod = msgf_mods[float(mass)][0] # only take first, contains enough info
+                self.mods.append({
+                    'site': (residue, sitenum), 'type': self.get_modtype(mod, labileptmnames, stableptmnames),
+                    'mass': mod['mass'], 'name': mod['name'], 'name_lower': mod['name_lower'],
+                    'adjusted_mass': mod['adjusted_masses'].get(residue, False),
+                    })
+        self.sequence = f'{barepep}{msgfseq[start:]}'
+
+    def get_modtype(self, mod, labileptmnames, stableptmnames):
+        if not mod['var']:
+            mtype = 'fixed'
+        elif mod['name_lower'] in labileptmnames:
+            mtype = 'labile'
+        elif mod['name_lower'] in stableptmnames:
+            mtype = 'stable'
         else:
-            aamass = round(aa_weights_monoiso[pep[-1]] + modmass, 5)
-        ptmmasses_found = [masslookup[x] for x in multimods if x in ptm_masses]
-        sites.append([len(pep)- 1, aamass, ptmmasses_found])
-        start = mod.end()
-    if not ptm_in_seq:
+            mtype = 'variable'
+        return mtype
+
+    def parse_luciphor_peptide(self, luciline, ptms_map, labileptms, stabileptms):
+        '''From a luciphor sequence, create a peptide with PTMs
+        ptms_map = {f'{residue}int(79 + mass_S/T/Y)': {'name': Phospho, etc}
+        '''
+        self.top_flr = luciline['globalFLR']
+        self.top_score = luciline['pep1score']
+        self.lucispecid = luciline['specId']
+        self.mods = []
+        barepep, start = '', 0
+        modpep = luciline['predictedPep1']
+        for x in re.finditer('([A-Z]){0,1}\[([0-9]+)\]', modpep):
+            if x.group(1) is not None: # check if residue (or protein N-term)
+                barepep += modpep[start:x.start()+1]
+            start = x.end()
+            ptm = ptms_map[f'{x.group(1)}{int(x.group(2))}']
+            if ptm['name_lower'] in labileptms:
+                sitenum = len(barepep) - 1 if len(barepep) else -100
+                residue = barepep[-1] if len(barepep) else '['
+                self.mods.append({
+                    'site': (residue, sitenum), 'type': self.get_modtype(ptm, labileptms, stabileptms),
+                    'mass': ptm['mass'], 'name': ptm['name'], 'name_lower': ptm['name_lower'],
+                    })
+        self.sequence = barepep
+        self.seq_in_scorepep_fmt = re.sub(r'([A-Z])\[[0-9]+\]', lambda x: x.group(1).lower(), modpep)
+
+    def parse_luciphor_scores(self, scorepep, minscore):
+        permut = scorepep['curPermutation']
+        if permut != self.seq_in_scorepep_fmt and float(scorepep['score']) > minscore:
+            self.alt_ptm_locs.append([f'{x.group()}{x.start() + 1}:{scorepep["score"]}'
+                for x in re.finditer('[a-z]', permut)])
+
+    def format_alt_ptm_locs(self):
+        alt_locs = [','.join(x).upper() for x in self.alt_ptm_locs]
+        return ';'.join(alt_locs) if len(alt_locs) else 'NA'
+
+    def has_labileptms(self):
+        for mod in self.mods:
+            if mod['type'] == 'labile':
+                return True
         return False
-    if start != mod.endpos:
-        pep += seq[start:]
-    if sites[0][0] == -1:
-        sites[0][0] = -100
-    return {'barepeptide': pep, 'sites': sites}
+
+    def has_mods(self, modnames):
+        mns = set(modnames)
+        return any(m['name'] in mns for m in self.mods)
+
+    def luciphor_input_sites(self):
+        lucimods = []
+        for m in self.mods:
+            if m['type'] != 'fixed':
+                lucimods.append((m['site'][1], str(m['mass'] + aa_weights_monoiso[m['site'][0]])))
+        return ','.join([f'{x[0]}={x[1]}' for x in lucimods])
+
+    def add_ptms_from_psm(self, psmmods):
+        existing_mods = {m['name']: m for m in self.mods}
+        for psmmod in psmmods:
+            if psmmod['name'] not in existing_mods:
+                self.mods.append(psmmod)
+
+    def topptm_output(self):
+        ptmsites = {}
+        output_types = {'labile', 'stable'}
+        for ptm in self.mods:
+            if ptm['type'] not in output_types:
+                continue
+            site = f'{ptm["site"][0]}{ptm["site"][1] + 1}'
+            try:
+                ptmsites[ptm['name']].append(site)
+            except KeyError:
+                ptmsites[ptm['name']] = [site]
+        return '_'.join([f'{p}:{",".join(s)}' for p, s in ptmsites.items()])
+
+
+def create_msgf_mod_lookup():
+    lookup = {}
+
 
 
 def main():
-    psmfile = sys.argv[1]
-    template = sys.argv[2]
-    modlibfile = sys.argv[3]
-    mods = sys.argv[4]
-    cmdptms = sys.argv[5].split(';')
-    outfile = sys.argv[6]
+    parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
+    parser.add_argument('--psmfile')
+    parser.add_argument('--template')
+    parser.add_argument('-o', dest='outfile')
+    parser.add_argument('--modfile')
+    parser.add_argument('--labileptms', nargs='+', default=[])
+    parser.add_argument('--mods', nargs='+', default=[])
+    args = parser.parse_args(sys.argv[1:])
+
+    labileptms = [x.lower() for x in args.labileptms]
+    othermods = [x.lower() for x in args.mods]
     ms2tol = environ.get('MS2TOLVALUE')
     ms2toltype = {'ppm': 1, 'Da': 0}[environ.get('MS2TOLTYPE')]
 
-
-    massconversion_msgf = {}
-    fixedmods, varmods = {}, []
-    target_mods, decoy_mods, lucifixed, lucivar = [], set(), [], []
-
-    msgfmods = get_msgfmods(modlibfile)
-    # Get nontarget variable mods from cmd line, classify as fixed/var
-    for cmdmod in mods.split(';'):
-        modlines = parse_cmd_mod(cmdmod, msgfmods)
-        categorize_mod(modlines, fixedmods, varmods)
-    # Now loop variable mods again and create lookup dict for PSMtable mod -> luciphor input mod
-    #for cmdmod in mods.split(';'):
-    #    modlines = parse_cmd_mod(cmdmod, msgfmods)
-    for modlines in fixedmods.values():
-        for mod in modlines:
-            add_mods_translationtable(mod, massconversion_msgf)
-    for mod in varmods:
-        realmodmass = mod[0]
-        mmass, mres, mfm, mprotpos, mname = mod
-        mp = modpos(mod)
-        if mp in fixedmods:
-            nonblocked_fixed = NON_BLOCKING_MODS[mname] if mname in NON_BLOCKING_MODS else []
-            blocked_fixmass = sum([float(x[0]) for x in fixedmods[mp] if x[-1] not in nonblocked_fixed])
-            mod[0] = str(round(-(blocked_fixmass - float(mod[0])), 5))
-        add_mods_translationtable(mod, massconversion_msgf)
-
+    msgfmods = Mods()
+    msgfmods.parse_msgf_modfile(args.modfile, labileptms, othermods)
     # Prep fixed mods for luciphor template
-    for mod in [x for fm in fixedmods.values() for x in fm]:
-        for residue in mod[1]:
-            lucimod = get_luci_mod([mod[0], residue, *mod[2:]])
-            if lucimod not in lucifixed:
-                lucifixed.append(lucimod)
+    lucifixed = []
+    for mod in msgfmods.fixedmods:
+        for mod_inputline in msgfmods.get_luci_input_mod_lines(mod):
+            lucifixed.append(mod_inputline)
+
     # Var mods too, and add to mass list to filter PSMs on later (all var mods must be annotated on sequence input)
-    varmods_mass = []
-    for mod in varmods:
-        varmods_mass.append(get_msgf_seq_mass(float(mod[0])))
-        for residue in mod[1]:
-            lucimod = get_luci_mod([mod[0], residue, *mod[2:]])
-            if lucimod not in lucivar:
-                lucivar.append(lucimod)
+    lucivar = []
+    for mod in msgfmods.varmods:
+        if mod['name_lower'] in labileptms:
+            continue
+        for mod_inputline in msgfmods.get_luci_input_mod_lines(mod):
+            lucivar.append(mod_inputline)
 
     # Get PTMs from cmd line and prep for template
-    ptms_mass = []
-    for cmdptm in cmdptms:
-        for ptm in parse_cmd_mod(cmdptm, msgfmods):
-            # FIXME OPTIONAL competition for multi-residue/line spec, how to know which 
-            # modifications can compete?
-            ptm = ptm.split(',')
-            realmodmass = ptm[0]
-            if modpos(ptm) in fixedmods:
-                fixmass = sum([float(x[0]) for x in fixedmods[modpos(ptm)]])
-                ptm[0] = str(round(-(fixmass - float(ptm[0])), 5))
-                print(realmodmass, ptm)
-            ptms_mass.append(add_mods_translationtable(ptm, massconversion_msgf))
-            for residue in ptm[1]:
-                luciptm = get_luci_mod([ptm[0], residue, *ptm[2:]])
-                ## TODO
-                ## Now we add e.g. -187 if acetyl mod competes with fixed TMT
-                ## That does not work, but the below line also doesnt work, which
-                ## Puts the actual +42 mass in the luciphor config
-                ## Total mass of residue is in the luci input K+42 = 170
-                #luciptm = get_luci_mod([realmodmass, residue, *ptm[2:]])
-                if luciptm not in target_mods:
-                    target_mods.append(luciptm)
-                    decoy_mods.add(ptm[0])
-        # Neutral loss only for phospho (and possibly glycosylation), add more if we need
-        nlosses, decoy_nloss = [], []
-        if ptm[4] == 'Phospho':
+    # Luciphor does not work when specifying PTMs on same residue as fixed mod
+    # e.g. TMT and something else, because it throws out the residues with fixed mods
+    # https://github.com/dfermin/lucXor/issues/11
+    target_mods, decoy_mods = [], set()
+    nlosses, decoy_nloss = [], []
+    for mod in msgfmods.varmods:
+        if mod['name_lower'] in labileptms:
+            for mod_inputline in msgfmods.get_luci_input_mod_lines(mod):
+                target_mods.append(mod_inputline)
+            for res in mod['residues']:
+                decoy_mods.add(msgfmods.get_mass_or_adj(mod, res))
+        if mod['name'] == 'Phospho':
             nlosses.append('sty -H3PO4 -97.97690')
             decoy_nloss.append('X -H3PO4 -97.07690')
-
-
-    with open(template) as fp, open('luciphor_config.txt', 'w') as wfp:
+            
+    with open(args.template) as fp, open('luciphor_config.txt', 'w') as wfp:
         lucitemplate = Template(fp.read())
         wfp.write(lucitemplate.render(
-            outfile=outfile,
+            outfile=args.outfile,
             fixedmods=lucifixed,
             varmods=lucivar,
             ptms=target_mods,
@@ -204,9 +334,9 @@ def main():
     # acetyl etc? # FIXME replace double notation 229-187 in PSM table with the actual mass (42)
     # translation table needed...
     # But how to spec in luciphor, it also wants fixed/var/target mods? Does it apply fixed regardless?
-    # Or does it know there is competition?
 
-    with open(psmfile) as fp, open('lucipsms', 'w') as wfp:
+    msgf_mod_map = msgfmods.msgfmass_mod_dict()
+    with open(args.psmfile) as fp, open('lucipsms', 'w') as wfp:
         header = next(fp).strip('\n').split('\t')
         pepcol = header.index('Peptide')
         spfile = header.index('SpectraFile')
@@ -216,10 +346,11 @@ def main():
         wfp.write('srcFile\tscanNum\tcharge\tPSMscore\tpeptide\tmodSites')
         for line in fp:
             line = line.strip('\n').split('\t')
-            parsedpep = parse_mods_msgf_pep(line[pepcol], massconversion_msgf, ptms_mass, varmods_mass)
+            psm = PSM()
+            psm.parse_msgf_peptide(line[pepcol], msgf_mod_map, labileptms, othermods)
             # TODO add C-terminal mods (rare)
-            if parsedpep:
-                wfp.write('\n{}\t{}\t{}\t{}\t{}\t{}'.format(line[spfile], line[scan], line[charge], line[evalue], parsedpep['barepeptide'], ','.join(['{}={}'.format(x[0], x[1]) for x in parsedpep['sites']])))
+            if psm.has_labileptms():
+                wfp.write('\n{}\t{}\t{}\t{}\t{}\t{}'.format(line[spfile], line[scan], line[charge], line[evalue], psm.sequence, psm.luciphor_input_sites()))
 
 
 if __name__ == '__main__':
