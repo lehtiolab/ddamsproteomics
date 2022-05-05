@@ -215,7 +215,7 @@ class PSM:
                     'site': (residue, sitenum), 'type': self.get_modtype(ptm, labileptms, stabileptms),
                     'mass': ptm['mass'], 'name': ptm['name'], 'name_lower': ptm['name_lower'],
                     })
-        self.sequence = barepep
+        self.sequence = f'{barepep}{modpep[start:]}'
         self.seq_in_scorepep_fmt = re.sub(r'([A-Z])\[[0-9]+\]', lambda x: x.group(1).lower(), modpep)
 
     def parse_luciphor_scores(self, scorepep, minscore):
