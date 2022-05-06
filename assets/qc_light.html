@@ -28,6 +28,25 @@
   </div>
   <hr>
 
+  {% if ptm_summary %}
+  <h4 class="title is-4">PTMs</h4>
+  <div class="columns">
+    <div class="column">
+      <h5 class="title is-5">Summary</h5>
+      {{ tm.table(ptmfeatc_summary, ptmtabletitles) }}
+    </div>
+    <div class="column">
+      <h5 class="title is-5">Site count</h5>
+      {{ tm.table(ptm_summary, ptmtabletitles) }}
+    </div>
+    <div class="column">
+      <h5 class="title is-5">Overlap</h5>
+      {{ tm.table(ptm_summary, ptmtabletitles) }}
+    </div>
+  </div>
+  <hr>
+  {% endif %}
+
 {% for graphtype in ["featyield", "isobaric", "pca"] %}
   {% if graphtype in features['peptides'] or ('proteins' in features and graphtype in features['proteins']) %}
   <h4 class="title is-4">{{ titles[graphtype] }}</h4>

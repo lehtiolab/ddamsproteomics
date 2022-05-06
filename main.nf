@@ -1275,13 +1275,14 @@ process mergePTMPeps {
   output:
   path peptable
   path peptable_no_adjust optional true
-  path "ptmqc.html" into ptmqc
+  tuple path("ptmqc.html"), path('summary.txt'), path('featcount_summary.txt') into ptmqc
 
   script:
   peptable = params.totalproteomepsms ? 'ptm_peptides_total_proteome_adjusted.txt' : 'ptm_peptides_not_adjusted.txt'
   peptable_no_adjust = 'ptm_peptides_not_adjusted.txt'
   """
   cat ptmlup.sql > pepptmlup.sql
+  # Create first table, input for which is either adjusted or not
   msstitch merge -i ${peptides.join(' ')} --setnames ${setnames.sort().join(' ')} --dbfile pepptmlup.sql -o mergedtable --no-group-annotation \
     --fdrcolpattern '^q-value' --flrcolpattern 'FLR' \
     ${!params.noquant && !params.noms1quant ? "--ms1quantcolpattern area" : ''} \
@@ -1614,7 +1615,7 @@ process collectQC {
   publishDir "${params.outdir}", mode: 'copy', overwrite: true
 
   input:
-  set val(acctypes), file('feat?'), file('summary?'), file('overlap?'), file('normfacs?'), file('ptmqc') from collected_feats_qc
+  set val(acctypes), file('feat?'), file('summary?'), file('overlap?'), file('normfacs?'), file('ptmqc'), file('ptmsummary'), file('ptmfeatsummary') from collected_feats_qc
   val(plates) from qcplates
   file('sw_ver') from software_versions_qc
   file('warnings??') from warnings
@@ -1664,8 +1665,8 @@ process collectQC {
   # merge warnings
   ls warnings* && cat warnings* > warnings.txt
   # collect and generate HTML report
-  qc_collect.py $baseDir/assets/qc_full.html $params.name ${fractionation ? "frac" : "nofrac"} ${params.locptms ? 'ptmqc' : 'noptm'} ${plates.join(' ')}
-  qc_collect.py $baseDir/assets/qc_light.html $params.name ${fractionation ? "frac" : "nofrac"} ${params.locptms ? 'ptmqc': 'noptm'} ${plates.join(' ')}
+  qc_collect.py $baseDir/assets/qc_full.html $params.name ${fractionation ? "frac" : "nofrac"} ${params.locptms ? 'ptmqc:ptmsummary:ptmfeatsummary' : 'noptm'} ${plates.join(' ')}
+  qc_collect.py $baseDir/assets/qc_light.html $params.name ${fractionation ? "frac" : "nofrac"} ${params.locptms ? 'ptmqc:ptmsummary:ptmfeatsummary': 'noptm'} ${plates.join(' ')}
   """
 }
 

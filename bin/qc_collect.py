@@ -8,11 +8,23 @@ import os
 from datetime import datetime
 
 
+def parse_table(fn):
+    table = {'_rows': []}
+    with open(fn) as fp:
+        header = next(fp).strip('\n').split('\t')
+        table['_fields'] = sorted(header, key=lambda x: field_order[x] if x in field_order else len(field_order)+1)
+        print(table['_fields'])
+        for line in fp:
+            line = line.strip('\n').split('\t')
+            line = {header[x]: line[x] for x in range(0,len(line))}
+            table['_rows'].append(line)
+    return table
+
 ppsms = {}
 template = sys.argv[1]
 searchname = sys.argv[2]
 frac = sys.argv[3]
-has_ptms = sys.argv[4]
+has_ptms = sys.argv[4] != 'noptm'
 plateids = sys.argv[5:] 
 
 templatetype = os.path.splitext(os.path.basename(template))[0]
@@ -98,7 +110,19 @@ tablefieldtitles = {
         'channel': 'Isob. channel',
         }
 
-field_order = ['Set', 'nr_proteins_q', 'nr_proteins', 'nr_genes_q', 'nr_genes', 'nr_assoc', 'nr_assoc_q', 'Non-shared (unique)', 'no_pep_proteins', 'no_pep_genes', 'psmcount', 'no_psm_proteins', 'no_psm_genes']
+ptmsumtitles = {
+        'bioset': 'Experiment set',
+        'ptm_residue': 'PTM site',
+        'specid': '# sites PSMs',
+        'peptide': '# sites peptides',
+        'protein': '# unambiguous sites master protein',
+        'ptmpsmcount': '# PSMs with PTM',
+        'ptmpepcount': '# peptides with PTM',
+        'ptmprotcount': '# proteins with PTM',
+        }
+
+field_order = ['Set', 'nr_proteins_q', 'nr_proteins', 'nr_genes_q', 'nr_genes', 'nr_assoc', 'nr_assoc_q', 'Non-shared (unique)', 'no_pep_proteins', 'no_pep_genes', 'psmcount', 'no_psm_proteins', 'no_psm_genes',
+        'bioset', 'ptm_residue', 'specid', 'peptide', 'protein', 'ptmpsmcount', 'pepcount', 'protcount']
 field_order = {x: field_order.index(x) for x in field_order}
 
 graphs = OrderedDict()
@@ -114,26 +138,6 @@ for feat in feattypes[templatetype]:
     except IOError as e:
         print(feat, e)
 
-ptms = {}
-if has_ptms:
-    try:
-        with open('ptmqc') as fp:
-            ptms = {x.attrib['id']: tostring(x, encoding='unicode') for x in parse(fp).find('body').findall('div') if 'class' in x.attrib and x.attrib['class'] == 'chunk'}
-    except IOError:
-        raise
-        pass
-
-def parse_table(fn):
-    table = {'_rows': []}
-    with open(fn) as fp:
-        header = next(fp).strip('\n').split('\t')
-        table['_fields'] = sorted(header, key=lambda x: field_order[x] if x in field_order else len(field_order)+1)
-        for line in fp:
-            line = line.strip('\n').split('\t')
-            line = {header[x]: line[x] for x in range(0,len(line))}
-            table['_rows'].append(line)
-    return table
-
 summaries = {'qc_light': 'summary_light', 'qc_full': 'summary'}
 sumtable = parse_table(summaries[templatetype])
 overlaptables, normfactables = {}, {}
@@ -146,10 +150,23 @@ for feat in feattypes[templatetype]:
         normfactables[feat] = parse_table('{}_normfacs'.format(feat))
     except IOError:
         pass
+
+ptms, ptm_summary = {}, False
+if has_ptms:
+    ptm_html_fn, ptm_summary_fn, ptm_featc_summ_fn = sys.argv[4].split(':')
+    try:
+        with open('ptmqc') as fp:
+            ptms = {x.attrib['id']: tostring(x, encoding='unicode') for x in parse(fp).find('body').findall('div') if 'class' in x.attrib and x.attrib['class'] == 'chunk'}
+    except IOError:
+        raise
+        pass
+    ptm_summary = parse_table(ptm_summary_fn)
+    ptm_fc_summ = parse_table(ptm_featc_summ_fn)
+
 if templatetype == 'qc_light' and 'genes' in overlaptables:
     overlaptables.pop('proteins')
 if templatetype == 'qc_light' and 'genes' in normfactables:
     normfactables.pop('proteins')
     
 with open('{}.html'.format(templatetype), 'w') as fp:
-    fp.write(main.render(sumtable=sumtable, overlap=overlaptables, normfacs=normfactables, tablefieldtitles=tablefieldtitles, frac=frac, searchname=searchname, titles=titles, featnames=featnames[templatetype], psms=psms, firstplate=sorted(ppsms.keys())[0], ppsms=ppsms, features=graphs, ptms=ptms, software=sw_ver_template.format('\n'.join(sw_vers)), warnings=warnings, completedate=datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S')))
+    fp.write(main.render(sumtable=sumtable, overlap=overlaptables, normfacs=normfactables, tablefieldtitles=tablefieldtitles, frac=frac, searchname=searchname, titles=titles, featnames=featnames[templatetype], psms=psms, firstplate=sorted(ppsms.keys())[0], ppsms=ppsms, features=graphs, ptms=ptms, ptm_summary=ptm_summary, ptmfeatc_summary=ptm_fc_summ, ptmtabletitles=ptmsumtitles, software=sw_ver_template.format('\n'.join(sw_vers)), warnings=warnings, completedate=datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S')))

@@ -54,6 +54,25 @@
   </div>
   <hr>
 
+  {% if ptm_summary %}
+  <h4 class="title is-4">PTMs</h4>
+  <div class="columns">
+    <div class="column">
+      <h5 class="title is-5">Summary</h5>
+      {{ tm.table(ptmfeatc_summary, ptmtabletitles) }}
+    </div>
+    <div class="column">
+      <h5 class="title is-5">PTM site count</h5>
+      {{ tm.table(ptm_summary, ptmtabletitles) }}
+    </div>
+    <div class="column">
+      <h5 class="title is-5">Overlap</h5>
+      {{ tm.table(ptm_summary, ptmtabletitles) }}
+    </div>
+  </div>
+  <hr>
+  {% endif %}
+
   {% if normfacs %}
   <h4 class="title is-4">Median centered isobaric normalization factors</h4>
   <div class="columns">
