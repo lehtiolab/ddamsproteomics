@@ -1303,7 +1303,7 @@ process mergePTMPeps {
   ${!params.onlypeptides && params.totalproteomepsms ? """head -n1 mergedtable | sed \$'s/Peptide sequence/Peptide sequence\tMaster protein(s)\tGene name(s)\tMatching gene count\tPTM flanking sequence(s)/'> '${peptable_no_adjust}'
     geneprotcols=\$(head -1 ptmpsms.txt| tr '\\t' '\\n' | grep -En '(^Peptide|^Master|^Gene Name|^PTM flanking)' | cut -f 1 -d':' | tr '\\n' ',' | sed 's/\\,\$//')
     tail -n+2 ptmpsms.txt | cut -f\$geneprotcols | sort -uk1b,1 > geneprots
-    join -j1 -o auto -t '\t' <(paste geneprots <(cut -f3 geneprots | tr -dc ';\\n'| awk '{print length+1}')) <(tail -n+2 mergedtable | sort -k1b,1) >> ${peptable_no_adjust}""" : "mv mergedtable ${peptable_no_adjust}"}
+    join -j1 -o auto -t '\t' <(paste geneprots <(cut -f3 geneprots | tr -dc ';\\n'| awk '{print length+1}')) <(tail -n+2 mergedtable | sort -k1b,1) >> ${peptable_no_adjust}""" : "${params.totalproteomepsms && params.onlypeptides ? "mv mergedtable ${peptable_no_adjust}" : ''}"}
 
   qc_ptms.R "${setnames.size()}" "${params.locptms ? params.locptms : ''}${params.ptms ? ";${params.ptms}": ''}" ptmpsms.txt "${peptable}"
   echo "<html><body>" > ptmqc.html
