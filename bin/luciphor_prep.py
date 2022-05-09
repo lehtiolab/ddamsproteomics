@@ -229,14 +229,10 @@ class PSM:
         return ';'.join(alt_locs) if len(alt_locs) else 'NA'
 
     def has_labileptms(self):
-        for mod in self.mods:
-            if mod['type'] == 'labile':
-                return True
-        return False
-
-    def has_mods(self, modnames):
-        mns = set(modnames)
-        return any(m['name'] in mns for m in self.mods)
+        return any(m['type'] == 'labile' for m in self.mods)
+    
+    def has_stableptms(self):
+        return any(m['type'] == 'stable' for m in self.mods)
 
     def luciphor_input_sites(self):
         lucimods = []
