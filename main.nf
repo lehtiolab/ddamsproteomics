@@ -1056,8 +1056,8 @@ process luciphorPTMLocalizationScoring {
   denom = !params.noquant && setdenoms ? setdenoms[setname] : false
   specialdenom = denom && (denom[0] == 'sweep' || denom[0] == 'intensity')
   isobtype = setisobaric && setisobaric[setname] ? "${setisobaric[setname]}" : ''
-  mods = params.mods.tokenize(';').join(' ')
-  stab_ptms = params.ptms.tokenize(';').join(' ')
+  mods = params.mods ? params.mods.tokenize(';').join(' ') : ''
+  stab_ptms = params.ptms ? params.ptms.tokenize(';').join(' ') : ''
   lab_ptms = params.locptms.tokenize(';').join(' ')
 
   """

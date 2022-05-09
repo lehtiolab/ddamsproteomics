@@ -94,7 +94,7 @@ def main():
                     msgfpsm.parse_msgf_peptide(psm[PEPTIDE], msgf_mod_map,
                             labileptms, stabileptms)
                     luciptm.add_ptms_from_psm(msgfpsm.mods)
-                    ptm[TOPPTM] = luciptm.topptm_output()
+                ptm[TOPPTM] = luciptm.topptm_output()
 
                 # Get protein site location of mods
                 if MASTER_PROTEIN in psm:
