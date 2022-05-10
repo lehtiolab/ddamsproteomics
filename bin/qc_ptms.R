@@ -92,6 +92,18 @@ print(pep_count)
 featcount_summ = merge(psm_count, pep_count, all=T)
 colnames(featcount_summ) = c('bioset', 'ptmpsmcount', 'ptmpepcount')
 
+# Overlap of sites table
+if (nrsets > 1) {
+    pep_setcount = aggregate(bioset~peptide+site+ptm_residue, sites[!duplicated(sites[c('ptm', 'site', 'peptide', 'bioset')]),], length)
+    pep_setcount$pepsite = paste(pep_setcount[c('peptide', 'site')])
+    site_overlap = aggregate(pepsite~bioset+ptm_residue, pep_setcount, length)
+    prot_setcount = aggregate(bioset~protein+site+ptm_residue, protein_ptms, length)
+    prot_setcount$protsite = paste(prot_setcount[c('protein', 'site')])
+    site_overlap = merge(site_overlap, aggregate(protsite~bioset+ptm_residue, prot_setcount, length), all=T)
+    colnames(site_overlap)[1] = c('nr_sets')
+    write.table(site_overlap, 'overlap.txt', row.names=F, quote=F, sep='\t')
+}
+
 
 # nr PSMs with PTMs
 svg('ptmpsmfeats', width=width, height=nrsets+2)

@@ -1276,6 +1276,7 @@ process mergePTMPeps {
   path peptable
   path peptable_no_adjust optional true
   tuple path("ptmqc.html"), path('summary.txt'), path('featcount_summary.txt') into ptmqc
+  path('overlap.txt') into ptmoverlap optional true
 
   script:
   peptable = params.totalproteomepsms ? 'ptm_peptides_total_proteome_adjusted.txt' : 'ptm_peptides_not_adjusted.txt'
@@ -1617,6 +1618,7 @@ process collectQC {
   input:
   set val(acctypes), file('feat?'), file('summary?'), file('overlap?'), file('normfacs?'), file('ptmqc'), file('ptmsummary'), file('ptmfeatsummary') from collected_feats_qc
   val(plates) from qcplates
+  file('ptmoverlap') from ptmoverlap.ifEmpty('false')
   file('sw_ver') from software_versions_qc
   file('warnings??') from warnings
 

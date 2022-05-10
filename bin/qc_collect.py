@@ -111,6 +111,7 @@ tablefieldtitles = {
         }
 
 ptmsumtitles = {
+        'nr_sets': 'IDed in # overlapping sets', 
         'bioset': 'Experiment set',
         'ptm_residue': 'PTM site',
         'specid': '# sites PSMs',
@@ -162,6 +163,11 @@ if has_ptms:
         pass
     ptm_summary = parse_table(ptm_summary_fn)
     ptm_fc_summ = parse_table(ptm_featc_summ_fn)
+    with open('ptmoverlap') as fp:
+        if fp.read().strip() != 'false':
+            ptm_overlap = parse_table('ptmoverlap')
+        else:
+            ptm_overlap = False
 
 if templatetype == 'qc_light' and 'genes' in overlaptables:
     overlaptables.pop('proteins')
@@ -169,4 +175,4 @@ if templatetype == 'qc_light' and 'genes' in normfactables:
     normfactables.pop('proteins')
     
 with open('{}.html'.format(templatetype), 'w') as fp:
-    fp.write(main.render(sumtable=sumtable, overlap=overlaptables, normfacs=normfactables, tablefieldtitles=tablefieldtitles, frac=frac, searchname=searchname, titles=titles, featnames=featnames[templatetype], psms=psms, firstplate=sorted(ppsms.keys())[0], ppsms=ppsms, features=graphs, ptms=ptms, ptm_summary=ptm_summary, ptmfeatc_summary=ptm_fc_summ, ptmtabletitles=ptmsumtitles, software=sw_ver_template.format('\n'.join(sw_vers)), warnings=warnings, completedate=datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S')))
+    fp.write(main.render(sumtable=sumtable, overlap=overlaptables, normfacs=normfactables, tablefieldtitles=tablefieldtitles, frac=frac, searchname=searchname, titles=titles, featnames=featnames[templatetype], psms=psms, firstplate=sorted(ppsms.keys())[0], ppsms=ppsms, features=graphs, ptms=ptms, ptm_summary=ptm_summary, ptmfeatc_summary=ptm_fc_summ, ptmoverlap=ptm_overlap, ptmtabletitles=ptmsumtitles, software=sw_ver_template.format('\n'.join(sw_vers)), warnings=warnings, completedate=datetime.strftime(datetime.now(), '%Y-%m-%d %H:%M:%S')))
