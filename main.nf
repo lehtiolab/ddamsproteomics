@@ -293,9 +293,9 @@ def summary = [:]
 summary['Pipeline Name']  = 'lehtiolab/ddamsproteomics'
 summary['Pipeline Version'] = workflow.manifest.version
 summary['Run Name']     = custom_runName ?: workflow.runName
-summary['mzMLs']        = params.mzmls
+summary['mzMLs']        = multifile_format(params.mzmls)
 summary['or mzML definition file']        = params.mzmldef
-summary['Target DB']    = params.tdb
+summary['Target DB'] = multifile_format(params.tdb)
 summary['Sample annotations'] = params.sampletable
 summary['Modifications'] = params.mods
 summary['Labile PTMs'] = params.locptms
@@ -361,6 +361,18 @@ log.info summary.collect { k,v -> "${k.padRight(15)}: $v" }.join("\n")
 log.info "========================================="
 
 
+def multifile_format(fileparam) {
+    if (!fileparam) {
+        return false
+    }
+    sum_fn = file(fileparam)
+    if (!(sum_fn instanceof List)) {
+      sum_fn = [sum_fn]
+    }
+    return sum_fn.join(', ')
+}
+
+
 def create_workflow_summary(summary) {
 
     def yaml_file = workDir.resolve('workflow_summary_mqc.yaml')
@@ -385,7 +397,7 @@ ${summary.collect { k,v -> "            <dt>$k</dt><dd><samp>${v ?: '<span style
  */
 process get_software_versions {
 
-    publishDir "${params.outdir}", mode: 'copy'
+    publishDir "${params.outdir}", mode: 'copy', overwrite: true
 
     output:
     file 'software_versions.yaml' into software_versions_qc
@@ -1679,7 +1691,7 @@ process collectQC {
 process output_documentation {
     tag "$prefix"
 
-    publishDir "${params.outdir}/Documentation", mode: 'copy'
+    publishDir "${params.outdir}/Documentation", mode: 'copy', overwrite: true
 
     input:
     file output_docs
@@ -1705,6 +1717,8 @@ workflow.onComplete {
     if(!workflow.success){
       subject = "[lehtiolab/ddamsproteomics] FAILED: $workflow.runName"
     }
+    sw_versions = file("${params.outdir}/software_versions.yaml").readLines().grep(~/ *<dt.+dd> */).collect { it.replaceAll('^[ ]*<dt>', '').replaceAll('</dd>[ ]*$', '').split('</dt><dd>') }
+
     def email_fields = [:]
     email_fields['version'] = workflow.manifest.version
     email_fields['runName'] = custom_runName ?: workflow.runName
@@ -1717,6 +1731,7 @@ workflow.onComplete {
     email_fields['commandLine'] = workflow.commandLine
     email_fields['projectDir'] = workflow.projectDir
     email_fields['summary'] = summary
+    email_fields['sw_versions'] = sw_versions
     email_fields['summary']['Date Started'] = workflow.start
     email_fields['summary']['Date Completed'] = workflow.complete
     email_fields['summary']['Pipeline script file path'] = workflow.scriptFile
