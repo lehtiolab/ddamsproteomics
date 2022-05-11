@@ -1297,7 +1297,7 @@ process mergePTMPeps {
   cat ptmlup.sql > pepptmlup.sql
   # Create first table, input for which is either adjusted or not
   msstitch merge -i ${peptides.join(' ')} --setnames ${setnames.sort().join(' ')} --dbfile pepptmlup.sql -o mergedtable --no-group-annotation \
-    --fdrcolpattern '^q-value' --flrcolpattern 'FLR' \
+    --fdrcolpattern '^q-value' --pepcolpattern 'peptide PEP' --flrcolpattern 'FLR' \
     ${!params.noquant && !params.noms1quant ? "--ms1quantcolpattern area" : ''} \
     ${!params.noquant && setisobaric ? "--isobquantcolpattern plex" : ''}
   # Add master/genes/gene count to peptide table, cant store in SQL because cant protein group on small PTM table
@@ -1309,7 +1309,7 @@ process mergePTMPeps {
   # If there is a total-proteome peptide quant adjustment, also create a second merged NON-adjusted peptide tables
   ${params.totalproteomepsms ?  "msstitch merge -i ${notp_adjust_peps.join(' ')} --setnames ${setnames.sort().join(' ')} \
     --dbfile pepptmlup.sql -o mergedtable --no-group-annotation \
-    --fdrcolpattern '^q-value' --flrcolpattern 'FLR' \
+    --fdrcolpattern '^q-value' --pepcolpattern 'peptide PEP' --flrcolpattern 'FLR' \
     ${!params.noquant && !params.noms1quant ? "--ms1quantcolpattern area" : ''} \
     ${!params.noquant && setisobaric ? "--isobquantcolpattern plex" : ''}" : ''}
   # Add master/genes/gene count to peptide table, cant store in SQL because cant protein group on small PTM table
