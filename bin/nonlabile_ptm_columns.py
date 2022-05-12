@@ -25,7 +25,7 @@ def main():
     mods = [x.lower() for x in args.mods]
 
     msgfmods = Mods()
-    msgfmods.parse_msgf_modfile(args.modfile, locptms, [*ptms, *mods])
+    msgfmods.parse_msgf_modfile(args.modfile, [*locptms, *ptms, *mods])
     msgf_mod_map = msgfmods.msgfmass_mod_dict()
     tdb = SeqIO.index(args.fasta, 'fasta')
     with open(args.psms) as fp, open(args.outfile, 'w') as wfp:

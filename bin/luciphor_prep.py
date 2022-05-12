@@ -45,14 +45,15 @@ class Mods:
     '''
 
     def __init__(self):
-        self.mods = {}
+        self.mods = []
         self.fixedmods = []
         self.varmods = []
         self.bymass = {}
         self.has_varmods_on_fixmod_residues = False
 
-    def parse_msgf_modfile(self, modfile, labileptms, othermods):
-        mods_to_find = [*labileptms, *othermods, 'tmt6plex']
+    def parse_msgf_modfile(self, modfile, mods_to_find):
+        # FIXME make sure parsing is only Unimod/mass, then set
+        # fixed/var, pos, res yourself in this method
         with open(modfile) as fp:
             for line in fp:
                 line = line.strip('\n')
@@ -63,87 +64,104 @@ class Mods:
                 name = msplit[4]
                 pos = msplit[3]
                 varfix = msplit[2]
-                res = set(msplit[1])
+                residues = set(msplit[1])
                 # tmt6plex can be hidden tmt10plex, same UNIMOD mass/name
-                if name.lower() not in mods_to_find:
+                if name.lower() == 'tmt6plex' and 'tmt10plex' in mods_to_find:
+                    lowername = 'tmt10plex'
+                elif name.lower() not in mods_to_find:
                     continue
-                # FIXME a mod can have diff mass per residue if it is blocked
-                m_id = f'{name.lower()}__{pos}__{varfix}'
-                if m_id in self.mods:
-                    self.mods[m_id]['residues'].update(res)
                 else:
-                    self.mods[m_id] = {
+                    lowername = name.lower()
+                for res in residues:
+                    self.mods.append({
                             'name': name, 'mass': float(msplit[0]),
-                            'adjusted_masses': {},
-                            'residues': res, 'var': varfix == 'opt',
-                            'pos': pos, 'name_lower': name.lower()}
-        possible_tmt10, old_tmt6 = {}, []
-        for old_m_id, mod in self.mods.items():
-            if mod['name_lower'] == 'tmt6plex' and 'tmt10plex' in mods_to_find:
-                old_tmt6.append(old_m_id)
-                m_id = f'tmt10plex__{mod["pos"]}__{mod["var"]}'
-                possible_tmt10[m_id]  = {k: v for k,v in mod.items()}
-                possible_tmt10[m_id]['name_lower'] = 'tmt10plex'
-                self.fixedmods.append(possible_tmt10[m_id])
-            elif mod['var']:
+                            'adjusted_mass': False,
+                            'residue': res, 'var': varfix == 'opt',
+                            'pos': pos, 'name_lower': lowername
+                            })
+        fixedpos = {}
+        for mod in self.mods:
+            if mod['var']:
                 self.varmods.append(mod)
             else:
                 self.fixedmods.append(mod)
-        if possible_tmt10:
-            [self.mods.pop(x) for x in old_tmt6]
-            self.mods.update(possible_tmt10)
+                res = mod['residue']
+                if res in fixedpos:
+                    fixedpos[res].append(mod)
+                else:
+                    fixedpos[res] = [mod]
 
         # get blocking/nonblocking mods and adjust mass (fake mass)
-        fixedpos = {}
-        for res, fmod in [(r, m) for m in self.fixedmods for r in m['residues']]:
-            if res in fixedpos:
-                fixedpos[res].append(fmod)
-            else:
-                fixedpos[res] = [fmod]
         for mod in self.varmods:
             nonblocked_fixed = NON_BLOCKING_MODS.get(mod['name'], []) 
-            for res in mod['residues']:
-                #if res in fixedpos:
-                if res in fixedpos:
-                    self.has_varmods_on_fixmod_residues = True
-                adjustment = 0
-                for fmod in fixedpos.get(res, []):
-                    if fmod['name'] not in nonblocked_fixed:
-                        adjustment += fmod['mass']
-                mod['adjusted_masses'][res] = round(-(adjustment - mod['mass']), 5)
+            if mod['residue'] in fixedpos:
+                self.has_varmods_on_fixmod_residues = True
+            adjustment = 0
+            for fmod in fixedpos.get(mod['residue'], []):
+                if fmod['name'] not in nonblocked_fixed:
+                    adjustment += fmod['mass']
+            mod['adjusted_mass'] = round(-(adjustment - mod['mass']), 5)
+            print(mod)
 
-    def get_mass_or_adj(self, mod, residue):
-        return mod['adjusted_masses'].get(residue, mod['mass'])
+    def get_msgf_modlines(self):
+        grouped = {}
+        for mod in self.mods:
+            mass = self.get_mass_or_adj(mod)
+            if mass not in grouped:
+                grouped[mass] = [mod]
+            else:
+                grouped[mass].append(mod)
+                check_names = set(x['name'] for x in grouped[mass])
+                if len(check_names) != 1:
+                    print('Cannot have two modifications of the same mass but different names')
+                    sys.exit(1)
+
+        for mass, mods in grouped.items():
+            name = mods[0]['name']
+            line_res = {}
+            for mod in mods:
+                var = int(mod['var']) # T/F -> 1/0
+                mid = f'{var}__{mod["pos"]}'
+                if mid not in line_res:
+                    line_res[mid] = [mod['residue']]
+                else:
+                    line_res[mid].append(mod['residue'])
+            for mid, residues in line_res.items():
+                var, pos = mid.split('__')
+                vf = 'opt' if int(var) else 'fix'
+                yield f'{mass},{"".join(residues)},{vf},{pos},{name}'
+
+    def get_mass_or_adj(self, mod):
+        return mod['adjusted_mass'] or mod['mass']
  
-    def get_luci_input_mod_lines(self, mod):
+    def get_luci_input_mod_line(self, mod):
         '''Doing this for each residue since the adjusted masses can differ
         per residue (due to competition)'''
         if mod['pos'] == 'N-term':
-            residues = '['
+            residue = '['
         elif mod['pos'] == 'C-term':
-            residues = ']'
+            residue = ']'
         else:
-            residues = mod['residues']
-        for res in residues:
-            yield f'{res} {self.get_mass_or_adj(mod, res)}'
+            residue = mod['residue']
+        return f'{residue} {self.get_mass_or_adj(mod)}'
 
     def msgfmass_mod_dict(self):
         '''Create MSGF output mass (round(x,3) ) to mod lookup'''
         mod_map = {}
-        for mn, mod, res in [(m['name'], m, r) for mn,m in self.mods.items() for r in m['residues']]:
+        for mod in self.mods:
             try:
-                mod_map[round(self.get_mass_or_adj(mod, res), 3)].append(mod)
+                mod_map[round(self.get_mass_or_adj(mod), 3)].append(mod)
             except KeyError:
-                mod_map[round(self.get_mass_or_adj(mod, res), 3)] = [mod]
+                mod_map[round(self.get_mass_or_adj(mod), 3)] = [mod]
         return mod_map
 
     def lucimass_mod_dict(self):
         '''Create luciphor output mass (int(x+ aa) ) to mod lookup'''
         modmap = {}
-        for res, mod in [(r, m) for m in self.varmods for r in m['residues']]:
-            # round (, None) generates an int
-            mass = round(aa_weights_monoiso[res] + self.get_mass_or_adj(mod, res))
-            modmap[f'{res}{mass}'] = mod
+        for mod in self.varmods:
+            # round (, None) generates an int for luciphor
+            mass = round(aa_weights_monoiso[mod['residue']] + self.get_mass_or_adj(mod))
+            modmap[f'{mod["residue"]}{mass}'] = mod
         return modmap
 
 
@@ -178,7 +196,7 @@ class PSM:
                 self.mods.append({
                     'site': (residue, sitenum), 'type': self.get_modtype(mod, labileptmnames, stableptmnames),
                     'mass': mod['mass'], 'name': mod['name'], 'name_lower': mod['name_lower'],
-                    'adjusted_mass': mod['adjusted_masses'].get(residue, False),
+                    'adjusted_mass': mod['adjusted_mass']
                     })
         self.sequence = f'{barepep}{msgfseq[start:]}'
 
@@ -282,20 +300,18 @@ def main():
     ms2toltype = {'ppm': 1, 'Da': 0}[environ.get('MS2TOLTYPE')]
 
     msgfmods = Mods()
-    msgfmods.parse_msgf_modfile(args.modfile, labileptms, othermods)
+    msgfmods.parse_msgf_modfile(args.modfile, [*labileptms, *othermods])
     # Prep fixed mods for luciphor template
     lucifixed = []
     for mod in msgfmods.fixedmods:
-        for mod_inputline in msgfmods.get_luci_input_mod_lines(mod):
-            lucifixed.append(mod_inputline)
+        lucifixed.append(msgfmods.get_luci_input_mod_line(mod))
 
     # Var mods too, and add to mass list to filter PSMs on later (all var mods must be annotated on sequence input)
     lucivar = []
     for mod in msgfmods.varmods:
         if mod['name_lower'] in labileptms:
             continue
-        for mod_inputline in msgfmods.get_luci_input_mod_lines(mod):
-            lucivar.append(mod_inputline)
+        lucivar.append(msgfmods.get_luci_input_mod_line(mod))
 
     # Get PTMs from cmd line and prep for template
     # Luciphor does not work when specifying PTMs on same residue as fixed mod
@@ -305,10 +321,8 @@ def main():
     nlosses, decoy_nloss = [], []
     for mod in msgfmods.varmods:
         if mod['name_lower'] in labileptms:
-            for mod_inputline in msgfmods.get_luci_input_mod_lines(mod):
-                target_mods.append(mod_inputline)
-            for res in mod['residues']:
-                decoy_mods.add(msgfmods.get_mass_or_adj(mod, res))
+            target_mods.append(msgfmods.get_luci_input_mod_line(mod))
+            decoy_mods.add(msgfmods.get_mass_or_adj(mod))
         if mod['name'] == 'Phospho':
             nlosses.append('sty -H3PO4 -97.97690')
             decoy_nloss.append('X -H3PO4 -97.07690')
