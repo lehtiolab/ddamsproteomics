@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import sys
 from luciphor_prep import Mods
 
 # variable mods which do not obstruct a list of fixed mods:
