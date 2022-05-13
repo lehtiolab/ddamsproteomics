@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import sys
+from luciphor_prep import Mods
 
 # variable mods which do not obstruct a list of fixed mods:
 NON_BLOCKING_MODS = {
@@ -62,31 +62,16 @@ def parse_cmd_mod(cmdmod, msgfmods):
 def main():
     nummods = sys.argv[1]
     modlibfile = sys.argv[2]
-    passed_mods = sys.argv[3]
+    passed_mods = [x.lower() for x in sys.argv[3].split(';')]
     fixedmods = {}
     varmods = []
     # Parse modifications passed
-    msgfmods = get_msgfmods(modlibfile)
-    for passedmod in passed_mods.split(';'):
-        mod = parse_cmd_mod(passedmod, msgfmods)
-        try:
-            categorize_mod(mod, fixedmods, varmods)
-        except Exception:
-            sys.stderr.write('Could not identify modification "{}", use one of [{}]\n'.format(passedmod, ', '.join(msgfmods.keys())))
-            sys.exit(1)
-    # Adjust variable mod weight if competing with fix mods on AA
-    # TODO make this selectable, since there are mods which CAN co-occur (e.g. TMT on the mod's amine group)
-    for modline in varmods:
-        mp = modpos(modline)
-        mmass, mres, mfm, mprotpos, mname = modline
-        if mp in fixedmods:
-            nonblocked_fixed = NON_BLOCKING_MODS[mname] if mname in NON_BLOCKING_MODS else []
-            blocked_fixmass = sum([float(x[0]) for x in fixedmods[mp] if x[-1] not in nonblocked_fixed])
-            modline[0] = str(round(-(blocked_fixmass - float(modline[0])), 5))
+    msgfmods = Mods()
+    msgfmods.parse_msgf_modfile(modlibfile, passed_mods)
     with open('mods.txt', 'w') as fp:
         fp.write('NumMods={}'.format(nummods))
-        for modline in [*[x for f in fixedmods.values() for x in f], *varmods]:
-            fp.write('\n{}'.format(','.join(modline)))
+        for modline in msgfmods.get_msgf_modlines():
+            fp.write(f'\n{modline}')
 
 
 if __name__ == '__main__':
