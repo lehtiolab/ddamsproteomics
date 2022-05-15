@@ -152,7 +152,7 @@ for feat in feattypes[templatetype]:
     except IOError:
         pass
 
-ptms, ptm_summary = {}, False
+ptms, ptm_summary, ptm_fc_summ, ptm_overlap = {}, False, False, False
 if has_ptms:
     ptm_html_fn, ptm_summary_fn, ptm_featc_summ_fn = sys.argv[4].split(':')
     try:
@@ -166,8 +166,6 @@ if has_ptms:
     with open('ptmoverlap') as fp:
         if fp.read().strip() != 'false':
             ptm_overlap = parse_table('ptmoverlap')
-        else:
-            ptm_overlap = False
 
 if templatetype == 'qc_light' and 'genes' in overlaptables:
     overlaptables.pop('proteins')
