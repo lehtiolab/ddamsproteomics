@@ -559,7 +559,7 @@ if (params.oldmzmldef) {
   oldmzmls = Channel.fromPath(params.oldmzmldef).tap { oldmzmls_psmqc } 
 } else {
   oldmzmls = Channel.from(false).tap { oldmzmls_psmqc }
-  oldmzmls = Channel.from([]).tap { oldmzml_sets }
+  oldmzmls = Channel.of([[]]).tap { oldmzml_sets }
 }
 
 // Prepare mzml files (sort, collect) for processes that need all of them
