@@ -68,7 +68,8 @@ def helpMessage() {
                                     unspecific, trypsin, chymotrypsin, lysc, lysn, gluc, argc, aspn, no_enzyme
       --terminicleaved              Allow only 'full', 'semi' or 'non' cleaved peptides
       --phospho                     Flag to pass in case of using phospho-enriched samples, changes MSGF protocol
-      --maxmiscleav		    Maximum allowed amount of missed cleavages for MSGF+
+      --maxmiscleav                 Maximum allowed number of missed cleavages for MSGF+
+      --maxvarmods                  Maximum allowed number of variable modifications for a single PSM
       --minpeplen                   Minimum peptide length to search, default 7
       --maxpeplen                   Maximum peptide length to search, default 50
       --mincharge                   Minimum peptide charge search, default 2
@@ -309,7 +310,8 @@ summary['Isotope error'] = params.iso_err
 summary['Fragmentation method'] = params.frag
 summary['Enzyme'] = params.enzyme
 summary['Allowed peptide termini cleavage'] = params.terminicleaved
-summary['Allowed amount of missed cleavages'] = params.maxmiscleav
+summary['Allowed number of missed cleavages'] = params.maxmiscleav
+summary['Maximum number of variable modifications per PSM'] = params.maxvarmods
 summary['Minimum peptide length'] = params.minpeplen
 summary['Maximum peptide length'] = params.maxpeplen
 summary['Minimum peptide charge'] = params.mincharge

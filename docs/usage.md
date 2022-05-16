@@ -118,19 +118,23 @@ The file itself is tab-separated without header, contains a single line per mzML
 Fractionation is automatically detected from this file, and enforced if ANY of the files have a fraction. This mainly has implications for QC though, identification and quantification are not much impacted by specifying fractionation. Instrument type can currently be one of 'qe', 'qehf', 'velos', 'lumos', 'qehfx', 'timstof', or 'lowres'.
 Examples of instruments can be found in [this MSGF+ parameter file](https://github.com/MSGFPlus/msgfplus/blob/master/docs/ParameterFiles/MSGFPlus_Tryp_NoMods_20ppmParTol.txt).
 
-### `--tdb`
+### Input sequences: `--tdb`
 Target database. Decoy databases are created "tryptic-reverse" by the pipeline and searches are against a
-concatenated database (T-TDC)
+concatenated database (T-TDC). Default behaviour for MSGF+ is to not limit missed cleavage amount, but that can
+if desired be set by `--maxmiscleav`. For limiting peptide length you may use `--minpeplen` and `--maxpeplen`, while
+allowed charge states can be controlled with `--mincharge`, `--maxcharge`.
 
 ```bash
 --tdb /path/to/Homo_sapiens.pep.all.fa
 ```
 
 
-### `--mods`, `--locptms`, `--ptms`
+### Modifications: `--mods`, `--locptms`, `--ptms`
 Modifications as in UNIMOD, although only a selected number are available by name. You can extend this list
 by adding entries to `assets/msgfmods.txt`. `--ptms` and `--locptms` are for stable/labile PTMs respectively,
-and they can optionally get isobaric quantification normalization (below).
+and they can optionally get isobaric quantification normalization (below). Use `--maxvarmods` for specifying
+how many variable mods are allowed per peptide (default is 2). If your peptide sample is enriched for phosphorylated
+peptides, specify `--phospho` to inform the search engine about this.
 
 ```bash
 --mods "Carbamidomethylation;Oxidation" --ptms Acetyl --locptms Phoshpo
@@ -138,7 +142,8 @@ and they can optionally get isobaric quantification normalization (below).
 
 
 ### Output types
-The pipeline will produce by default PSM, peptide, and protein tables. You may pass FASTA databases that contain mixtures of ENSEMBL, Uniprot, or other types of entries. Use `--genes` and `--ensg` to output a gene(name)-centric table and an ENSG-centric table. If you rather have less output, use `--onlypeptides` to not output a protein table.
+The pipeline will produce by default PSM, peptide, and protein tables. You may pass FASTA databases that contain mixtures of ENSEMBL, Uniprot, or other types of entries. Use `--genes` and `--ensg` to output a gene(name)-centric table and an ENSG-centric table. If you rather have less output, use `--onlypeptides` to not output a protein table. If you have a HiRIEF table of predicted isoelectric points for peptides, you
+may specify it by `--hirief /path/to/table.txt`.
 
 
 ### Quantitation
@@ -166,7 +171,7 @@ N.B. Even when not using DEqMS you can provide a sample table for annotation of 
 As mentioned, labile PTMS reported by the search engine will be scored using Luciphor2, which will output the best scoring PTM localization and a false localization rate. Note that this is only beneficial for labile PTMs. Aside from that if any high-scoring PTMs are found by luciphor the pipeline will report these as well. All of this will end up in a separate PTM PSM table and a PTM peptide table.
 When passing `--totalproteomepsms`, the isobaric quant ratios for matching genes from a global search (i.e. no modifications) will be subtracted from the PTM peptide table quant. If `--onlypeptides` is used, quant from proteins will be used as a denominator.
 
-For normalizing PTM tables, `--normalize` can be used for median-centering. Since PTM tables can be somewhat small and possibly skewed in their quantitation, a separate protein table is prepared from the PSMs in `--totalproteomepsms`, to get the channel median normalization factors from.
+For normalizing PTM tables, `--normalize` can be used for median-centering. Since PTM tables can be somewhat small and possibly skewed in their quantitation, a separate gene table is prepared from the PSMs in `--totalproteomepsms`, to get the channel median normalization factors from.
 
 
 ### Reusing data

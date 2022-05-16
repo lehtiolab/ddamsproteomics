@@ -21,14 +21,14 @@ table is filtered on a PSM and peptide FDR of 0.01.
 * Retention time(min)
 * Ion injection time(ms)
 * Ion mobility(Vs/cm2)
-* missed_cleavage (amount)
+* missed_cleavage (count per PSM)
 * Master protein(s) (protein grouping using maximum parsimony is used for protein tables)
 * Protein group(s) content (Protein groups have members which can be explained by the representative protein)
-* Amount of matching proteins in group (Those proteins in the group that this PSM matches to)
+* Total number of matching proteins in group (Those proteins in the group that this PSM matches to)
 * Gene ID, Gene Name, Description (gene identity and protein description information from fasta)
 * percolator svm-score
-* PSM q-value (calculated from percolator scores as T-TDC)
-* peptide q-value (as PSM q-value but for peptides)
+* PSM q-value and posterior error probability (PEP) (both calculated as TD competition by percolator)
+* peptide q-value and PEP (as PSM q-value but for peptides)
 * TD (target or decoy)
 * Biological set (sample or sample set name)
 * Strip (when fractionating samples you can supply an e.g. high-pH or HiRIEF strip name in --mzmldef)
@@ -41,18 +41,18 @@ table is filtered on a PSM and peptide FDR of 0.01.
 
 The `peptides_table.txt` is a merged multi-set peptide table derived from the PSMs. Peptide identifications are interpreted as the best scoring PSM. Then per sample (set) the following fields are given:
 
-* Amount PSMs
-* q-value (same as PSM table peptide q-value for best PSM)
+* PSM count
+* q-value and PEP (same as PSM table peptide q-value for best PSM)
 * MS1 area (shows the highest area aka summed intenstiy of all filtered PSMs for the peptide)
 * ...plex channels, which are summarized isobaric data, described in (docs/usage.md)[the usage documentation]
-* Amount fully quanted PSMs (for each peptide, how many PSMs without any missing isobaric value)
-* Amount quanted PSMs (how many PSMs with isobaric value in each channel)
+* Fully quanted PSM count (for each peptide, how many PSMs without any missing isobaric value)
+* Quanted PSM count (how many PSMs with isobaric value in each channel)
 
 
 Proteins and genes tables are like peptide tables, and contain similar fields. Of course there are differences:
 
-* Amount peptides, Amount unique peptides (the number of peptides for a protein/gene and number of peptides that uniquely match this protein group/gene)
-* q-value (calculated using the picked FDR method from (https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4563723/)[Savitski et al., 2015]
+* Peptide count, Unique peptide count (the number of peptides for a protein/gene and number of peptides that uniquely match this protein group/gene)
+* q-value: genes are calculated using the picked FDR method from (https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4563723/)[Savitski et al., 2015]
 * MS1 precursor area (calculated using the top-3 highest intensity peptide for a protein/gene)
 * ...plex channels are as in peptide tables
 * logFC, count, sca.P.Value, sca.adj.pval are output from (https://github.com/yafeng/DEqMS/)[DEqMS] analysis
@@ -71,12 +71,13 @@ reports the following differing fields
 
 * Master protein(s) (the master protein(s) matching this peptide, with annotation of PTM sites)
 * Protein(s) (other proteins matching)
-* Gene Name (the genes matching)
-* Amount matching genes
+* Matching gene count
 * SAMPLE_SETNAME_PTM FLR (the FLR of the PTM-peptide in a sample set)
+* PTM flanking sequence(s) (the protein sequence flanking (+/- 7 aa) a PTM site, one for each site on a peptide 
+
 
 Note that when `--totalproteomepsms` is passed, the isobaric ratios in this table will be offset to the
-global search gene (default, proteins used if no genes exist) ratios, by subtracting those. When also `--normalize` is used the medians of the totalproteome proteins (derived from that total proteome PSM table) are used for median-centering the PTM table.
+global search gene (default, proteins used if no genes exist) ratios, by subtracting those log2 ratio values. When also `--normalize` is used the medians of the totalproteome proteins (derived from that total proteome PSM table) are used for median-centering the PTM table.
 
 
 ## Pipeline and tools 
