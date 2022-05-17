@@ -1466,6 +1466,9 @@ process proteinPeptideSetMerge {
   # First add NO__GROUP marker for no-samplegroups clean sampletable from special chars
   ${params.sampletable ? 'awk -v FS="\\t" -v OFS="\\t" \'{if (NF==3) print $1,$2,$3,"NO__GROUP"; else print}\' sampletable > tmpsam && mv tmpsam sampletable' : ''}
   ${params.deqms ? 'grep -v NO__GROUP sampletable || (>&2 echo "Cannot run DEqMS without specified sample groups" && exit 1)': ''}
+  # strip lead/trail space in set name 
+  paste <(cut -f1 sampletable) <(cut -f2 sampletable | sed "s/^\\s*//;s/\\s*\$//") <(cut -f3-4 sampletable) > nowhitespace && mv nowhitespace sampletable
+  # substitute other weird characters
   ${params.sampletable ? 'sed "s/[^A-Za-z0-9_\\t]/_/g" sampletable > clean_sampletable' : ''}
 
   # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
