@@ -24,6 +24,9 @@ def main():
     parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument('--minscore', type=float)
     parser.add_argument('-o', dest='outfile')
+    parser.add_argument('--luci_in', dest='lucioutput')
+    parser.add_argument('--luci_scores', dest='luciscores')
+    parser.add_argument('--psms', dest='psms')
     parser.add_argument('--modfile')
     parser.add_argument('--labileptms', nargs='+', default=[])
     parser.add_argument('--stabileptms', nargs='+', default=[])
@@ -45,39 +48,49 @@ def main():
     # load sequences
     tdb = SeqIO.index(args.fasta, 'fasta')
     # Now go through scores, luciphor and PSM table
-    with open('all_scores.debug') as scorefp, open('luciphor.out') as fp, open('psms') as psms, open(args.outfile, 'w') as wfp:
-        header = next(fp).strip('\n').split('\t')
-        scoreheader = next(scorefp).strip('\n').split('\t')
+    # TODO integrate luciphor and detect crash (exit 0, stderr msg), should fail with 1
+    lucptms = {}
+    scorepep = {'specId': False}
+    try:
+        with open(args.luciscores) as scorefp, open(args.lucioutput) as fp:
+            header = next(fp).strip('\n').split('\t')
+            scoreheader = next(scorefp).strip('\n').split('\t')
+            for line in fp:
+                line = {k: v for k,v in zip(header, line.strip('\n').split('\t'))}
+                lucipsm = PSM()
+                lucipsm.parse_luciphor_peptide(line, luci_modmap, labileptms, stabileptms)
+
+                # Get other highscoring permutations
+                extrapeps = []
+                if scorepep['specId'] == lucipsm.lucispecid:
+                    lucipsm.parse_luciphor_scores(scorepep, minscore_high)
+                for scorepep in scorefp:
+                    scorepep = scorepep.strip('\n').split('\t')
+                    scorepep = {k: v for k,v in zip(scoreheader, scorepep)}
+                    if int(scorepep['isDecoy']):
+                        continue
+                    if scorepep['specId'] != lucipsm.lucispecid:
+                        break
+                    lucipsm.parse_luciphor_scores(scorepep, minscore_high)
+                lucptms[lucipsm.lucispecid] = lucipsm
+    except FileNotFoundError:
+        pass
+
+    # With that parsed, take the MSGF PSMs
+    # First see if we have a stabile PTM that is on a fixed mod residue, 
+    # because that needs parsing from PSM table (luciphor throws them out)
+    with open(args.psms) as psms, open(args.outfile, 'w') as wfp:
         psmheader = next(psms).strip('\n').split('\t')
-        scorepep = {'specId': False}
         outheader = psmheader + PTMFIELDS
         wfp.write('\t'.join(outheader))
-        lucptms = {}
-        for line in fp:
-            line = {k: v for k,v in zip(header, line.strip('\n').split('\t'))}
-            lucipsm = PSM()
-            lucipsm.parse_luciphor_peptide(line, luci_modmap, labileptms, stabileptms)
-
-            # Get other highscoring permutations
-            extrapeps = []
-            if scorepep['specId'] == lucipsm.lucispecid:
-                lucipsm.parse_luciphor_scores(scorepep, minscore_high)
-            for scorepep in scorefp:
-                scorepep = scorepep.strip('\n').split('\t')
-                scorepep = {k: v for k,v in zip(scoreheader, scorepep)}
-                if int(scorepep['isDecoy']):
-                    continue
-                if scorepep['specId'] != lucipsm.lucispecid:
-                    break
-                lucipsm.parse_luciphor_scores(scorepep, minscore_high)
-            lucptms[lucipsm.lucispecid] = lucipsm
-
-        # With that parsed, take the MSGF PSMs
-        # First see if we have a stabile PTM that is on a fixed mod residue, 
-        # because that needs parsing from PSM table (luciphor throws them out)
         for psm in psms:
             psm = psm.strip('\n').split('\t')
             psm = {k: v for k,v in zip(psmheader, psm)}
+            msgfpsm = PSM()
+            msgfpsm.parse_msgf_peptide(psm[PEPTIDE], msgf_mod_map,
+                    labileptms, stabileptms)
+            if not msgfpsm.has_labileptms():
+                continue
             psmid = '{}.{}.{}.{}'.format(os.path.splitext(psm['SpectraFile'])[0], psm['ScanNum'], psm['ScanNum'], psm['Charge'])
             if psmid in lucptms:
                 luciptm = lucptms[psmid]
@@ -86,24 +99,31 @@ def main():
                     TOPSCORE: luciptm.top_score,
                     OTHERPTMS: luciptm.format_alt_ptm_locs(),
                     }
-                if msgfmods.has_varmods_on_fixmod_residues:
-                    # If there are PTMs which are on fixed mod residues, we need to parse
-                    # those from the residues from sequences in the PSM table because luciphor
-                    # does not report those residues because they have a fixed mod
-                    msgfpsm = PSM()
-                    msgfpsm.parse_msgf_peptide(psm[PEPTIDE], msgf_mod_map,
-                            labileptms, stabileptms)
-                    luciptm.add_ptms_from_psm(msgfpsm.mods)
-                ptm[TOPPTM] = luciptm.topptm_output()
+            else:
+                luciptm = False
+                ptm = {
+                    TOPFLR: 'NA',
+                    TOPSCORE: 'NA',
+                    OTHERPTMS: 'NA',
+                    }
+            # If there are PTMs which are on fixed mod residues, we need to parse
+            # those from the residues from sequences in the PSM table because luciphor
+            # does not report those residues because they have a fixed mod
+            # Also need to parse in case no luci PTM exist
+            if not luciptm:
+                luciptm = msgfpsm
+            elif msgfmods.has_varmods_on_fixmod_residues:
+                luciptm.add_ptms_from_psm(msgfpsm.mods)
+            ptm[TOPPTM] = luciptm.topptm_output()
 
-                # Get protein site location of mods
-                if MASTER_PROTEIN in psm:
-                    annotate_protein_and_flanks(psm, luciptm, tdb, [*labileptms, *stabileptms])
-                outpsm = {k: v for k,v in psm.items()}
-                outpsm.update(ptm)
-                outpsm[SE_PEPTIDE] = outpsm.pop(PEPTIDE)
-                outpsm[PEPTIDE] = '{}_{}'.format(luciptm.sequence, ptm[TOPPTM])
-                wfp.write('\n{}'.format('\t'.join([outpsm[k] for k in outheader])))
+            # Get protein site location of mods
+            if MASTER_PROTEIN in psm:
+                annotate_protein_and_flanks(psm, luciptm, tdb, [*labileptms, *stabileptms])
+            outpsm = {k: v for k,v in psm.items()}
+            outpsm.update(ptm)
+            outpsm[SE_PEPTIDE] = outpsm.pop(PEPTIDE)
+            outpsm[PEPTIDE] = '{}_{}'.format(luciptm.sequence, ptm[TOPPTM])
+            wfp.write('\n{}'.format('\t'.join([outpsm[k] for k in outheader])))
 
 
 def annotate_protein_and_flanks(psm, ptmpsm, tdb, ptmnames):

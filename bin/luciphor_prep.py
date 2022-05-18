@@ -101,7 +101,6 @@ class Mods:
                 if fmod['name'] not in nonblocked_fixed:
                     adjustment += fmod['mass']
             mod['adjusted_mass'] = round(-(adjustment - mod['mass']), 5)
-            print(mod)
 
     def get_msgf_modlines(self):
         grouped = {}
@@ -289,6 +288,7 @@ def main():
     parser.add_argument('--psmfile')
     parser.add_argument('--template')
     parser.add_argument('-o', dest='outfile')
+    parser.add_argument('--lucipsms', dest='lucipsms')
     parser.add_argument('--modfile')
     parser.add_argument('--labileptms', nargs='+', default=[])
     parser.add_argument('--mods', nargs='+', default=[])
@@ -346,7 +346,7 @@ def main():
     # But how to spec in luciphor, it also wants fixed/var/target mods? Does it apply fixed regardless?
 
     msgf_mod_map = msgfmods.msgfmass_mod_dict()
-    with open(args.psmfile) as fp, open('lucipsms', 'w') as wfp:
+    with open(args.psmfile) as fp, open(args.lucipsms, 'w') as wfp:
         header = next(fp).strip('\n').split('\t')
         pepcol = header.index('Peptide')
         spfile = header.index('SpectraFile')
