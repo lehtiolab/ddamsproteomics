@@ -556,10 +556,10 @@ if (params.oldmzmldef) {
     .unique()
     .toList()
     .set { oldmzml_sets }
-  oldmzmls = Channel.fromPath(params.oldmzmldef).tap { oldmzmls_psmqc } 
+  oldmzmls_fn = Channel.fromPath(params.oldmzmldef).first()
 } else {
-  oldmzmls = Channel.from(false).tap { oldmzmls_psmqc }
-  oldmzmls = Channel.of([[]]).tap { oldmzml_sets }
+  oldmzmls_fn = Channel.value(false)
+  oldmzml_sets = Channel.value([])
 }
 
 // Prepare mzml files (sort, collect) for processes that need all of them
@@ -798,11 +798,9 @@ fractionation = fractionation_in || old_fractionation
 if (fractionation && complementary_run) { 
   if (!params.oldmzmldef || !file(params.oldmzmldef).exists()) exit 1, 'Fractionation with complementing run needs an --oldmzmldef file'
   specfilems2
-    .combine(oldmzmls)
     .set { scans_platecount }
 } else if (fractionation) {
   specfilems2
-    .map { it -> it[0..-1] + 'NA' }
     .set { scans_platecount }
 } else {
   specfilems2
@@ -818,7 +816,8 @@ process countMS2sPerPlate {
   when: fractionation
 
   input:
-  set val(setnames), file(mzmlfiles), val(platenames), file('nr_spec_per_file'), file(old_platedef) from scans_platecount
+  set val(setnames), file(mzmlfiles), val(platenames), file('nr_spec_per_file') from scans_platecount
+  file oldmzmls_fn
 
   output:
   set path('nr_spec_per_file'), path('scans_per_plate') into scans_perplate
@@ -839,7 +838,7 @@ process countMS2sPerPlate {
       except KeyError:
           fileplates[fn] = {setname: plate} 
   if ${complementary_run ? 1 : 0}:
-      with open('$old_platedef') as oldmzfp:
+      with open('$oldmzmls_fn') as oldmzfp:
           for line in oldmzfp:
               fpath, inst, setname, plate, fraction = line.strip('\\n').split('\\t')
               # old mzmls also contain files that are no longer used (i.e. removed from set)
@@ -1285,6 +1284,7 @@ process mergePTMPeps {
 
   input:
   tuple val(setnames), path(peptides), path(notp_adjust_peps), path('ptmlup.sql'), path('ptmpsms.txt') from ptmpeps2merge
+  val oldmzml_sets
 
   output:
   path peptable
@@ -1502,14 +1502,15 @@ psm_result
   .set { targetpsm_result }
 
 
-mzmlfiles_psmqc.combine(oldmzmls_psmqc).combine(oldmzml_sets).set { mzmlfiles_psmqc_oldmzmls }
 
 process psmQC {
 
   input:
   set val(td), file('psms'), file('filescans'), file('platescans'), val(plates) from targetpsm_result
   val(setnames) from setnames_psmqc
-  set val(plicate_sets), val(mzmlpaths), val(mzmlplates), val(mzmlbasenames), val(fractions), file('oldmzmldef'), val(oldmzml_sets) from mzmlfiles_psmqc_oldmzmls
+  set val(plicate_sets), val(mzmlpaths), val(mzmlplates), val(mzmlbasenames), val(fractions) from mzmlfiles_psmqc
+  file oldmzmls_fn
+  val oldmzml_sets
 
   output:
   set val('psms'), file('psmqc.html'), file('summary.txt') into psmqccollect
@@ -1518,7 +1519,7 @@ process psmQC {
   script:
   """
   paste <(echo ${mzmlpaths.collect() { "${it.baseName}.${it.extension}" }.join('\\t')} | tr '\\t' '\\n' ) <(echo ${plicate_sets.join('\\t')} | tr '\\t' '\\n') <( echo ${mzmlplates.join('\\t')} | tr '\\t' '\\n') <(echo ${fractions.join('\\t')} | tr '\\t' '\\n') > mzmlfrs
-  qc_psms.R ${setnames[0].size()} ${fractionation ? 'TRUE' : 'FALSE'} ${params.oldmzmldef ? 'oldmzmldef' : 'nofile'} ${plates.join(' ')}
+  qc_psms.R ${setnames[0].size()} ${fractionation ? 'TRUE' : 'FALSE'} ${params.oldmzmldef ? oldmzmls_fn: 'nofile'} ${plates.join(' ')}
   # If any sets have zero (i.e. no PSMs, so no output from R), output them here by joining and filling in
   cat <(head -n1 psmtable_summary.txt) <(join -a1 -e0 -o auto -t \$'\\t' <(echo \$\'${plicate_sets.unique().plus(oldmzml_sets).join("\\t")}' | tr '\\t' '\\n' | sort) <(tail -n+2 psmtable_summary.txt | sort -k1b,1)) > summary.txt
   sed -Ei 's/[^A-Za-z0-9_\\t]/./' summary.txt
