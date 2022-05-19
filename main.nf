@@ -1184,6 +1184,8 @@ process createPTMLookup {
     --spectracol 1
   msstitch split -i "${ptmtable}" --splitcol bioset
   ${setnames.collect() { "test -f '${it}.tsv' || echo 'No PTMs found for set ${it}' >> warnings" }.join(' && ') }
+  # No PTMs at all overwrites the per-set messages
+  tail -n+2 ${ptmtable} | head | grep . >/dev/null || echo 'No PTMs found in any set' > warnings
   """
 }
 
@@ -1274,6 +1276,9 @@ ptmpeps
   .map { it.sort( {a, b -> a[0] <=> b[0]}) } // sort on setname
   .transpose()
   .toList()
+  // have to do this map {} operation since even when PTMpeptides is not even run,
+  // the toList seems to force a [[]] value on the channel
+  .map { it == [[]] ? [[false], ['NA'], ['NA']] : it }
   .combine(ptmlup)
   .combine(ptmpsmqc)
   .set { ptmpeps2merge }
@@ -1281,9 +1286,12 @@ ptmpeps
 
 process mergePTMPeps {
   publishDir "${params.outdir}", mode: 'copy', overwrite: true, saveAs: {it.startsWith('ptm_peptides_') ? it : null}
+ 
+  // setnames is [false] if no PTM tables exist (otherwise this is fed with empty tables)
+  when: setnames[0]
 
   input:
-  tuple val(setnames), path(peptides), path(notp_adjust_peps), path('ptmlup.sql'), path('ptmpsms.txt') from ptmpeps2merge
+  tuple val(setnames), file(peptides), file(notp_adjust_peps), file('ptmlup.sql'), file('ptmpsms.txt') from ptmpeps2merge
   val oldmzml_sets
 
   output:
