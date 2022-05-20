@@ -1112,8 +1112,8 @@ process stabilePTMPrep {
   
   script:
   stab_ptms = params.ptms.tokenize(';').join(' ')
-  mods = params.mods.tokenize(';').join(' ')
-  lab_ptms = params.locptms.tokenize(';').join(' ')
+  mods = params.mods ? params.mods.tokenize(';').join(' ') : ''
+  lab_ptms = params.locptms ? params.locptms.tokenize(';').join(' ') : ''
   isobtype = setisobaric && setisobaric[setname] ? setisobaric[setname] : ''
   """
   nonlabile_ptm_columns.py --psms psms -o stabileptms.txt --modfile "${params.msgfmods}" --fasta "${tdb}" \
