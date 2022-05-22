@@ -1,9 +1,20 @@
 # lehtiolab/ddamsproteomics: Changelog
+## Version 2.8 [2022-05-22]
+- Total proteome normalization had no keep-na-psms enabled when that was desired, fixed
+- Produce PEP column in merged peptide table (was only in PSM table earlier)
+- Removed word "Amount" from output and changed to "count" or "total number of"
+- QC changes in plotting, added summary and overlap tables for PTMs, format change in report
+- Flanking sequences for PTMs added to PTM peptide tables (7aa + PTM-aa + 7aa, for each PTM of a peptide)
+- Fix bug where no mixed PTM peptides were in output (e.g. peptide with GG and Phospho)
+- Crash detection and warning when not enough PSMs for luciphor, and handling no-PTM situations
+
+
 ## Version 2.7 [2022-02-23]
 - Median-center normalizing of PTM tables with total proteome table enabled
 - No recalculating FDR from percolator, and output PEP in PSMs/peptides
 - Small bug fixes (quoting etc)
 - Pipeline does not crash when e.g. a single set has no decoy PSMs, will warn in QC, crash when no target PSMs at all are found
+- PTM peptide tables can be outputted as both totalproteome-adjusted and non-adjusted
 
 
 ## Version 2.6 [2021-10-28]
