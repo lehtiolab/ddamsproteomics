@@ -947,9 +947,7 @@ process percolator {
   msgf2pin -o percoin.tsv -e ${params.enzyme} -P "decoy_" metafile
   percolator -j percoin.tsv -X perco.xml -N 500000 --decoy-xml-output
   mkdir outtables
-  ${params.locptms ? 
-    "msstitch perco2psm --perco perco.xml -d outtables -i ${tsvs.collect() { "'$it'" }.join(' ')} --mzids ${mzids.collect() { "'$it'" }.join(' ')}" : 
-    "msstitch perco2psm --perco perco.xml -d outtables -i ${tsvs.collect() { "'$it'" }.join(' ')} --mzids ${mzids.collect() { "'$it'" }.join(' ')} --filtpsm ${params.psmconflvl} --filtpep ${params.pepconflvl}"}
+  msstitch perco2psm --perco perco.xml -d outtables -i ${tsvs.collect() { "'$it'" }.join(' ')} --mzids ${mzids.collect() { "'$it'" }.join(' ')} ${!params.locptms ? "--filtpsm ${params.psmconflvl} --filtpep ${params.pepconflvl}" : ''}
   msstitch concat -i outtables/* -o allpsms
   ${params.locptms ? 
     "msstitch conffilt -i allpsms -o filtpsm --confcolpattern 'PSM q-value' --confidence-lvl ${params.psmconflvl} --confidence-better lower && \
@@ -1168,7 +1166,7 @@ process createPTMLookup {
   file('speclup.sql') from ptm_lookup_in
 
   output:
-  path ptmtable into features_out, ptmpsmqc
+  path ptmtable into ptmpsmqc
   path 'ptmlup.sql' into ptmlup
   path({setnames.collect() { "${it}.tsv" }}) optional true into setptmtables
   path 'warnings' optional true into ptmwarnings
@@ -1316,7 +1314,7 @@ process mergePTMPeps {
     tail -n+2 ptmpsms.txt | cut -f\$geneprotcols | sort -uk1b,1 > geneprots
     join -j1 -o auto -t '\t' <(paste geneprots <(cut -f3 geneprots | tr -dc ';\\n'| awk '{print length+1}')) <(tail -n+2 mergedtable | sort -k1b,1) >> ${peptable}""" : "mv mergedtable ${peptable}"}
 
-  # If there is a total-proteome peptide quant adjustment, also create a second merged NON-adjusted peptide tables
+  # If total-proteome quant adjustment input was used above, create a second merged NON-adjusted peptide tables
   ${params.totalproteomepsms ?  "msstitch merge -i ${notp_adjust_peps.join(' ')} --setnames ${setnames.sort().join(' ')} \
     --dbfile pepptmlup.sql -o mergedtable --no-group-annotation \
     --fdrcolpattern '^q-value' --pepcolpattern 'peptide PEP' --flrcolpattern 'FLR' \
@@ -1328,7 +1326,8 @@ process mergePTMPeps {
     tail -n+2 ptmpsms.txt | cut -f\$geneprotcols | sort -uk1b,1 > geneprots
     join -j1 -o auto -t '\t' <(paste geneprots <(cut -f3 geneprots | tr -dc ';\\n'| awk '{print length+1}')) <(tail -n+2 mergedtable | sort -k1b,1) >> ${peptable_no_adjust}""" : "${params.totalproteomepsms && params.onlypeptides ? "mv mergedtable ${peptable_no_adjust}" : ''}"}
 
-  qc_ptms.R "${setnames.size()}" "${params.locptms ? params.locptms : ''}${params.ptms ? ";${params.ptms}": ''}" ptmpsms.txt "${peptable}"
+  qc_ptms.R ptmpsms.txt "${peptable}"
+
   echo "<html><body>" > ptmqc.html
   for graph in ptmpsmfeats ptmpepfeats ptmprotfeats psmptmresidues pepptmresidues;
     do
@@ -1345,7 +1344,6 @@ process makePeptides {
   output:
   set val(setname), val(td), file(psms), file("${setname}_peptides") into prepgs_in
   set val(setname), val('peptides'), val(td), file("${setname}_peptides"), path(normfactors) optional true into peptides_out
-  file('warnings') optional true into pepwarnings
 
   script:
   quant = !params.noquant && td == 'target'
@@ -1415,7 +1413,7 @@ process proteinGeneSymbolTableFDR {
       echo 'Not enough q-values or linear-model q-values for peptides to calculate FDR for ${acctype} of set ${setname}, using svm score instead to calculate FDR.' >> warnings
   fi
   msstitch ${acctype} -i tpeptides --decoyfn dpeptides -o "${setname}_protfdr" --scorecolpattern "\$scpat" \$logflag \
-    ${acctype != 'proteins' ? "--targetfasta '$tfasta' --decoyfasta '$dfasta' ${params.fastadelim ? "--fastadelim '${params.fastadelim}' --genefield '${params.genefield}'": ''}" : ''} \
+    ${acctype != 'proteins' ? "--fdrtype picked --targetfasta '$tfasta' --decoyfasta '$dfasta' ${params.fastadelim ? "--fastadelim '${params.fastadelim}' --genefield '${params.genefield}'": ''}" : ''} \
     ${!params.noquant ? "${!params.noms1quant ? '--ms1quant' : ''} ${setisobaric && setisobaric[setname] ? '--isobquantcolpattern plex --minint 0.1' : ''}" : ''} \
     ${quant ? '--psmtable tpsms' : ''} \
     ${quant && setisobaric && setisobaric[setname] && params.keepnapsmsquant ? '--keep-psms-na-quant' : ''} \
@@ -1429,7 +1427,6 @@ process proteinGeneSymbolTableFDR {
     
 
 percowarnings
-  .concat(pepwarnings)
   .concat(fdrwarnings)
   .concat(ptmwarnings)
   .concat(luciphor_warnings)
@@ -1508,7 +1505,6 @@ psm_result
   .combine(scans_result)
   .map { it -> [it[0], it[1], it[2], it[3], it[4].unique()] }
   .set { targetpsm_result }
-
 
 
 process psmQC {
@@ -1628,7 +1624,8 @@ process featQC {
   """
 }
 
-ptmqcout = params.ptms || params.locptms || params.ptmpsms ? ptmqc : Channel.from('NA')
+noptms = ['NA', 'NA', 'NA']
+ptmqcout = params.ptms || params.locptms || params.ptmpsms ? ptmqc.ifEmpty(noptms) : Channel.value(noptms)
 
 qccollect
   .concat(psmqccollect)
@@ -1643,7 +1640,7 @@ process collectQC {
   publishDir "${params.outdir}", mode: 'copy', overwrite: true
 
   input:
-  set val(acctypes), file('feat?'), file('summary?'), file('overlap?'), file('normfacs?'), file('ptmqc'), file('ptmsummary'), file('ptmfeatsummary') from collected_feats_qc
+  set val(acctypes), file('feat?'), file('summary?'), file('overlap?'), file('normfacs?'), file(ptmqc), file(ptmsummary), file(ptmfeatsummary) from collected_feats_qc
   val(plates) from qcplates
   file('ptmoverlap') from ptmoverlap.ifEmpty('false')
   file('sw_ver') from software_versions_qc
@@ -1694,8 +1691,8 @@ process collectQC {
   # merge warnings
   ls warnings* && cat warnings* > warnings.txt
   # collect and generate HTML report
-  qc_collect.py $baseDir/assets/qc_full.html $params.name ${fractionation ? "frac" : "nofrac"} ${params.locptms ? 'ptmqc:ptmsummary:ptmfeatsummary' : 'noptm'} ${plates.join(' ')}
-  qc_collect.py $baseDir/assets/qc_light.html $params.name ${fractionation ? "frac" : "nofrac"} ${params.locptms ? 'ptmqc:ptmsummary:ptmfeatsummary': 'noptm'} ${plates.join(' ')}
+  qc_collect.py $baseDir/assets/qc_full.html $params.name ${fractionation ? "frac" : "nofrac"} ${ptmqc.exists() ? "$ptmqc:$ptmsummary:$ptmfeatsummary" : 'noptm'} ${plates.join(' ')}
+  qc_collect.py $baseDir/assets/qc_light.html $params.name ${fractionation ? "frac" : "nofrac"} ${ptmqc.exists() ? "$ptmqc:$ptmsummary:$ptmfeatsummary" : 'noptm'} ${plates.join(' ')}
   """
 }
 

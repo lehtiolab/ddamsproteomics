@@ -5,10 +5,8 @@ library(reshape2)
 library(stringr)
 
 args = commandArgs(trailingOnly=TRUE)
-nrsets = as.numeric(args[1])
-usedptms = unlist(strsplit(args[2], ';'))
-psmfn = args[3]
-pepfn = args[4]
+psmfn = args[1]
+pepfn = args[2]
 
 psms = read.table(psmfn, header=T, sep="\t", comment.char = "", quote = "")
 peptides = read.table(pepfn, header=T, sep="\t", comment.char="", quote="")
@@ -51,9 +49,9 @@ num_pep_any = aggregate(peptide ~ ptm_residue, sites[!duplicated(sites[c('ptm', 
 summary = merge(num_psm_set, num_pep_set, all=T)
 anysetsum = merge(num_psm_any, num_pep_any, all=T)
 
-# For proteins remove the ones with multi hits (; for multiprot and / for multisite on a protein
-# to create unique site info
 if ('Master.protein.s.' %in% names(psms)) {
+    # For proteins remove the ones with multi hits (; for multiprot and / for multisite on a protein
+    # to create unique site info, then filter duplicated protein/site rows (this is from PSM info)
     uniprot = subset(sites, !grepl(';', protein_ptms, fixed=T))
     unisite = subset(uniprot, !grepl('__.+/', protein_ptms))
 
@@ -75,9 +73,11 @@ if ('Master.protein.s.' %in% names(psms)) {
                               ptm=rep(protmultiptms$ptm, repeater)
                               )
     protein_ptms$ptm_residue = paste(protein_ptms$ptm, sub('[0-9]+', '', protein_ptms$site))
+    protein_ptms = protein_ptms[!duplicated(protein_ptms[c('protein', 'ptm', 'site', 'bioset')]),]
 
     # add proteins to summary
-    num_uniprot_set = aggregate(protein~bioset + ptm_residue, protein_ptms[!duplicated(protein_ptms[c('protein', 'ptm', 'site', 'bioset')]),], length)
+    num_uniprot_set = aggregate(protein~bioset + ptm_residue, protein_ptms, length)
+    # do another duplicate but without bioset for the all-set protein sites
     num_uniprot_any = aggregate(protein ~ ptm_residue, protein_ptms[!duplicated(protein_ptms[c('protein', 'ptm', 'site')]),], length)
     summary = merge(summary, num_uniprot_set, all=T)
     anysetsum = merge(anysetsum, num_uniprot_any, all=T)
@@ -87,20 +87,20 @@ if ('Master.protein.s.' %in% names(psms)) {
 # Prepare simple counted PSM/pep/protein data
 psm_count = aggregate(specid~bioset, sites[!duplicated(sites[c('specid', 'bioset')]),], length)
 pep_count = aggregate(peptide~bioset, sites[!duplicated(sites[c('peptide', 'bioset')]),], length)
-print(psm_count)
-print(pep_count)
 featcount_summ = merge(psm_count, pep_count, all=T)
 colnames(featcount_summ) = c('bioset', 'ptmpsmcount', 'ptmpepcount')
+
+nrsets = nrow(unique(featcount_summ))
 
 # Overlap of sites table
 if (nrsets > 1) {
     pep_setcount = aggregate(bioset~peptide+site+ptm_residue, sites[!duplicated(sites[c('ptm', 'site', 'peptide', 'bioset')]),], length)
-    pep_setcount$pepsite = paste(pep_setcount[c('peptide', 'site')])
+    pep_setcount$pepsite = paste(pep_setcount$peptide, pep_setcount$site)
     site_overlap = aggregate(pepsite~bioset+ptm_residue, pep_setcount, length)
     prot_setcount = aggregate(bioset~protein+site+ptm_residue, protein_ptms, length)
-    prot_setcount$protsite = paste(prot_setcount[c('protein', 'site')])
+    prot_setcount$protsite = paste(prot_setcount$protein, prot_setcount$site)
     site_overlap = merge(site_overlap, aggregate(protsite~bioset+ptm_residue, prot_setcount, length), all=T)
-    colnames(site_overlap)[1] = c('nr_sets')
+    colnames(site_overlap) = c('nr_sets', 'ptm_residue', 'peplvl', 'protlvl')
     write.table(site_overlap, 'overlap.txt', row.names=F, quote=F, sep='\t')
 }
 

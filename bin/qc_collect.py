@@ -13,7 +13,6 @@ def parse_table(fn):
     with open(fn) as fp:
         header = next(fp).strip('\n').split('\t')
         table['_fields'] = sorted(header, key=lambda x: field_order[x] if x in field_order else len(field_order)+1)
-        print(table['_fields'])
         for line in fp:
             line = line.strip('\n').split('\t')
             line = {header[x]: line[x] for x in range(0,len(line))}
@@ -116,10 +115,12 @@ ptmsumtitles = {
         'ptm_residue': 'PTM site',
         'specid': '# sites PSMs',
         'peptide': '# sites peptides',
-        'protein': '# unambiguous sites master protein',
+        'protein': '# sites master proteins',
         'ptmpsmcount': '# PSMs with PTM',
         'ptmpepcount': '# peptides with PTM',
         'ptmprotcount': '# proteins with PTM',
+        'protlvl': 'Proteins',
+        'peplvl': 'Peptides',
         }
 
 field_order = ['Set', 'nr_proteins_q', 'nr_proteins', 'nr_genes_q', 'nr_genes', 'nr_assoc', 'nr_assoc_q', 'Non-shared (unique)', 'no_pep_proteins', 'no_pep_genes', 'psmcount', 'no_psm_proteins', 'no_psm_genes',
@@ -156,7 +157,7 @@ ptms, ptm_summary, ptm_fc_summ, ptm_overlap = {}, False, False, False
 if has_ptms:
     ptm_html_fn, ptm_summary_fn, ptm_featc_summ_fn = sys.argv[4].split(':')
     try:
-        with open('ptmqc') as fp:
+        with open(ptm_html_fn) as fp:
             ptms = {x.attrib['id']: tostring(x, encoding='unicode') for x in parse(fp).find('body').findall('div') if 'class' in x.attrib and x.attrib['class'] == 'chunk'}
     except IOError:
         raise
@@ -164,6 +165,7 @@ if has_ptms:
     ptm_summary = parse_table(ptm_summary_fn)
     ptm_fc_summ = parse_table(ptm_featc_summ_fn)
     with open('ptmoverlap') as fp:
+        # contents set to false in NF process
         if fp.read().strip() != 'false':
             ptm_overlap = parse_table('ptmoverlap')
 
