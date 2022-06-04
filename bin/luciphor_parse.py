@@ -41,7 +41,7 @@ def main():
 
     # First prepare a residue + PTM weight -> PTM name dict for naming mods
     msgfmods = Mods()
-    msgfmods.parse_msgf_modfile(args.modfile, [*labileptms, *stabileptms, *mods])
+    msgfmods.parse_msgf_modfile(args.modfile, [*args.labileptms, *args.stabileptms, *args.mods])
     luci_modmap = msgfmods.lucimass_mod_dict()
     msgf_mod_map = msgfmods.msgfmass_mod_dict()
 

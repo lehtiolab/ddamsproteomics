@@ -51,9 +51,10 @@ class Mods:
         self.bymass = {}
         self.has_varmods_on_fixmod_residues = False
 
-    def parse_msgf_modfile(self, modfile, mods_to_find):
+    def parse_msgf_modfile(self, modfile, mods_passed):
         # FIXME make sure parsing is only Unimod/mass, then set
         # fixed/var, pos, res yourself in this method
+        mods_to_find = [x.lower() for x in mods_passed]
         with open(modfile) as fp:
             for line in fp:
                 line = line.strip('\n')
@@ -79,6 +80,23 @@ class Mods:
                             'residue': res, 'var': varfix == 'opt',
                             'pos': pos, 'name_lower': lowername
                             })
+        # See if user has defined own mods also
+        for mtofind in mods_passed:
+            moddef = mtofind.split(',')
+            if len(moddef) == 5:
+                # Found a custom mod defined by user
+                name = moddef[4]
+                pos = moddef[3]
+                varfix = moddef[2]
+                residues = set(moddef[1])
+                for res in residues:
+                    self.mods.append({
+                        'name': name, 'mass': float(moddef[0]),
+                        'adjusted_mass': False,
+                        'residue': res, 'var': varfix == 'opt',
+                        'pos': pos, 'name_lower': name.lower()
+                        })
+
         fixedpos = {}
         for mod in self.mods:
             if mod['var']:
@@ -300,7 +318,7 @@ def main():
     ms2toltype = {'ppm': 1, 'Da': 0}[environ.get('MS2TOLTYPE')]
 
     msgfmods = Mods()
-    msgfmods.parse_msgf_modfile(args.modfile, [*labileptms, *othermods])
+    msgfmods.parse_msgf_modfile(args.modfile, [*args.labileptms, *args.mods])
     # Prep fixed mods for luciphor template
     lucifixed = []
     for mod in msgfmods.fixedmods:
