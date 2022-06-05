@@ -1,4 +1,7 @@
 # lehtiolab/ddamsproteomics: Changelog
+## Version 2.9 [2022-06-02]
+- Bugfix to allow for user-formatted modification specifications again
+
 ## Version 2.8 [2022-05-22]
 - Total proteome normalization had no keep-na-psms enabled when that was desired, fixed
 - Produce PEP column in merged peptide table (was only in PSM table earlier)
