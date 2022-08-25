@@ -1304,7 +1304,7 @@ process mergePTMPeps {
   """
   cat ptmlup.sql > pepptmlup.sql
   # Create first table, input for which is either adjusted or not
-  msstitch merge -i ${peptides.join(' ')} --setnames ${setnames.sort().join(' ')} --dbfile pepptmlup.sql -o mergedtable --no-group-annotation \
+  msstitch merge -i ${peptides.collect() { "$it" }.join(' ')} --setnames ${setnames.sort().collect() { "'$it'" }.join(' ')} --dbfile pepptmlup.sql -o mergedtable --no-group-annotation \
     --fdrcolpattern '^q-value' --pepcolpattern 'peptide PEP' --flrcolpattern 'FLR' \
     ${!params.noquant && !params.noms1quant ? "--ms1quantcolpattern area" : ''} \
     ${!params.noquant && setisobaric ? "--isobquantcolpattern plex" : ''}
@@ -1315,7 +1315,7 @@ process mergePTMPeps {
     join -j1 -o auto -t '\t' <(paste geneprots <(cut -f3 geneprots | tr -dc ';\\n'| awk '{print length+1}')) <(tail -n+2 mergedtable | sort -k1b,1) >> ${peptable}""" : "mv mergedtable ${peptable}"}
 
   # If total-proteome quant adjustment input was used above, create a second merged NON-adjusted peptide tables
-  ${params.totalproteomepsms ?  "msstitch merge -i ${notp_adjust_peps.join(' ')} --setnames ${setnames.sort().join(' ')} \
+  ${params.totalproteomepsms ?  "msstitch merge -i ${notp_adjust_peps.collect() { "$it" }.join(' ')} --setnames ${setnames.sort().collect() { "'$it'" }.join(' ')} \
     --dbfile pepptmlup.sql -o mergedtable --no-group-annotation \
     --fdrcolpattern '^q-value' --pepcolpattern 'peptide PEP' --flrcolpattern 'FLR' \
     ${!params.noquant && !params.noms1quant ? "--ms1quantcolpattern area" : ''} \
@@ -1481,7 +1481,7 @@ process proteinPeptideSetMerge {
 
   # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
   cat $lookup > db.sqlite
-  msstitch merge -i ${tables.join(' ')} --setnames ${setnames.join(' ')} --dbfile db.sqlite -o mergedtable \
+  msstitch merge -i ${tables.collect() { "$it" }.join(' ')} --setnames ${setnames.collect() { "'$it'" }.join(' ')} --dbfile db.sqlite -o mergedtable \
     --fdrcolpattern '^q-value\$' ${acctype != 'peptides' ? "--mergecutoff ${params.proteinconflvl}" : ''} \
     ${acctype == 'peptides' ? "--pepcolpattern 'peptide PEP'" : ''} \
     ${!params.noquant && !params.noms1quant ? "--ms1quantcolpattern area" : ''} \
