@@ -1,6 +1,13 @@
 # lehtiolab/ddamsproteomics: Changelog
+## Version 2.10 [2022-09-02]
+- Bugfix to allow setnames with spaces etc (quoting)
+- Dynamic memory allocation for MSGF
+- Error message for often occurring DEqMS with only one channel in a sample group
+
+
 ## Version 2.9 [2022-06-02]
 - Bugfix to allow for user-formatted modification specifications again
+
 
 ## Version 2.8 [2022-05-22]
 - Total proteome normalization had no keep-na-psms enabled when that was desired, fixed
