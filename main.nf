@@ -1469,6 +1469,7 @@ process proteinPeptideSetMerge {
   set val(acctype), file('proteintable'), file(normfacs) into merged_feats
 
   script:
+  listtables = listify(tables)
   """
   # exchange sample names on isobaric fields in header
   # First add NO__GROUP marker for no-samplegroups clean sampletable from special chars
@@ -1481,7 +1482,7 @@ process proteinPeptideSetMerge {
 
   # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
   cat $lookup > db.sqlite
-  msstitch merge -i ${tables.collect() { "$it" }.join(' ')} --setnames ${setnames.collect() { "'$it'" }.join(' ')} --dbfile db.sqlite -o mergedtable \
+  msstitch merge -i ${listtables.collect() { "$it" }.join(' ')} --setnames ${setnames.collect() { "'$it'" }.join(' ')} --dbfile db.sqlite -o mergedtable \
     --fdrcolpattern '^q-value\$' ${acctype != 'peptides' ? "--mergecutoff ${params.proteinconflvl}" : ''} \
     ${acctype == 'peptides' ? "--pepcolpattern 'peptide PEP'" : ''} \
     ${!params.noquant && !params.noms1quant ? "--ms1quantcolpattern area" : ''} \
