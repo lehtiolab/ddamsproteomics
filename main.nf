@@ -170,6 +170,8 @@ params.activation = 'hcd' // Only for isobaric quantification
 params.outdir = 'results'
 params.normalize = false
 params.minprecursorpurity = 0
+params.ms1qmztol = 5 // in ppm
+params.ms1qrttol = 18 // in seconds
 params.genes = false
 params.ensg = false
 params.fastadelim = false
@@ -762,7 +764,7 @@ process quantLookup {
   # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
   cat $tlookup > target.sqlite
   msstitch storequant --dbfile target.sqlite --spectra ${mzmlnames.collect() { "'$it'" }.join(' ')}  \
-    ${!params.noms1quant ? "--mztol 20.0 --mztoltype ppm --rttol 5.0 ${params.hardklor ? "--kronik ${ms1fns.collect() { "'$it'" }.join(' ')}" : "--dinosaur ${ms1fns.collect() { "'$it'" }.join(' ')}"}" : ''} \
+    ${!params.noms1quant ? "--mztol ${params.ms1qmztol} --mztoltype ppm --rttol ${params.ms1qrttol} ${params.hardklor ? "--kronik ${ms1fns.collect() { "'$it'" }.join(' ')}" : "--dinosaur ${ms1fns.collect() { "'$it'" }.join(' ')}"}" : ''} \
     ${params.isobaric ? "--isobaric ${isofns.collect() { "'$it'" }.join(' ')}" : ''}
   """
 }
