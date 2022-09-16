@@ -80,6 +80,10 @@ def helpMessage() {
                                     window) for assigning isobaric quant to PSMs. PSMs below this value
                                     get assigned NA. A number between 0 and 1. Default 0 allows all PSMs
                                     quant values.
+      --ms1qrttol                   Tolerance window for retention time in seconds (backwards and forwards)
+                                    to align MS1 areas (from dinosaur, hardklor/kronik) to MS2 scans
+      --ms1qmztol                   Tolerance window for m/z in ppm (plus and minus) to align MS1 areas found within 
+                                    the RT tolerance window.
       --normalize                   Normalize isobaric values by median centering on channels of protein table
       --sampletable                 Path to sample annotation table in case of isobaric analysis
       --deqms                       Perform DEqMS differential expression analysis using sampletable
@@ -323,6 +327,8 @@ summary['Peptide FDR cutoff'] = params.pepconflvl
 summary['Isobaric label sets/denominators'] = params.isobaric
 summary['Isobaric quant: activation method'] = params.activation
 summary['Isobaric PSM minimum precursor purity'] = params.minprecursorpurity
+summary['Retention time tolerance for MS1 alignment'] = params.ms1qrttol
+summary['m/z tolerance for MS1 alignment'] = params.ms1qmztol
 summary['Keep PSMs for quant with NA in any channel'] = params.keepnapsmsquant
 summary['Explicit isobaric normalization'] = params.normalize
 summary['Perform DE analysis (implies normalization)'] = params.deqms

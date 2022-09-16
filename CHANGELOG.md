@@ -1,4 +1,9 @@
 # lehtiolab/ddamsproteomics: Changelog
+## Version 2.11 [2022-09-16]
+- Bugfix in MS1 quant where too large retention time tolerance was used
+- MS1 quant RT/mz tolerances parametrized
+
+
 ## Version 2.10 [2022-09-02]
 - Bugfix to allow setnames with spaces etc (quoting)
 - Dynamic memory allocation for MSGF
