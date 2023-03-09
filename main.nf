@@ -508,7 +508,7 @@ def plate_or_no(it, length) {
 mzml_in
   .tap { mzmlfiles_counter; mzmlfiles_qlup_sets } // for counting-> timelimits; getting sets from supplied lookup
   .map { it -> [it[2].replaceAll('[ ]+$', '').replaceAll('^[ ]+', ''), file(it[0]).baseName.replaceAll('[&<>\'"]', '_'), file(it[0]), it[1], plate_or_no(it, 3), fr_or_file(it, 4)] }
-  .tap { mzmlfiles; mzml_luciphor; mzml_quant }
+  .tap { mzmlfiles; mzml_luciphor; pre_isoquant; ms1quant; sample_mzmlfn}
   .combine(concatdb)
   .set { mzml_msgf }
 
@@ -516,41 +516,79 @@ mzml_in
 * Step 1: Extract quant data from peptide spectra
 */
 
-process quantifySpectra {
+def stripchars_infile(x) {
+  // The string in "scriptinfile" does not have NF escaping characters like & (e.g. in FAIMS 35&65),
+  // which NF does to "infile". That would work fine but not if the files are quoted in the 
+  // script, then they cant be found when there is \&.
+  // Replace those characters anyway since they cause trouble in percolator XML output downstream
+  def scriptinfile = "${x.baseName}.${x.extension}"
+  def parsed_file = scriptinfile.replaceAll('[&<>\'"]', '_')
+  return [parsed_file != scriptinfile, scriptinfile, parsed_file]
+}
+
+process centroidMS1 {
+  container 'chambm/pwiz-skyline-i-agree-to-the-vendor-licenses:3.0.20066-729ef9c41'
+  when: !params.quantlookup && !params.noquant && setisobaric && setisobaric[setname]
+
+  input:
+  set val(setname), val(sample), file(infile), val(instr), val(platename), val(fraction) from pre_isoquant
+
+  output:
+  set val(setname), val(sample), file(parsed_infile), val(instr), val(platename), val(fraction) into isoquant
+
+  script:
+  (stripped_fn, scriptinfile, parsed_infile) = stripchars_infile(infile)
+  """
+  ${stripped_fn ? "mv '${scriptinfile}' '${parsed_infile}'" : ''}
+  wine msconvert ${parsed_infile} --outfile centroidms1.mzML --filter 'peakPicking true 1'
+  mv centroidms1.mzML '${parsed_infile}'
+  """
+}
+
+
+process quantifyMS1 {
   when: !params.quantlookup && !params.noquant
 
   input:
-  set val(setname), val(sample), file(infile), val(instr), val(platename), val(fraction) from mzml_quant
+  set val(setname), val(sample), file(infile), val(instr), val(platename), val(fraction) from ms1quant
   file(hkconf) from Channel.fromPath("$baseDir/assets/hardklor.conf").first()
 
   output:
-  set val(sample), val(parsed_infile) into sample_mzmlfn
   set val(sample), file("${sample}.features.tsv") optional true into dino_out 
   set val(sample), file("${sample}.kr") optional true into kronik_out 
-  set val(sample), file("${parsed_infile}.consensusXML") optional true into isobaricxml
 
   script:
+  (stripped_fn, scriptinfile, parsed_infile) = stripchars_infile(infile)
+  """
+  ${stripped_fn ? "mv '${scriptinfile}' '${parsed_infile}'" : ''}
+  # Dinosaur is first choice for MS1 quant
+  ${!params.noms1quant && !params.hardklor ? "dinosaur --concurrency=${task.cpus * params.threadspercore} \"${parsed_infile}\"" : ''}
+  # Hardklor/Kronik can be used as a backup, using --hardklor
+  ${!params.noms1quant && params.hardklor ? "hardklor <(cat $hkconf <(echo \"$parsed_infile\" hardklor.out)) && kronik -c 5 -d 3 -g 1 -m 8000 -n 600 -p 10 hardklor.out ${sample}.kr" : ''}
+  """
+}
+
+
+process isoquantSpectra {
+  when: !params.quantlookup && !params.noquant
+
+  input:
+  set val(setname), val(sample), file(infile), val(instr), val(platename), val(fraction) from isoquant
+
+  output:
+  set val(sample), file(outfile) into isobaricxml
+
+  script:
+  outfile = "${infile.baseName}.consensusXML"
   activationtype = [hcd:'High-energy collision-induced dissociation', cid:'Collision-induced dissociation', etd:'Electron transfer dissociation'][params.activation]
   isobtype = setisobaric && setisobaric[setname] ? setisobaric[setname] : false
   isobtype = isobtype == 'tmtpro' ? 'tmt16plex' : isobtype
   plextype = isobtype ? isobtype.replaceFirst(/[0-9]+plex/, "") : 'false'
   massshift = [tmt:0.0013, itraq:0.00125, false:0][plextype]
 
-  // the string in "scriptinfile" does not have NF escaping characters like & (e.g. in FAIMS 35&65),
-  // which NF does to "infile". That would work fine but not if the files are quoted in the 
-  // script, then they cant be found when there is \&.
-  scriptinfile = "${infile.baseName}.${infile.extension}"
-  // Replace those characters anyway since they cause trouble in percolator XML output downstream
-  parsed_infile = scriptinfile.replaceAll('[&<>\'"]', '_')
   """
-  ${scriptinfile != parsed_infile ? "mv '${scriptinfile}' '${parsed_infile}'" : ''}
-  # Dinosaur is first choice for MS1 quant
-  ${!params.noms1quant && !params.hardklor ? "dinosaur --concurrency=${task.cpus * params.threadspercore} \"${parsed_infile}\"" : ''}
-  # Hardklor/Kronik can be used as a backup, using --hardklor
-  ${!params.noms1quant && params.hardklor ? "hardklor <(cat $hkconf <(echo \"$parsed_infile\" hardklor.out)) && kronik -c 5 -d 3 -g 1 -m 8000 -n 600 -p 10 hardklor.out ${sample}.kr" : ''}
-  # Use centroided MS1 for IsobaricAnalyzer so it gets proper precursor purity calculation
-  ${isobtype ? "msconvert '$parsed_infile' --outfile centroidms1.mzML --filter 'peakPicking true 1'" : ''}
-  ${isobtype ? "IsobaricAnalyzer -type $isobtype -in centroidms1.mzML -out \"${parsed_infile}.consensusXML\" -extraction:select_activation \"$activationtype\" -extraction:reporter_mass_shift $massshift -extraction:min_precursor_intensity 1.0 -extraction:keep_unannotated_precursor true -quantification:isotope_correction true && rm centroidms1.mzML" : ''}
+  ${isobtype ? "IsobaricAnalyzer -type $isobtype -in \"${infile}\" -out \"${infile.baseName}.consensusXML\" -extraction:select_activation \"$activationtype\" -extraction:reporter_mass_shift $massshift -extraction:min_precursor_intensity 1.0 -extraction:keep_unannotated_precursor true -quantification:isotope_correction true" : ''}
+  rm \$(readlink ${infile})
   """
 }
 
@@ -676,12 +714,9 @@ if (complementary_run) {
 }
 
 // Collect all MS1 dinosaur/kronik output for quant lookup building process
-dino_out
-  .concat(kronik_out)
-  .set { ms1_out }
-
 sample_mzmlfn
-  .join(ms1_out, remainder: true)
+  .map { [ it[1], stripchars_infile(it[2])[2] ] } // extract samplename, mzML
+  .join(dino_out.concat(kronik_out), remainder: true)
   .join(isobaricxml, remainder: true)
   .toList()
   .map { it.sort({a, b -> a[0] <=> b[0]}) }
