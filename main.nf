@@ -1569,10 +1569,10 @@ process psmQC {
   // TODO no proteins == no coverage for pep centric
   script:
   """
-  paste <(echo ${mzmlpaths.collect() { "${it.baseName}.${it.extension}" }.join('\\t')} | tr '\\t' '\\n' ) <(echo ${plicate_sets.join('\\t')} | tr '\\t' '\\n') <( echo ${mzmlplates.join('\\t')} | tr '\\t' '\\n') <(echo ${fractions.join('\\t')} | tr '\\t' '\\n') > mzmlfrs
+  paste <(echo -e "${mzmlpaths.collect() { "${it.baseName}.${it.extension}" }.join('\\n')}") <(echo -e "${plicate_sets.join('\\n')}") <( echo -e "${mzmlplates.join('\\n')}") <(echo -e "${fractions.join('\\n')}") > mzmlfrs
   qc_psms.R ${setnames[0].size()} ${fractionation ? 'TRUE' : 'FALSE'} ${params.oldmzmldef ? oldmzmls_fn: 'nofile'} ${plates.join(' ')}
   # If any sets have zero (i.e. no PSMs, so no output from R), output them here by joining and filling in
-  cat <(head -n1 psmtable_summary.txt) <(join -a1 -e0 -o auto -t \$'\\t' <(echo \$\'${plicate_sets.unique().plus(oldmzml_sets).join("\\t")}' | tr '\\t' '\\n' | sort) <(tail -n+2 psmtable_summary.txt | sort -k1b,1)) > summary.txt
+  cat <(head -n1 psmtable_summary.txt) <(join -a1 -e0 -o auto -t \$'\\t' <(echo -e \'${plicate_sets.unique().plus(oldmzml_sets).join("\\n")}' | sort) <(tail -n+2 psmtable_summary.txt | sort -k1b,1)) > summary.txt
   sed -Ei 's/[^A-Za-z0-9_\\t]/./' summary.txt
   echo "<html><body>" > psmqc.html
   for graph in psm-scans missing-tmt miscleav
