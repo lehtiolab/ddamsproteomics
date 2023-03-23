@@ -59,14 +59,17 @@ if (length(grep('plex', names(feats)))) {
   channels = names(feats)[grepl('plex', names(feats))]
   psm_empty = melt(feats[c(xcol, channels)], id.vars=xcol)
   psm_empty = psm_empty[psm_empty$value==0,]
-  psm_empty$value = 1
-  psm_empty = aggregate(value~get(xcol)+ variable, psm_empty, sum)
-  names(psm_empty) = c(xcol, 'channels', 'nr_missing_values')
-  psm_empty$channels = sub('.*plex_', '', psm_empty$channels)
-  svg('missing-tmt', width=width, height=(nrsets + 2))
-  print(ggplot(psm_empty) + 
-    geom_bar(aes_string(x=xcol, y='nr_missing_values', fill='channels'), stat='identity', position="dodge") + ylab('# PSMs without quant') + coord_flip() + theme_bw() + theme(axis.title.x=element_text(size=15), axis.title.y=element_blank(), axis.text=element_text(size=10), legend.position="top", legend.text=element_text(size=10), legend.title=element_blank()))
-  dev.off()
+  if (nrow(psm_empty)) {
+    psm_empty$value = 1
+    psm_empty = aggregate(value~get(xcol)+ variable, psm_empty, sum)
+    print('psm empty ready')
+    names(psm_empty) = c(xcol, 'channels', 'nr_missing_values')
+    psm_empty$channels = sub('.*plex_', '', psm_empty$channels)
+    svg('missing-tmt', width=width, height=(nrsets + 2))
+    print(ggplot(psm_empty) + 
+      geom_bar(aes_string(x=xcol, y='nr_missing_values', fill='channels'), stat='identity', position="dodge") + ylab('# PSMs without quant') + coord_flip() + theme_bw() + theme(axis.title.x=element_text(size=15), axis.title.y=element_blank(), axis.text=element_text(size=10), legend.position="top", legend.text=element_text(size=10), legend.title=element_blank()))
+    dev.off()
+  }
 }
 
 mcl = aggregate(as.formula(paste('SpecID~', xcol, '+ missed_cleavage')), feats, length)

@@ -1577,14 +1577,15 @@ process psmQC {
   echo "<html><body>" > psmqc.html
   for graph in psm-scans missing-tmt miscleav
     do
-    [[ -e \$graph ]] && echo "<div class=\\"chunk\\" id=\\"\${graph}\\"> \$(sed "s/id=\\"/id=\\"\${graph}/g;s/\\#/\\#\${graph}/g" <\$graph) </div>" >> psmqc.html
+    [[ -e \$graph ]] && echo "<div class='chunk' id='\${graph}'>" \$(sed "s/id=\\"/id=\\"\${graph}/g;s/\\#/\\#\${graph}/g" < <(tail -n+2 \$graph)) "</div>" >> psmqc.html
+    [[ -e \$graph ]] || echo "<div class='chunk' id='\${graph}'>None found</div>" >> psmqc.html
     done 
   for graph in retentiontime precerror fwhm fryield msgfscore pif
     do
     for plateid in ${plates.join(' ')}
       do
       plate="PLATE___\${plateid}___\${graph}"
-    [[ -e \$plate ]] && echo "<div class=\\"chunk \$plateid\\" id=\\"\${graph}\\"> \$(sed "s/id=\\"/id=\\"\${plate}/g;s/\\#/\\#\${plate}/g" < \$plate) </div>" >> psmqc.html
+    [[ -e \$plate ]] && echo "<div class='chunk \$plateid' id='\${graph}'>" \$(sed "s/id=\\"/id=\\"\${plate}/g;s/\\#/\\#\${plate}/g" < <(tail -n+2 \$plate)) "</div>" >> psmqc.html
       done 
     done
   echo "</body></html>" >> psmqc.html
@@ -1628,7 +1629,7 @@ process featQC {
   echo "<html><body>" > featqc.html
   for graph in featyield precursorarea ${show_normfactors ? 'normfactors': ''} nrpsms nrpsmsoverlapping percentage_onepsm ms1nrpeps;
     do
-    [ -e \$graph ] && echo "<div class=\\"chunk\\" id=\\"\${graph}\\"> \$(sed "s/id=\\"/id=\\"${acctype}-\${graph}/g;s/\\#/\\#${acctype}-\${graph}/g" <\$graph) </div>" >> featqc.html
+    [ -e \$graph ] && echo "<div class=\\"chunk\\" id=\\"\${graph}\\"> \$(sed "s/id=\\"/id=\\"${acctype}-\${graph}/g;s/\\#/\\#${acctype}-\${graph}/g" < <(tail -n+2 \$graph)) </div>" >> featqc.html
     done 
     # coverage and isobaric plots are png because a lot of points
     [ -e isobaric ] && paste -d \\\\0  <(echo "<div class=\\"chunk\\" id=\\"isobaric\\"><img src=\\"data:image/png;base64,") <(base64 -w 0 isobaric) <(echo '"></div>') >> featqc.html
@@ -1643,7 +1644,7 @@ process featQC {
   ls deqms_volcano_* && echo '</div>' >> featqc.html
   [ -e pca ] && echo '<div class="chunk" id="pca">' >> featqc.html && for graph in pca scree;
     do 
-    echo "<div> \$(sed "s/id=\\"/id=\\"${acctype}-\${graph}/g;s/\\#/\\#${acctype}-\${graph}/g" <\$graph) </div>" >> featqc.html
+    echo "<div> \$(sed "s/id=\\"/id=\\"${acctype}-\${graph}/g;s/\\#/\\#${acctype}-\${graph}/g" < <(tail -n+2 \$graph)) </div>" >> featqc.html
     done
     [ -e pca ] && echo '</div>' >> featqc.html
 
