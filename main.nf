@@ -588,7 +588,6 @@ process isoquantSpectra {
 
   """
   ${isobtype ? "IsobaricAnalyzer -type $isobtype -in \"${infile}\" -out \"${infile.baseName}.consensusXML\" -extraction:select_activation \"$activationtype\" -extraction:reporter_mass_shift $massshift -extraction:min_precursor_intensity 1.0 -extraction:keep_unannotated_precursor true -quantification:isotope_correction true" : ''}
-  rm \$(readlink ${infile})
   """
 }
 
@@ -686,10 +685,8 @@ process createNewSpectraLookup {
   output:
   set path('target_db.sqlite'), path('decoy_db.sqlite') into newspeclookup 
   path 'target_db.sqlite' into ptm_lookup_new
-  val(uni_setnames) into allsetnames
 
   script:
-  uni_setnames = setnames.unique(false)
   """
   ${mzmlfiles.collect() { it.toString() != it.toString().replaceAll('[&<>\'"]', '_') ? "mv '${it}' '${it.toString().replaceAll('[&<>\'"]', '_')}'" : ''}.findAll { it != ''}.join(' && ')}
 
@@ -750,12 +747,6 @@ if (params.noquant && !params.quantlookup) {
     .filter { it[1] == 'target' }
     .map { it -> it[0] }
     .into { ptm_lookup_in; countlookup }
-  mzmlfiles_qlup_sets
-    .map { it -> it[2] } 
-    .unique()
-    .toList()
-    .set { allsetnames }
-
 } else if (is_rerun) {
   // In case of rerun with same sets, no new search but only some different post-identification
   // output options
@@ -763,17 +754,15 @@ if (params.noquant && !params.quantlookup) {
   prespectoquant  // contains  t, d lookups
     .flatMap { it -> [[it[0], 'target'], [it[1], 'decoy']] }
     .set{ specquant_lookups }
-  Channel.of(['NA', 'target']).set { rerun_tmzidtsv_perco }
-  Channel.of(['NA', 'decoy']).set { rerun_dmzidtsv_perco }
-  
 } else {
   prespectoquant.set { spectoquant }
 }
 
-if (!is_rerun) {
-  Channel.empty().set { rerun_tmzidtsv_perco }
-  Channel.empty().set { rerun_dmzidtsv_perco }
-}
+mzmlfiles_qlup_sets
+  .map { it -> it[2] } 
+  .unique()
+  .toList()
+  .set { allsetnames }
 
 if (!params.quantlookup) {
   ptm_lookup_old
@@ -979,8 +968,8 @@ process percolator {
   val(mzmlcount) from mzmlcount_percolator
 
   output:
-  set path('target.tsv'), val('target') into tmzidtsv_perco optional true
-  set path('decoy.tsv'), val('decoy') into dmzidtsv_perco optional true
+  set path("${setname}_target.tsv"), val('target') into tmzidtsv_perco optional true
+  set path("${setname}_decoy.tsv"), val('decoy') into dmzidtsv_perco optional true
   set val(setname), file('allpsms') optional true into unfiltered_psms
   file('warnings') optional true into percowarnings
 
@@ -996,19 +985,21 @@ process percolator {
     "msstitch conffilt -i allpsms -o filtpsm --confcolpattern 'PSM q-value' --confidence-lvl ${params.psmconflvl} --confidence-better lower && \
     msstitch conffilt -i filtpsm -o psms --confcolpattern 'peptide q-value' --confidence-lvl ${params.pepconflvl} --confidence-better lower" : 'mv allpsms psms'}
   msstitch split -i psms --splitcol \$(head -n1 psms | tr '\t' '\n' | grep -n ^TD\$ | cut -f 1 -d':')
-  ${['target', 'decoy'].collect() { "test -f '${it}.tsv' || echo 'No ${it} PSMs found for set ${setname} at PSM FDR ${params.psmconflvl} and peptide FDR ${params.pepconflvl} ${it == 'decoy' ? '(not possible to output protein/gene FDR)' : ''}' >> warnings" }.join(' && ') }
+  ${['target', 'decoy'].collect() { 
+    "test -f '${it}.tsv' && mv '${it}.tsv' '${setname}_${it}.tsv' || echo 'No ${it} PSMs found for set ${setname} at PSM FDR ${params.psmconflvl} and peptide FDR ${params.pepconflvl} ${it == 'decoy' ? '(not possible to output protein/gene FDR)' : ''}' >> warnings" }.join(' && ') }
   """
 }
 
 totalproteomepsms = params.totalproteomepsms ? Channel.fromPath(params.totalproteomepsms) : Channel.from('NA')
 
+dmzidtsv_perco
+  .ifEmpty([file('NO__FILE'), 'decoy'])
+  .set { d_perco_checked }
+
 // Collect percolator data of target/decoy and feed into PSM table creation
 tmzidtsv_perco
-  .concat(dmzidtsv_perco)
-  // Mix in the reruns here if any (in that case there are no percolators run.
-  .concat(rerun_tmzidtsv_perco)
-  .concat(rerun_dmzidtsv_perco)
-  .ifEmpty([false, 'target'])
+  .ifEmpty([file('NO__FILE'), 'target'])
+  .concat(d_perco_checked)
   .groupTuple(by: 1) // group by TD
   .join(specquant_lookups, by: 1) // join on TD
   .combine(psmdbs)
@@ -1016,7 +1007,7 @@ tmzidtsv_perco
   .set { psmswithout_oldpsms }
 if (complementary_run) {
   psmswithout_oldpsms
-    .join(td_oldpsms)
+    .join(td_oldpsms, remainder: true)
     .set { prepsm }
 } else {
   psmswithout_oldpsms
@@ -1035,7 +1026,7 @@ process createPSMTable {
   publishDir "${params.outdir}", mode: 'copy', overwrite: true, saveAs: {["target_psmlookup.sql", "decoy_psmlookup.sql", "target_psmtable.txt", "decoy_psmtable.txt"].contains(it) ? it : null}
 
   input:
-  set val(td), file('psms?'), path('lookup'), path(tdb), path(ddb), file('tppsms.txt'), file(cleaned_oldpsms) from prepsm
+  set val(td), path(psms), path('lookup'), path(tdb), path(ddb), file('tppsms.txt'), file(cleaned_oldpsms) from prepsm
   file(trainingpep) from hiriefpep
   val(mzmlcount) from mzmlcount_psm  // For time limits
   val(setnames) from setnames_psms
@@ -1049,15 +1040,16 @@ process createPSMTable {
   script:
   psmlookup = "${td}_psmlookup.sql"
   outpsms = "${td}_psmtable.txt"
+  new_psms = !is_rerun && (psms.size() > 1 || psms[0].name != 'NO__FILE')
 
   quant = !params.noquant && td == 'target'
   """
-  msstitch concat -i psms* -o psms.txt
-  ${!is_rerun && td == 'target' ? "tail -n+2 psms.txt | grep . >/dev/null || (>&2 echo 'No target PSMs made the combined PSM / peptide FDR cutoff (${params.psmconflvl} / ${params.pepconflvl})' && exit 1)" : ''}
+  ${new_psms ? "msstitch concat -i ${psms.collect() {"$it"}.join(' ')} -o psms.txt" : ''}
+  ${new_psms && td == 'target' ? "tail -n+2 psms.txt | grep . >/dev/null || (>&2 echo 'No target PSMs made the combined PSM / peptide FDR cutoff (${params.psmconflvl} / ${params.pepconflvl})' && exit 1)" : ''}
   # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
   cat lookup > $psmlookup
-  sed '0,/\\#SpecFile/s//SpectraFile/' -i psms.txt
-  ${is_rerun ? "mv ${cleaned_oldpsms} psmsrefined" : "msstitch psmtable -i psms.txt --dbfile $psmlookup --addmiscleav -o psmsrefined --spectracol 1 \
+  ${new_psms ? "sed '0,/\\#SpecFile/s//SpectraFile/' -i psms.txt": ''}
+  ${is_rerun || !new_psms ? "mv ${cleaned_oldpsms} psmsrefined" : "msstitch psmtable -i psms.txt --dbfile $psmlookup --addmiscleav -o psmsrefined --spectracol 1 \
     ${params.onlypeptides ? '' : "--fasta \"${td == 'target' ? "${tdb}" : "${ddb}"}\" --genes"} \
     ${quant ? "${!params.noms1quant ? '--ms1quant' : ''} ${params.isobaric ? "--isobaric --min-precursor-purity ${params.minprecursorpurity}" : ''}" : ''} \
     ${!params.onlypeptides ? '--proteingroup' : ''} \
@@ -1347,7 +1339,7 @@ process mergePTMPeps {
   """
   cat ptmlup.sql > pepptmlup.sql
   # Create first table, input for which is either adjusted or not
-  msstitch merge -i ${peptides.collect() { "$it" }.join(' ')} --setnames ${setnames.sort().collect() { "'$it'" }.join(' ')} --dbfile pepptmlup.sql -o mergedtable --no-group-annotation \
+  msstitch merge -i ${peptides.collect() { "'$it'" }.join(' ')} --setnames ${setnames.sort().collect() { "'$it'" }.join(' ')} --dbfile pepptmlup.sql -o mergedtable --no-group-annotation \
     --fdrcolpattern '^q-value' --pepcolpattern 'peptide PEP' --flrcolpattern 'FLR' \
     ${!params.noquant && !params.noms1quant ? "--ms1quantcolpattern area" : ''} \
     ${!params.noquant && setisobaric ? "--isobquantcolpattern plex" : ''}
@@ -1573,7 +1565,7 @@ process psmQC {
   qc_psms.R ${setnames[0].size()} ${fractionation ? 'TRUE' : 'FALSE'} ${params.oldmzmldef ? oldmzmls_fn: 'nofile'} ${plates.join(' ')}
   # If any sets have zero (i.e. no PSMs, so no output from R), output them here by joining and filling in
   cat <(head -n1 psmtable_summary.txt) <(join -a1 -e0 -o auto -t \$'\\t' <(echo -e \'${plicate_sets.unique().plus(oldmzml_sets).join("\\n")}' | sort) <(tail -n+2 psmtable_summary.txt | sort -k1b,1)) > summary.txt
-  sed -Ei 's/[^A-Za-z0-9_\\t]/./' summary.txt
+  sed -Ei 's/[^A-Za-z0-9_\\t]/./g' summary.txt
   echo "<html><body>" > psmqc.html
   for graph in psm-scans missing-tmt miscleav
     do
