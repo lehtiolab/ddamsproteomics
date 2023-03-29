@@ -705,6 +705,12 @@ if (complementary_run) {
     .flatMap { it -> [['target', it[0]], ['decoy', it[1]]] }
     .set { td_oldpsms }
 } else {
+  mzmlfiles_qlup_sets
+    .map { it -> it[2] } 
+    .unique()
+    .toList()
+    .set { allsetnames }
+
   // if not using this youll have a combine on an open channel without
   // anything from complement cleaner. Will not run createPTMLookup then
   cleaned_ptmpsms = Channel.value('NA')
@@ -757,12 +763,6 @@ if (params.noquant && !params.quantlookup) {
 } else {
   prespectoquant.set { spectoquant }
 }
-
-mzmlfiles_qlup_sets
-  .map { it -> it[2] } 
-  .unique()
-  .toList()
-  .set { allsetnames }
 
 if (!params.quantlookup) {
   ptm_lookup_old
