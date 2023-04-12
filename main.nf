@@ -48,7 +48,8 @@ def helpMessage() {
       --isobaric VALUE              In case of isobaric, specify per set the type and possible denominators/sweep/intensity.
                                     In case of intensity, no ratios will be output but instead the raw PSM intensities will be
                                     median-summarized to the output features (e.g. proteins).
-                                    Available types are tmtpro, tmt10plex, tmt6plex, itraq8plex, itraq4plex
+                                    Available types are tmt18plex, tmt16plex, tmtpro (=16plex), tmt10plex,
+                                    tmt6plex, itraq8plex, itraq4plex
                                     E.g. --isobaric 'set1:tmt10plex:126:127N set2:tmtpro:127C:131 set3:tmt10plex:sweep set4:itraq8plex:intensity'
       --psmconflvl                  Cutoff for PSM FDR on PSM table, default is 0.01
       --pepconflvl                  Cutoff for peptide FDR on PSM table, default is 0.01
@@ -927,7 +928,8 @@ process msgfPlus {
   
   script:
   isobtype = setisobaric && setisobaric[setname] ? setisobaric[setname] : false
-  // protcol 0 is automatic, msgf checks in mod file, TMT should be run with 1
+  isobtype_parsed = ['tmt16plex', 'tmt18plex'].any { it == isobtype } ? 'tmtpro' : isobtype
+  // protcol 0 is automatic, msgf checks in mod file, TMT/phospho should be run with 1
   // see at https://github.com/MSGFPlus/msgfplus/issues/19
   msgfprotocol = params.phospho ? setisobaric[setname][0..4] == 'itraq' ? 3 : 1 : 0
   msgfinstrument = [lowres:0, velos:1, qe:3, qehf: 3, false:0, qehfx:1, lumos:1, timstof:2][instrument]
@@ -945,7 +947,7 @@ process msgfPlus {
   """
   ${scriptinfile != parsed_infile ? "mv '${scriptinfile}' '${parsed_infile}'" : ''}
 
-  create_modfile.py ${params.maxvarmods} "${params.msgfmods}" "${params.mods}${isobtype ? ";${isobtype}" : ''}${params.ptms ? ";${params.ptms}" : ''}${params.locptms ? ";${params.locptms}" : ''}"
+  create_modfile.py ${params.maxvarmods} "${params.msgfmods}" "${params.mods}${isobtype ? ";${isobtype_parsed}" : ''}${params.ptms ? ";${params.ptms}" : ''}${params.locptms ? ";${params.locptms}" : ''}"
   
   msgf_plus -Xmx${task.memory.toMega()}M -d $db -s "$parsed_infile" -o "${sample}.mzid" -thread ${task.cpus * params.threadspercore} -mod "mods.txt" -tda 0 -maxMissedCleavages $params.maxmiscleav -t ${params.prectol}  -ti ${params.iso_err} -m ${fragmeth} -inst ${msgfinstrument} -e ${enzyme} -protocol ${msgfprotocol} -ntt ${ntt} -minLength ${params.minpeplen} -maxLength ${params.maxpeplen} -minCharge ${params.mincharge} -maxCharge ${params.maxcharge} -n 1 -addFeatures 1
   msgf_plus -Xmx3500M edu.ucsd.msjava.ui.MzIDToTsv -i "${sample}.mzid" -o out.tsv
