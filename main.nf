@@ -1646,7 +1646,7 @@ process featQC {
 
   # Create overlap table
   qcols=\$(head -n1 feats |tr '\\t' '\\n'|grep -n "_q-value"| tee nrsets | cut -f 1 -d ':' |tr '\\n' ',' | sed 's/\\,\$//')
-  protcol=\$(head -n1 feats | tr '\\t' '\\n' | grep -n Protein | cut -f1 -d ':')
+  protcol=\$(head -n1 feats | tr '\\t' '\\n' | grep -n Protein | grep -v start | cut -f1 -d ':')
   ${acctype == 'peptides' ? 'cut -f1,"\$qcols","\$protcol" feats | grep -v ";" > tmpqvals' : 'cut -f1,"\$qcols" feats > qvals'}
   ${acctype == 'peptides' ? 'nonprotcol=\$(head -n1 tmpqvals | tr "\\t" "\\n" |grep -vn Protein | cut -f1 -d":" | tr "\\n" "," | sed "s/\\,\$//") && cut -f"\$nonprotcol" tmpqvals > qvals' : ''}
   nrsets=\$(wc -l nrsets | sed 's/\\ .*//')
