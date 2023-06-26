@@ -130,6 +130,7 @@ def helpMessage() {
     """.stripIndent()
 }
 
+nextflow.enable.dsl = 1
 /*
  * SET UP CONFIGURATION VARIABLES
  */
@@ -147,6 +148,7 @@ params.plaintext_email = false
 
 params.mzmls = false
 params.mzmldef = false
+params.tdb = false
 params.mods = false
 params.locptms = false
 params.ptms = false
@@ -548,7 +550,7 @@ process centroidMS1 {
 
 
 process quantifyMS1 {
-  when: !params.quantlookup && !params.noquant
+  when: !params.quantlookup && !params.noquant && !params.noms1quant
 
   input:
   set val(setname), val(sample), file(infile), val(instr), val(platename), val(fraction) from ms1quant
@@ -563,9 +565,9 @@ process quantifyMS1 {
   """
   ${stripped_fn ? "mv '${scriptinfile}' '${parsed_infile}'" : ''}
   # Dinosaur is first choice for MS1 quant
-  ${!params.noms1quant && !params.hardklor ? "dinosaur --concurrency=${task.cpus * params.threadspercore} \"${parsed_infile}\"" : ''}
+  ${!params.hardklor ? "dinosaur --concurrency=${task.cpus * params.threadspercore} \"${parsed_infile}\"" : ''}
   # Hardklor/Kronik can be used as a backup, using --hardklor
-  ${!params.noms1quant && params.hardklor ? "hardklor <(cat $hkconf <(echo \"$parsed_infile\" hardklor.out)) && kronik -c 5 -d 3 -g 1 -m 8000 -n 600 -p 10 hardklor.out ${sample}.kr" : ''}
+  ${params.hardklor ? "hardklor <(cat $hkconf <(echo \"$parsed_infile\" hardklor.out)) && kronik -c 5 -d 3 -g 1 -m 8000 -n 600 -p 10 hardklor.out ${sample}.kr" : ''}
   """
 }
 
@@ -949,7 +951,7 @@ process msgfPlus {
   // Replace those characters anyway since they cause trouble in percolator XML output downstream
   parsed_infile = scriptinfile.replaceAll('[&<>\'"]', '_')
   """
-  ${scriptinfile != parsed_infile ? "mv '${scriptinfile}' '${parsed_infile}'" : ''}
+  ${scriptinfile != parsed_infile ? "ln -s '${scriptinfile}' '${parsed_infile}'" : ''}
 
   create_modfile.py ${params.maxvarmods} "${params.msgfmods}" "${params.mods}${isobtype ? ";${isobtype_parsed}" : ''}${params.ptms ? ";${params.ptms}" : ''}${params.locptms ? ";${params.locptms}" : ''}"
   
@@ -1331,7 +1333,6 @@ process mergePTMPeps {
 
   input:
   tuple val(setnames), file(peptides), file(notp_adjust_peps), file('ptmlup.sql'), file('ptmpsms.txt') from ptmpeps2merge
-  val oldmzml_sets
 
   output:
   path peptable
