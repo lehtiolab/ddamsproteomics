@@ -50,7 +50,7 @@ def helpMessage() {
                                     median-summarized to the output features (e.g. proteins).
                                     Available types are tmt18plex, tmt16plex, tmtpro (=16plex), tmt10plex,
                                     tmt6plex, itraq8plex, itraq4plex
-                                    E.g. --isobaric 'set1:tmt10plex:126:127N set2:tmtpro:127C:131 set3:tmt10plex:sweep set4:itraq8plex:intensity'
+                                    E.g. --isobaric 'set1:tmt10plex:126:127N set2:tmt16plex:127C:131 set3:tmt10plex:sweep set4:itraq8plex:intensity'
       --psmconflvl                  Cutoff for PSM FDR on PSM table, default is 0.01
       --pepconflvl                  Cutoff for peptide FDR on PSM table, default is 0.01
       --proteinconflvl              Cutoff for protein/gene FDR in respective output tables, default is 0.01
@@ -250,7 +250,7 @@ availProcessors = Runtime.runtime.availableProcessors()
 
 // parse inputs that combine to form values or are otherwise more complex.
 
-// Isobaric input example: --isobaric 'set1:tmt10plex:127N:128N set2:tmtpro:sweep set3:itraq8plex:intensity'
+// Isobaric input example: --isobaric 'set1:tmt10plex:127N:128N set2:tmt16plex:sweep set3:itraq8plex:intensity'
 isop = params.isobaric ? params.isobaric.tokenize(' ') : false
 setisobaric = isop ? isop.collect() {
   y -> y.tokenize(':')
@@ -425,7 +425,7 @@ process get_software_versions {
     echo Version: 2020_04_03 > v_luci.txt # deprecate when binary is correct
     percolator -h |& head -n1 > v_perco.txt || true
     msstitch --version > v_mss.txt
-    IsobaricAnalyzer |& grep Version > v_openms.txt || true
+    echo 2.9.1 > v_openms.txt
     Rscript <(echo "packageVersion('DEqMS')") > v_deqms.txt
     scrape_software_versions.py > software_versions.yaml
     """
@@ -571,6 +571,10 @@ process quantifyMS1 {
 
 
 process isoquantSpectra {
+  container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
+    'https://depot.galaxyproject.org/singularity/openms:2.9.1--h135471a_1' :
+    'quay.io/biocontainers/openms:2.9.1--h135471a_1'}"
+
   when: !params.quantlookup && !params.noquant
 
   input:
@@ -581,7 +585,7 @@ process isoquantSpectra {
 
   script:
   outfile = "${infile.baseName}.consensusXML"
-  activationtype = [hcd:'High-energy collision-induced dissociation', cid:'Collision-induced dissociation', etd:'Electron transfer dissociation'][params.activation]
+  activationtype = [hcd:'beam-type collision-induced dissociation', cid:'Collision-induced dissociation', etd:'Electron transfer dissociation'][params.activation]
   isobtype = setisobaric && setisobaric[setname] ? setisobaric[setname] : false
   isobtype = isobtype == 'tmtpro' ? 'tmt16plex' : isobtype
   plextype = isobtype ? isobtype.replaceFirst(/[0-9]+plex/, "") : 'false'

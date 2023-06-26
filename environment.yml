@@ -9,7 +9,6 @@ dependencies:
   - bioconda::hardklor=2.3.2
   - bioconda::kronik=2.20
   - bioconda::dinosaur=1.2.0
-  - bioconda::openms=2.5.0
   - bioconda::msstitch=3.11
   - conda-forge::biopython=1.72
   - bioconda::percolator=3.4
