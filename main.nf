@@ -420,7 +420,7 @@ process get_software_versions {
     msgf_plus | head -n2 | grep Release > v_msgf.txt
     ${!params.noms1quant && !params.hardklor ? 'dinosaur | head -n2 | grep Dinosaur > v_dino.txt || true' : ''}
     ${!params.noms1quant && params.hardklor ? 'hardklor | head -n1 > v_hk.txt || true' : ''}
-    kronik | head -n2 | tr -cd '[:alnum:]._-' > v_kr.txt
+    kronik | head -n2 | tr -cd '[:digit:],\.' > v_kr.txt || true
     #luciphor2 |& grep Version > v_luci.txt # incorrect version from binary (2014), echo below
     echo Version: 2020_04_03 > v_luci.txt # deprecate when binary is correct
     percolator -h |& head -n1 > v_perco.txt || true
