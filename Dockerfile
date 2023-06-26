@@ -5,4 +5,7 @@ RUN apt update && apt install -y fontconfig && apt clean -y
 
 COPY environment.yml /
 RUN conda env create -f /environment.yml && conda clean -a
-ENV PATH /opt/conda/envs/ddamsproteomics-2.11/bin:$PATH
+ENV PATH /opt/conda/envs/ddamsproteomics-2.12/bin:$PATH
+
+#COPY opt/msstitch /msstitch
+#RUN cd /msstitch && pip install -e .

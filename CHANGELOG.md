@@ -1,4 +1,13 @@
 # lehtiolab/ddamsproteomics: Changelog
+## Version 2.12 [2023-06-27]
+- Add support for TMT18 (OpenMS pre-release)
+- Adapt to newer nextflow, overwrite trace files in lehtio conf
+- Add support for isobaric precursor purity in TIMS, by using newer pwiz for centroiding
+- QC plot and table fixes
+- Fix throw out decoys that are un-shufflable (10x always target)
+- Doc update for PTM analysis
+
+
 ## Version 2.11 [2022-09-16]
 - Bugfix in MS1 quant where too large retention time tolerance was used
 - MS1 quant RT/mz tolerances parametrized
