@@ -416,12 +416,13 @@ process get_software_versions {
     file 'software_versions.yaml' into software_versions_qc
 
     script:
+    noms1 = params.noms1quant || params.noquant
     """
     echo $workflow.manifest.version > v_pipeline.txt
     echo $workflow.nextflow.version > v_nextflow.txt
     msgf_plus | head -n2 | grep Release > v_msgf.txt
-    ${!params.noms1quant && !params.hardklor ? 'dinosaur | head -n2 | grep Dinosaur > v_dino.txt || true' : ''}
-    ${!params.noms1quant && params.hardklor ? 'hardklor | head -n1 > v_hk.txt || true' : ''}
+    ${!noms1 && !params.hardklor ? 'dinosaur | head -n2 | grep Dinosaur > v_dino.txt || true' : ''}
+    ${!noms1 && params.hardklor ? 'hardklor | head -n1 > v_hk.txt || true' : ''}
     kronik | head -n2 | tr -cd '[:digit:],\\.' > v_kr.txt || true
     #luciphor2 |& grep Version > v_luci.txt # incorrect version from binary (2014), echo below
     echo Version: 2020_04_03 > v_luci.txt # deprecate when binary is correct
