@@ -1347,7 +1347,7 @@ process mergePTMPeps {
   """
   cat ptmlup.sql > pepptmlup.sql
   # Create first table, input for which is either adjusted or not
-  msstitch merge -i ${peptides.collect() { "'$it'" }.join(' ')} --setnames ${setnames.collect() { "'$it'" }.join(' ')} --dbfile pepptmlup.sql -o mergedtable --no-group-annotation \
+  msstitch merge -i ${peptides.collect() { "$it" }.join(' ')} --setnames ${setnames.collect() { "'$it'" }.join(' ')} --dbfile pepptmlup.sql -o mergedtable --no-group-annotation \
     --fdrcolpattern '^q-value' --pepcolpattern 'peptide PEP' --flrcolpattern 'FLR' \
     ${!params.noquant && !params.noms1quant ? "--ms1quantcolpattern area" : ''} \
     ${!params.noquant && setisobaric ? "--isobquantcolpattern plex" : ''}
