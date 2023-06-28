@@ -54,8 +54,8 @@ def helpMessage() {
       --psmconflvl                  Cutoff for PSM FDR on PSM table, default is 0.01
       --pepconflvl                  Cutoff for peptide FDR on PSM table, default is 0.01
       --proteinconflvl              Cutoff for protein/gene FDR in respective output tables, default is 0.01
-      --activation VALUE            Specify activation protocol for isobaric quantitation (NOT for identification):
-                                    choose from auto (DEFAULT), hcd, cid, etd 
+      --activation VALUE            Specify activation protocol for isobaric quantitation filtering (NOT for identification):
+                                    choose from auto (DEFAULT), hcd, cid, etd, any
       --fastadelim VALUE            FASTA header delimiter in case non-standard FASTA is used, to be used with
                                     --genefield
       --genefield VALUE             Number to determine in which field of the FASTA header (split 
@@ -588,7 +588,7 @@ process isoquantSpectra {
 
   script:
   outfile = "${infile.baseName}.consensusXML"
-  activationtype = [auto: 'auto', hcd:'beam-type collision-induced dissociation', cid:'Collision-induced dissociation', etd:'Electron transfer dissociation'][params.activation]
+  activationtype = [auto: 'auto', any: 'any', hcd:'beam-type collision-induced dissociation', cid:'Collision-induced dissociation', etd:'Electron transfer dissociation'][params.activation]
   isobtype = setisobaric && setisobaric[setname] ? setisobaric[setname] : false
   isobtype = isobtype == 'tmtpro' ? 'tmt16plex' : isobtype
   plextype = isobtype ? isobtype.replaceFirst(/[0-9]+plex/, "") : 'false'
