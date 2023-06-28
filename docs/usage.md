@@ -123,6 +123,7 @@ Fractionation is automatically detected from this file, and enforced if ANY of t
 * 'qehfx'
 * 'timstof'
 * 'lowres'
+  
 Examples of instruments can be found in [this MSGF+ parameter file](https://github.com/MSGFPlus/msgfplus/blob/master/docs/ParameterFiles/MSGFPlus_Tryp_NoMods_20ppmParTol.txt).
 
 ### Input sequences: `--tdb`
