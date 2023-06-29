@@ -1,16 +1,14 @@
-name: ddamsproteomics-2.11
+name: ddamsproteomics-2.12
 channels:
   - bioconda
   - conda-forge
   - defaults
 dependencies:
   - bioconda::msgf_plus=2020.03.14
-  - bioconda::proteowizard=3_0_9992=h2d50403_2
   - bioconda::hardklor=2.3.2
   - bioconda::kronik=2.20
   - bioconda::dinosaur=1.2.0
-  - bioconda::openms=2.5.0
-  - bioconda::msstitch=3.11
+  - bioconda::msstitch=3.13
   - conda-forge::biopython=1.72
   - bioconda::percolator=3.4
   - bioconda::luciphor2=2020_04_03

@@ -48,13 +48,14 @@ def helpMessage() {
       --isobaric VALUE              In case of isobaric, specify per set the type and possible denominators/sweep/intensity.
                                     In case of intensity, no ratios will be output but instead the raw PSM intensities will be
                                     median-summarized to the output features (e.g. proteins).
-                                    Available types are tmtpro, tmt10plex, tmt6plex, itraq8plex, itraq4plex
-                                    E.g. --isobaric 'set1:tmt10plex:126:127N set2:tmtpro:127C:131 set3:tmt10plex:sweep set4:itraq8plex:intensity'
+                                    Available types are tmt18plex, tmt16plex, tmtpro (=16plex), tmt10plex,
+                                    tmt6plex, itraq8plex, itraq4plex
+                                    E.g. --isobaric 'set1:tmt10plex:126:127N set2:tmt16plex:127C:131 set3:tmt10plex:sweep set4:itraq8plex:intensity'
       --psmconflvl                  Cutoff for PSM FDR on PSM table, default is 0.01
       --pepconflvl                  Cutoff for peptide FDR on PSM table, default is 0.01
       --proteinconflvl              Cutoff for protein/gene FDR in respective output tables, default is 0.01
-      --activation VALUE            Specify activation protocol for isobaric quantitation (NOT for identification):
-                                    choose from hcd (DEFAULT), cid, etd 
+      --activation VALUE            Specify activation protocol for isobaric quantitation filtering (NOT for identification):
+                                    choose from auto (DEFAULT), hcd, cid, etd, any
       --fastadelim VALUE            FASTA header delimiter in case non-standard FASTA is used, to be used with
                                     --genefield
       --genefield VALUE             Number to determine in which field of the FASTA header (split 
@@ -129,6 +130,7 @@ def helpMessage() {
     """.stripIndent()
 }
 
+nextflow.enable.dsl = 1
 /*
  * SET UP CONFIGURATION VARIABLES
  */
@@ -146,6 +148,7 @@ params.plaintext_email = false
 
 params.mzmls = false
 params.mzmldef = false
+params.tdb = false
 params.mods = false
 params.locptms = false
 params.ptms = false
@@ -170,7 +173,7 @@ params.maxcharge = 6
 params.psmconflvl = 0.01
 params.pepconflvl = 0.01
 params.proteinconflvl = 0.01
-params.activation = 'hcd' // Only for isobaric quantification
+params.activation = 'auto' // Only for isobaric quantification
 params.outdir = 'results'
 params.normalize = false
 params.minprecursorpurity = 0
@@ -249,7 +252,7 @@ availProcessors = Runtime.runtime.availableProcessors()
 
 // parse inputs that combine to form values or are otherwise more complex.
 
-// Isobaric input example: --isobaric 'set1:tmt10plex:127N:128N set2:tmtpro:sweep set3:itraq8plex:intensity'
+// Isobaric input example: --isobaric 'set1:tmt10plex:127N:128N set2:tmt16plex:sweep set3:itraq8plex:intensity'
 isop = params.isobaric ? params.isobaric.tokenize(' ') : false
 setisobaric = isop ? isop.collect() {
   y -> y.tokenize(':')
@@ -413,18 +416,19 @@ process get_software_versions {
     file 'software_versions.yaml' into software_versions_qc
 
     script:
+    noms1 = params.noms1quant || params.noquant
     """
     echo $workflow.manifest.version > v_pipeline.txt
     echo $workflow.nextflow.version > v_nextflow.txt
     msgf_plus | head -n2 | grep Release > v_msgf.txt
-    ${!params.noms1quant && !params.hardklor ? 'dinosaur | head -n2 | grep Dinosaur > v_dino.txt || true' : ''}
-    ${!params.noms1quant && params.hardklor ? 'hardklor | head -n1 > v_hk.txt || true' : ''}
-    kronik | head -n2 | tr -cd '[:alnum:]._-' > v_kr.txt
+    ${!noms1 && !params.hardklor ? 'dinosaur | head -n2 | grep Dinosaur > v_dino.txt || true' : ''}
+    ${!noms1 && params.hardklor ? 'hardklor | head -n1 > v_hk.txt || true' : ''}
+    kronik | head -n2 | tr -cd '[:digit:],\\.' > v_kr.txt || true
     #luciphor2 |& grep Version > v_luci.txt # incorrect version from binary (2014), echo below
     echo Version: 2020_04_03 > v_luci.txt # deprecate when binary is correct
     percolator -h |& head -n1 > v_perco.txt || true
     msstitch --version > v_mss.txt
-    IsobaricAnalyzer |& grep Version > v_openms.txt || true
+    echo 2.9.1 > v_openms.txt
     Rscript <(echo "packageVersion('DEqMS')") > v_deqms.txt
     scrape_software_versions.py > software_versions.yaml
     """
@@ -482,7 +486,7 @@ process createTargetDecoyFasta {
   """
   ${tdb.size() > 1 ? "cat ${tdb.collect() { "\"${it}\"" }.join(' ')} > tdb" : "mv '$tdb' tdb"}
   check_fasta.py tdb
-  msstitch makedecoy -i tdb -o decoy.fa --scramble tryp_rev --ignore-target-hits
+  msstitch makedecoy -i tdb -o decoy.fa --scramble tryp_rev
   cat tdb decoy.fa > db.fa
   """
 }
@@ -508,7 +512,7 @@ def plate_or_no(it, length) {
 mzml_in
   .tap { mzmlfiles_counter; mzmlfiles_qlup_sets } // for counting-> timelimits; getting sets from supplied lookup
   .map { it -> [it[2].replaceAll('[ ]+$', '').replaceAll('^[ ]+', ''), file(it[0]).baseName.replaceAll('[&<>\'"]', '_'), file(it[0]), it[1], plate_or_no(it, 3), fr_or_file(it, 4)] }
-  .tap { mzmlfiles; mzml_luciphor; mzml_quant }
+  .tap { mzmlfiles; mzml_luciphor; pre_isoquant; ms1quant; sample_mzmlfn}
   .combine(concatdb)
   .set { mzml_msgf }
 
@@ -516,41 +520,82 @@ mzml_in
 * Step 1: Extract quant data from peptide spectra
 */
 
-process quantifySpectra {
-  when: !params.quantlookup && !params.noquant
+def stripchars_infile(x) {
+  // The string in "scriptinfile" does not have NF escaping characters like & (e.g. in FAIMS 35&65),
+  // which NF does to "infile". That would work fine but not if the files are quoted in the 
+  // script, then they cant be found when there is \&.
+  // Replace those characters anyway since they cause trouble in percolator XML output downstream
+  def scriptinfile = "${x.baseName}.${x.extension}"
+  def parsed_file = scriptinfile.replaceAll('[&<>\'"]', '_')
+  return [parsed_file != scriptinfile, scriptinfile, parsed_file]
+}
+
+process centroidMS1 {
+  container 'chambm/pwiz-skyline-i-agree-to-the-vendor-licenses:3.0.20066-729ef9c41'
+  when: !params.quantlookup && !params.noquant && setisobaric && setisobaric[setname]
 
   input:
-  set val(setname), val(sample), file(infile), val(instr), val(platename), val(fraction) from mzml_quant
+  set val(setname), val(sample), file(infile), val(instr), val(platename), val(fraction) from pre_isoquant
+
+  output:
+  set val(setname), val(sample), file(parsed_infile), val(instr), val(platename), val(fraction) into isoquant
+
+  script:
+  (stripped_fn, scriptinfile, parsed_infile) = stripchars_infile(infile)
+  """
+  ${stripped_fn ? "ln -s '${scriptinfile}' '${parsed_infile}'" : ''}
+  wine msconvert ${parsed_infile} --outfile centroidms1.mzML --filter 'peakPicking true 1' ${instr == 'timstof' ? "--filter sortByScanTime" : ''}
+  mv centroidms1.mzML '${parsed_infile}'
+  """
+}
+
+
+process quantifyMS1 {
+  when: !params.quantlookup && !params.noquant && !params.noms1quant
+
+  input:
+  set val(setname), val(sample), file(infile), val(instr), val(platename), val(fraction) from ms1quant
   file(hkconf) from Channel.fromPath("$baseDir/assets/hardklor.conf").first()
 
   output:
-  set val(sample), val(parsed_infile) into sample_mzmlfn
   set val(sample), file("${sample}.features.tsv") optional true into dino_out 
   set val(sample), file("${sample}.kr") optional true into kronik_out 
-  set val(sample), file("${parsed_infile}.consensusXML") optional true into isobaricxml
 
   script:
-  activationtype = [hcd:'High-energy collision-induced dissociation', cid:'Collision-induced dissociation', etd:'Electron transfer dissociation'][params.activation]
+  (stripped_fn, scriptinfile, parsed_infile) = stripchars_infile(infile)
+  """
+  ${stripped_fn ? "mv '${scriptinfile}' '${parsed_infile}'" : ''}
+  # Dinosaur is first choice for MS1 quant
+  ${!params.hardklor ? "dinosaur --concurrency=${task.cpus * params.threadspercore} \"${parsed_infile}\"" : ''}
+  # Hardklor/Kronik can be used as a backup, using --hardklor
+  ${params.hardklor ? "hardklor <(cat $hkconf <(echo \"$parsed_infile\" hardklor.out)) && kronik -c 5 -d 3 -g 1 -m 8000 -n 600 -p 10 hardklor.out ${sample}.kr" : ''}
+  """
+}
+
+
+process isoquantSpectra {
+  container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
+    'https://depot.galaxyproject.org/singularity/openms:2.9.1--h135471a_1' :
+    'quay.io/biocontainers/openms:2.9.1--h135471a_1'}"
+
+  when: !params.quantlookup && !params.noquant
+
+  input:
+  set val(setname), val(sample), file(infile), val(instr), val(platename), val(fraction) from isoquant
+
+  output:
+  set val(sample), file(outfile) into isobaricxml
+
+  script:
+  outfile = "${infile.baseName}.consensusXML"
+  activationtype = [auto: 'auto', any: 'any', hcd:'beam-type collision-induced dissociation', cid:'Collision-induced dissociation', etd:'Electron transfer dissociation'][params.activation]
   isobtype = setisobaric && setisobaric[setname] ? setisobaric[setname] : false
   isobtype = isobtype == 'tmtpro' ? 'tmt16plex' : isobtype
   plextype = isobtype ? isobtype.replaceFirst(/[0-9]+plex/, "") : 'false'
   massshift = [tmt:0.0013, itraq:0.00125, false:0][plextype]
 
-  // the string in "scriptinfile" does not have NF escaping characters like & (e.g. in FAIMS 35&65),
-  // which NF does to "infile". That would work fine but not if the files are quoted in the 
-  // script, then they cant be found when there is \&.
-  scriptinfile = "${infile.baseName}.${infile.extension}"
-  // Replace those characters anyway since they cause trouble in percolator XML output downstream
-  parsed_infile = scriptinfile.replaceAll('[&<>\'"]', '_')
   """
-  ${scriptinfile != parsed_infile ? "mv '${scriptinfile}' '${parsed_infile}'" : ''}
-  # Dinosaur is first choice for MS1 quant
-  ${!params.noms1quant && !params.hardklor ? "dinosaur --concurrency=${task.cpus * params.threadspercore} \"${parsed_infile}\"" : ''}
-  # Hardklor/Kronik can be used as a backup, using --hardklor
-  ${!params.noms1quant && params.hardklor ? "hardklor <(cat $hkconf <(echo \"$parsed_infile\" hardklor.out)) && kronik -c 5 -d 3 -g 1 -m 8000 -n 600 -p 10 hardklor.out ${sample}.kr" : ''}
-  # Use centroided MS1 for IsobaricAnalyzer so it gets proper precursor purity calculation
-  ${isobtype ? "msconvert '$parsed_infile' --outfile centroidms1.mzML --filter 'peakPicking true 1'" : ''}
-  ${isobtype ? "IsobaricAnalyzer -type $isobtype -in centroidms1.mzML -out \"${parsed_infile}.consensusXML\" -extraction:select_activation \"$activationtype\" -extraction:reporter_mass_shift $massshift -extraction:min_precursor_intensity 1.0 -extraction:keep_unannotated_precursor true -quantification:isotope_correction true && rm centroidms1.mzML" : ''}
+  ${isobtype ? "IsobaricAnalyzer -type $isobtype -in \"${infile}\" -out \"${infile.baseName}.consensusXML\" -extraction:select_activation \"$activationtype\" -extraction:reporter_mass_shift $massshift -extraction:min_precursor_intensity 1.0 -extraction:keep_unannotated_precursor true -quantification:isotope_correction true" : ''}
   """
 }
 
@@ -648,10 +693,8 @@ process createNewSpectraLookup {
   output:
   set path('target_db.sqlite'), path('decoy_db.sqlite') into newspeclookup 
   path 'target_db.sqlite' into ptm_lookup_new
-  val(uni_setnames) into allsetnames
 
   script:
-  uni_setnames = setnames.unique(false)
   """
   ${mzmlfiles.collect() { it.toString() != it.toString().replaceAll('[&<>\'"]', '_') ? "mv '${it}' '${it.toString().replaceAll('[&<>\'"]', '_')}'" : ''}.findAll { it != ''}.join(' && ')}
 
@@ -670,18 +713,21 @@ if (complementary_run) {
     .flatMap { it -> [['target', it[0]], ['decoy', it[1]]] }
     .set { td_oldpsms }
 } else {
+  mzmlfiles_qlup_sets
+    .map { it -> it[2] } 
+    .unique()
+    .toList()
+    .set { allsetnames }
+
   // if not using this youll have a combine on an open channel without
   // anything from complement cleaner. Will not run createPTMLookup then
   cleaned_ptmpsms = Channel.value('NA')
 }
 
 // Collect all MS1 dinosaur/kronik output for quant lookup building process
-dino_out
-  .concat(kronik_out)
-  .set { ms1_out }
-
 sample_mzmlfn
-  .join(ms1_out, remainder: true)
+  .map { [ it[1], stripchars_infile(it[2])[2] ] } // extract samplename, mzML
+  .join(dino_out.concat(kronik_out), remainder: true)
   .join(isobaricxml, remainder: true)
   .toList()
   .map { it.sort({a, b -> a[0] <=> b[0]}) }
@@ -715,12 +761,6 @@ if (params.noquant && !params.quantlookup) {
     .filter { it[1] == 'target' }
     .map { it -> it[0] }
     .into { ptm_lookup_in; countlookup }
-  mzmlfiles_qlup_sets
-    .map { it -> it[2] } 
-    .unique()
-    .toList()
-    .set { allsetnames }
-
 } else if (is_rerun) {
   // In case of rerun with same sets, no new search but only some different post-identification
   // output options
@@ -728,16 +768,8 @@ if (params.noquant && !params.quantlookup) {
   prespectoquant  // contains  t, d lookups
     .flatMap { it -> [[it[0], 'target'], [it[1], 'decoy']] }
     .set{ specquant_lookups }
-  Channel.of(['NA', 'target']).set { rerun_tmzidtsv_perco }
-  Channel.of(['NA', 'decoy']).set { rerun_dmzidtsv_perco }
-  
 } else {
   prespectoquant.set { spectoquant }
-}
-
-if (!is_rerun) {
-  Channel.empty().set { rerun_tmzidtsv_perco }
-  Channel.empty().set { rerun_dmzidtsv_perco }
 }
 
 if (!params.quantlookup) {
@@ -903,7 +935,8 @@ process msgfPlus {
   
   script:
   isobtype = setisobaric && setisobaric[setname] ? setisobaric[setname] : false
-  // protcol 0 is automatic, msgf checks in mod file, TMT should be run with 1
+  isobtype_parsed = ['tmt16plex', 'tmt18plex'].any { it == isobtype } ? 'tmtpro' : isobtype
+  // protcol 0 is automatic, msgf checks in mod file, TMT/phospho should be run with 1
   // see at https://github.com/MSGFPlus/msgfplus/issues/19
   msgfprotocol = params.phospho ? setisobaric[setname][0..4] == 'itraq' ? 3 : 1 : 0
   msgfinstrument = [lowres:0, velos:1, qe:3, qehf: 3, false:0, qehfx:1, lumos:1, timstof:2][instrument]
@@ -919,9 +952,9 @@ process msgfPlus {
   // Replace those characters anyway since they cause trouble in percolator XML output downstream
   parsed_infile = scriptinfile.replaceAll('[&<>\'"]', '_')
   """
-  ${scriptinfile != parsed_infile ? "mv '${scriptinfile}' '${parsed_infile}'" : ''}
+  ${scriptinfile != parsed_infile ? "ln -s '${scriptinfile}' '${parsed_infile}'" : ''}
 
-  create_modfile.py ${params.maxvarmods} "${params.msgfmods}" "${params.mods}${isobtype ? ";${isobtype}" : ''}${params.ptms ? ";${params.ptms}" : ''}${params.locptms ? ";${params.locptms}" : ''}"
+  create_modfile.py ${params.maxvarmods} "${params.msgfmods}" "${params.mods}${isobtype ? ";${isobtype_parsed}" : ''}${params.ptms ? ";${params.ptms}" : ''}${params.locptms ? ";${params.locptms}" : ''}"
   
   msgf_plus -Xmx${task.memory.toMega()}M -d $db -s "$parsed_infile" -o "${sample}.mzid" -thread ${task.cpus * params.threadspercore} -mod "mods.txt" -tda 0 -maxMissedCleavages $params.maxmiscleav -t ${params.prectol}  -ti ${params.iso_err} -m ${fragmeth} -inst ${msgfinstrument} -e ${enzyme} -protocol ${msgfprotocol} -ntt ${ntt} -minLength ${params.minpeplen} -maxLength ${params.maxpeplen} -minCharge ${params.mincharge} -maxCharge ${params.maxcharge} -n 1 -addFeatures 1
   msgf_plus -Xmx3500M edu.ucsd.msjava.ui.MzIDToTsv -i "${sample}.mzid" -o out.tsv
@@ -944,8 +977,8 @@ process percolator {
   val(mzmlcount) from mzmlcount_percolator
 
   output:
-  set path('target.tsv'), val('target') into tmzidtsv_perco optional true
-  set path('decoy.tsv'), val('decoy') into dmzidtsv_perco optional true
+  set path("${setname}_target.tsv"), val('target') into tmzidtsv_perco optional true
+  set path("${setname}_decoy.tsv"), val('decoy') into dmzidtsv_perco optional true
   set val(setname), file('allpsms') optional true into unfiltered_psms
   file('warnings') optional true into percowarnings
 
@@ -961,19 +994,21 @@ process percolator {
     "msstitch conffilt -i allpsms -o filtpsm --confcolpattern 'PSM q-value' --confidence-lvl ${params.psmconflvl} --confidence-better lower && \
     msstitch conffilt -i filtpsm -o psms --confcolpattern 'peptide q-value' --confidence-lvl ${params.pepconflvl} --confidence-better lower" : 'mv allpsms psms'}
   msstitch split -i psms --splitcol \$(head -n1 psms | tr '\t' '\n' | grep -n ^TD\$ | cut -f 1 -d':')
-  ${['target', 'decoy'].collect() { "test -f '${it}.tsv' || echo 'No ${it} PSMs found for set ${setname} at PSM FDR ${params.psmconflvl} and peptide FDR ${params.pepconflvl} ${it == 'decoy' ? '(not possible to output protein/gene FDR)' : ''}' >> warnings" }.join(' && ') }
+  ${['target', 'decoy'].collect() { 
+    "test -f '${it}.tsv' && mv '${it}.tsv' '${setname}_${it}.tsv' || echo 'No ${it} PSMs found for set ${setname} at PSM FDR ${params.psmconflvl} and peptide FDR ${params.pepconflvl} ${it == 'decoy' ? '(not possible to output protein/gene FDR)' : ''}' >> warnings" }.join(' && ') }
   """
 }
 
 totalproteomepsms = params.totalproteomepsms ? Channel.fromPath(params.totalproteomepsms) : Channel.from('NA')
 
+dmzidtsv_perco
+  .ifEmpty([file('NO__FILE'), 'decoy'])
+  .set { d_perco_checked }
+
 // Collect percolator data of target/decoy and feed into PSM table creation
 tmzidtsv_perco
-  .concat(dmzidtsv_perco)
-  // Mix in the reruns here if any (in that case there are no percolators run.
-  .concat(rerun_tmzidtsv_perco)
-  .concat(rerun_dmzidtsv_perco)
-  .ifEmpty([false, 'target'])
+  .ifEmpty([file('NO__FILE'), 'target'])
+  .concat(d_perco_checked)
   .groupTuple(by: 1) // group by TD
   .join(specquant_lookups, by: 1) // join on TD
   .combine(psmdbs)
@@ -981,7 +1016,7 @@ tmzidtsv_perco
   .set { psmswithout_oldpsms }
 if (complementary_run) {
   psmswithout_oldpsms
-    .join(td_oldpsms)
+    .join(td_oldpsms, remainder: true)
     .set { prepsm }
 } else {
   psmswithout_oldpsms
@@ -1000,7 +1035,7 @@ process createPSMTable {
   publishDir "${params.outdir}", mode: 'copy', overwrite: true, saveAs: {["target_psmlookup.sql", "decoy_psmlookup.sql", "target_psmtable.txt", "decoy_psmtable.txt"].contains(it) ? it : null}
 
   input:
-  set val(td), file('psms?'), path('lookup'), path(tdb), path(ddb), file('tppsms.txt'), file(cleaned_oldpsms) from prepsm
+  set val(td), path(psms), path('lookup'), path(tdb), path(ddb), file('tppsms.txt'), file(cleaned_oldpsms) from prepsm
   file(trainingpep) from hiriefpep
   val(mzmlcount) from mzmlcount_psm  // For time limits
   val(setnames) from setnames_psms
@@ -1014,15 +1049,16 @@ process createPSMTable {
   script:
   psmlookup = "${td}_psmlookup.sql"
   outpsms = "${td}_psmtable.txt"
+  new_psms = !is_rerun && (psms.size() > 1 || psms[0].name != 'NO__FILE')
 
   quant = !params.noquant && td == 'target'
   """
-  msstitch concat -i psms* -o psms.txt
-  ${!is_rerun && td == 'target' ? "tail -n+2 psms.txt | grep . >/dev/null || (>&2 echo 'No target PSMs made the combined PSM / peptide FDR cutoff (${params.psmconflvl} / ${params.pepconflvl})' && exit 1)" : ''}
+  ${new_psms ? "msstitch concat -i ${psms.collect() {"$it"}.join(' ')} -o psms.txt" : ''}
+  ${new_psms && td == 'target' ? "tail -n+2 psms.txt | grep . >/dev/null || (>&2 echo 'No target PSMs made the combined PSM / peptide FDR cutoff (${params.psmconflvl} / ${params.pepconflvl})' && exit 1)" : ''}
   # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
   cat lookup > $psmlookup
-  sed '0,/\\#SpecFile/s//SpectraFile/' -i psms.txt
-  ${is_rerun ? "mv ${cleaned_oldpsms} psmsrefined" : "msstitch psmtable -i psms.txt --dbfile $psmlookup --addmiscleav -o psmsrefined --spectracol 1 \
+  ${new_psms ? "sed '0,/\\#SpecFile/s//SpectraFile/' -i psms.txt": ''}
+  ${is_rerun || !new_psms ? "mv ${cleaned_oldpsms} psmsrefined" : "msstitch psmtable -i psms.txt --dbfile $psmlookup --addmiscleav -o psmsrefined --spectracol 1 \
     ${params.onlypeptides ? '' : "--fasta \"${td == 'target' ? "${tdb}" : "${ddb}"}\" --genes"} \
     ${quant ? "${!params.noms1quant ? '--ms1quant' : ''} ${params.isobaric ? "--isobaric --min-precursor-purity ${params.minprecursorpurity}" : ''}" : ''} \
     ${!params.onlypeptides ? '--proteingroup' : ''} \
@@ -1298,7 +1334,6 @@ process mergePTMPeps {
 
   input:
   tuple val(setnames), file(peptides), file(notp_adjust_peps), file('ptmlup.sql'), file('ptmpsms.txt') from ptmpeps2merge
-  val oldmzml_sets
 
   output:
   path peptable
@@ -1312,7 +1347,7 @@ process mergePTMPeps {
   """
   cat ptmlup.sql > pepptmlup.sql
   # Create first table, input for which is either adjusted or not
-  msstitch merge -i ${peptides.collect() { "$it" }.join(' ')} --setnames ${setnames.sort().collect() { "'$it'" }.join(' ')} --dbfile pepptmlup.sql -o mergedtable --no-group-annotation \
+  msstitch merge -i ${peptides.collect() { "$it" }.join(' ')} --setnames ${setnames.collect() { "'$it'" }.join(' ')} --dbfile pepptmlup.sql -o mergedtable --no-group-annotation \
     --fdrcolpattern '^q-value' --pepcolpattern 'peptide PEP' --flrcolpattern 'FLR' \
     ${!params.noquant && !params.noms1quant ? "--ms1quantcolpattern area" : ''} \
     ${!params.noquant && setisobaric ? "--isobquantcolpattern plex" : ''}
@@ -1323,7 +1358,7 @@ process mergePTMPeps {
     join -j1 -o auto -t '\t' <(paste geneprots <(cut -f3 geneprots | tr -dc ';\\n'| awk '{print length+1}')) <(tail -n+2 mergedtable | sort -k1b,1) >> ${peptable}""" : "mv mergedtable ${peptable}"}
 
   # If total-proteome quant adjustment input was used above, create a second merged NON-adjusted peptide tables
-  ${params.totalproteomepsms ?  "msstitch merge -i ${notp_adjust_peps.collect() { "$it" }.join(' ')} --setnames ${setnames.sort().collect() { "'$it'" }.join(' ')} \
+  ${params.totalproteomepsms ?  "msstitch merge -i ${notp_adjust_peps.collect() { "$it" }.join(' ')} --setnames ${setnames.collect() { "'$it'" }.join(' ')} \
     --dbfile pepptmlup.sql -o mergedtable --no-group-annotation \
     --fdrcolpattern '^q-value' --pepcolpattern 'peptide PEP' --flrcolpattern 'FLR' \
     ${!params.noquant && !params.noms1quant ? "--ms1quantcolpattern area" : ''} \
@@ -1534,22 +1569,23 @@ process psmQC {
   // TODO no proteins == no coverage for pep centric
   script:
   """
-  paste <(echo ${mzmlpaths.collect() { "${it.baseName}.${it.extension}" }.join('\\t')} | tr '\\t' '\\n' ) <(echo ${plicate_sets.join('\\t')} | tr '\\t' '\\n') <( echo ${mzmlplates.join('\\t')} | tr '\\t' '\\n') <(echo ${fractions.join('\\t')} | tr '\\t' '\\n') > mzmlfrs
+  paste <(echo -e "${mzmlpaths.collect() { "${it.baseName}.${it.extension}" }.join('\\n')}") <(echo -e "${plicate_sets.join('\\n')}") <( echo -e "${mzmlplates.join('\\n')}") <(echo -e "${fractions.join('\\n')}") > mzmlfrs
   qc_psms.R ${setnames[0].size()} ${fractionation ? 'TRUE' : 'FALSE'} ${params.oldmzmldef ? oldmzmls_fn: 'nofile'} ${plates.join(' ')}
   # If any sets have zero (i.e. no PSMs, so no output from R), output them here by joining and filling in
-  cat <(head -n1 psmtable_summary.txt) <(join -a1 -e0 -o auto -t \$'\\t' <(echo \$\'${plicate_sets.unique().plus(oldmzml_sets).join("\\t")}' | tr '\\t' '\\n' | sort) <(tail -n+2 psmtable_summary.txt | sort -k1b,1)) > summary.txt
-  sed -Ei 's/[^A-Za-z0-9_\\t]/./' summary.txt
+  cat <(head -n1 psmtable_summary.txt) <(join -a1 -e0 -o auto -t \$'\\t' <(echo -e \'${plicate_sets.plus(oldmzml_sets).unique().join("\\n")}' | sort) <(tail -n+2 psmtable_summary.txt | sort -k1b,1)) > summary.txt
+  sed -Ei 's/[^A-Za-z0-9_\\t]/./g' summary.txt
   echo "<html><body>" > psmqc.html
   for graph in psm-scans missing-tmt miscleav
     do
-    [[ -e \$graph ]] && echo "<div class=\\"chunk\\" id=\\"\${graph}\\"> \$(sed "s/id=\\"/id=\\"\${graph}/g;s/\\#/\\#\${graph}/g" <\$graph) </div>" >> psmqc.html
+    [[ -e \$graph ]] && echo "<div class='chunk' id='\${graph}'>" \$(sed "s/id=\\"/id=\\"\${graph}/g;s/\\#/\\#\${graph}/g" < <(tail -n+2 \$graph)) "</div>" >> psmqc.html
+    [[ -e \$graph ]] || echo "<div class='chunk' id='\${graph}'>None found</div>" >> psmqc.html
     done 
   for graph in retentiontime precerror fwhm fryield msgfscore pif
     do
     for plateid in ${plates.join(' ')}
       do
       plate="PLATE___\${plateid}___\${graph}"
-    [[ -e \$plate ]] && echo "<div class=\\"chunk \$plateid\\" id=\\"\${graph}\\"> \$(sed "s/id=\\"/id=\\"\${plate}/g;s/\\#/\\#\${plate}/g" < \$plate) </div>" >> psmqc.html
+    [[ -e \$plate ]] && echo "<div class='chunk \$plateid' id='\${graph}'>" \$(sed "s/id=\\"/id=\\"\${plate}/g;s/\\#/\\#\${plate}/g" < <(tail -n+2 \$plate)) "</div>" >> psmqc.html
       done 
     done
   echo "</body></html>" >> psmqc.html
@@ -1593,7 +1629,7 @@ process featQC {
   echo "<html><body>" > featqc.html
   for graph in featyield precursorarea ${show_normfactors ? 'normfactors': ''} nrpsms nrpsmsoverlapping percentage_onepsm ms1nrpeps;
     do
-    [ -e \$graph ] && echo "<div class=\\"chunk\\" id=\\"\${graph}\\"> \$(sed "s/id=\\"/id=\\"${acctype}-\${graph}/g;s/\\#/\\#${acctype}-\${graph}/g" <\$graph) </div>" >> featqc.html
+    [ -e \$graph ] && echo "<div class=\\"chunk\\" id=\\"\${graph}\\"> \$(sed "s/id=\\"/id=\\"${acctype}-\${graph}/g;s/\\#/\\#${acctype}-\${graph}/g" < <(tail -n+2 \$graph)) </div>" >> featqc.html
     done 
     # coverage and isobaric plots are png because a lot of points
     [ -e isobaric ] && paste -d \\\\0  <(echo "<div class=\\"chunk\\" id=\\"isobaric\\"><img src=\\"data:image/png;base64,") <(base64 -w 0 isobaric) <(echo '"></div>') >> featqc.html
@@ -1608,7 +1644,7 @@ process featQC {
   ls deqms_volcano_* && echo '</div>' >> featqc.html
   [ -e pca ] && echo '<div class="chunk" id="pca">' >> featqc.html && for graph in pca scree;
     do 
-    echo "<div> \$(sed "s/id=\\"/id=\\"${acctype}-\${graph}/g;s/\\#/\\#${acctype}-\${graph}/g" <\$graph) </div>" >> featqc.html
+    echo "<div> \$(sed "s/id=\\"/id=\\"${acctype}-\${graph}/g;s/\\#/\\#${acctype}-\${graph}/g" < <(tail -n+2 \$graph)) </div>" >> featqc.html
     done
     [ -e pca ] && echo '</div>' >> featqc.html
 
@@ -1616,7 +1652,7 @@ process featQC {
 
   # Create overlap table
   qcols=\$(head -n1 feats |tr '\\t' '\\n'|grep -n "_q-value"| tee nrsets | cut -f 1 -d ':' |tr '\\n' ',' | sed 's/\\,\$//')
-  protcol=\$(head -n1 feats | tr '\\t' '\\n' | grep -n Protein | cut -f1 -d ':')
+  protcol=\$(head -n1 feats | tr '\\t' '\\n' | grep -n Protein | grep -v start | cut -f1 -d ':')
   ${acctype == 'peptides' ? 'cut -f1,"\$qcols","\$protcol" feats | grep -v ";" > tmpqvals' : 'cut -f1,"\$qcols" feats > qvals'}
   ${acctype == 'peptides' ? 'nonprotcol=\$(head -n1 tmpqvals | tr "\\t" "\\n" |grep -vn Protein | cut -f1 -d":" | tr "\\n" "," | sed "s/\\,\$//") && cut -f"\$nonprotcol" tmpqvals > qvals' : ''}
   nrsets=\$(wc -l nrsets | sed 's/\\ .*//')

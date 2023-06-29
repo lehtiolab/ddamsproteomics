@@ -79,6 +79,10 @@ reports the following differing fields
 Note that when `--totalproteomepsms` is passed, the isobaric ratios in this table will be offset to the
 global search gene (default, proteins used if no genes exist) ratios, by subtracting those log2 ratio values. When also `--normalize` is used the medians of the totalproteome proteins (derived from that total proteome PSM table) are used for median-centering the PTM table.
 
+PTM peptide tables can differ from normal peptide tables in a confusing way: when peptides are found in a sample/set, but PTM-peptides are NA in the same sample. This happens when there are
+multiple possible residues on which the PTM can be, and luciphor does not agree on the site with the search engine. The PTM peptide table will then contain NA for the search engine peptide, or the search engine peptide
+will be left out completely if it is not in any set according to luciphor.
+
 
 ## Pipeline and tools 
 The pipeline is built using [Nextflow](https://www.nextflow.io/)
