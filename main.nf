@@ -1110,6 +1110,7 @@ process luciphorPTMLocalizationScoring {
   denom = !params.noquant && setdenoms ? setdenoms[setname] : false
   specialdenom = denom && (denom[0] == 'sweep' || denom[0] == 'intensity')
   isobtype = setisobaric && setisobaric[setname] ? "${setisobaric[setname]}" : ''
+  isobtype_parsed = ['tmt16plex', 'tmt18plex'].any { it == isobtype } ? 'tmtpro' : isobtype
   mods = params.mods ? params.mods.tokenize(';').join(' ') : ''
   stab_ptms = params.ptms ? params.ptms.tokenize(';').join(' ') : ''
   lab_ptms = params.locptms.tokenize(';').join(' ')
@@ -1129,13 +1130,13 @@ process luciphorPTMLocalizationScoring {
   export MS2TOLTYPE=Da
   cat "$baseDir/assets/luciphor2_input_template.txt" | envsubst > lucinput.txt
   luciphor_prep.py --psmfile target.tsv --template lucinput.txt --modfile "${params.msgfmods}" \
-      --labileptms "${params.locptms}" --mods ${mods} ${isobtype} ${stab_ptms} \
+      --labileptms "${params.locptms}" --mods ${mods} ${isobtype_parsed} ${stab_ptms} \
       -o luciphor.out --lucipsms lucipsms
   luciphor2 -Xmx${task.memory.toGiga()}G luciphor_config.txt 2>&1 | grep 'not have enough PSMs' && echo 'Not enough PSMs for luciphor FLR calculation in set ${setname}' > warnings
   luciphor_parse.py --minscore ${params.ptm_minscore_high} -o labileptms.txt \
      --luci_in luciphor.out --luci_scores all_scores.debug --psms psms \
      --modfile "${params.msgfmods}" --labileptms ${lab_ptms} \
-     ${params.ptms ? "--stabileptms ${stab_ptms}": ''} --mods ${mods} ${isobtype} \
+     ${params.ptms ? "--stabileptms ${stab_ptms}": ''} --mods ${mods} ${isobtype_parsed} \
      --fasta "${tdb}"
   """
 }
@@ -1157,11 +1158,12 @@ process stabilePTMPrep {
   mods = params.mods ? params.mods.tokenize(';').join(' ') : ''
   lab_ptms = params.locptms ? params.locptms.tokenize(';').join(' ') : ''
   isobtype = setisobaric && setisobaric[setname] ? setisobaric[setname] : ''
+  isobtype_parsed = ['tmt16plex', 'tmt18plex'].any { it == isobtype } ? 'tmtpro' : isobtype
   """
   nonlabile_ptm_columns.py --psms psms -o stabileptms.txt --modfile "${params.msgfmods}" --fasta "${tdb}" \
       --stabileptms $stab_ptms \
       ${params.locptms ? "--labileptms $lab_ptms" : ""} \
-      ${params.mods ? "--mods ${isobtype} ${mods}" : ''}
+      ${params.mods ? "--mods ${isobtype_parsed} ${mods}" : ''}
   """
 }
 
