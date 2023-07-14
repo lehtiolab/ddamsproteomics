@@ -1,4 +1,8 @@
 # lehtiolab/ddamsproteomics: Changelog
+## Version 2.13 [2023-07-14]
+- Fixed PTMs/TMT18 bug which crashed pipeline
+
+
 ## Version 2.12 [2023-06-27]
 - Add support for TMT18 (OpenMS pre-release)
 - Adapt to newer nextflow, overwrite trace files in lehtio conf
