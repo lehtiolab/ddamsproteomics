@@ -183,6 +183,13 @@ class Mods:
 
 
 class PSM: 
+    '''A PSM class containing mods, scores, FLR, etc
+    Mods are defined as dicts, and apart from other info like aa, type, mass, etc,
+    they contain two keys, site_lucin, site_report which are zero resp. one-based
+    residue indices for luciphor input (zero based) and reporting to PSM tables
+    (one based)
+    '''
+
     def __init__(self):
         self.mods = []
         self.top_flr = False
@@ -191,6 +198,24 @@ class PSM:
         self.alt_ptm_locs = []
         self.sequence = False
         self.seq_in_scorepep_fmt = False
+
+
+    def get_modtype(self, mod, labileptmnames, stableptmnames):
+        if not mod['var']:
+            mtype = 'fixed'
+        elif mod['name_lower'] in labileptmnames:
+            mtype = 'labile'
+        elif mod['name_lower'] in stableptmnames:
+            mtype = 'stable'
+        else:
+            mtype = 'variable'
+        return mtype
+
+    def get_mod_dict(self, residue, sitenum, modptm, labileptmnames, stableptmnames):
+        return {'aa': residue, 'site_lucin': sitenum, 'site_report': sitenum + 1,
+                'type': self.get_modtype(modptm, labileptmnames, stableptmnames),
+                'mass': modptm['mass'], 'name': modptm['name'],
+                'name_lower': modptm['name_lower'], 'adjusted_mass': modptm['adjusted_mass']}
 
     def parse_msgf_peptide(self, msgfseq, msgf_mods, labileptmnames, stableptmnames):
         self.mods = []
@@ -210,25 +235,11 @@ class PSM:
             start = x.end()
             for mass in re.findall('[\+\-][0-9.]+', x.group(2)):
                 mod = msgf_mods[float(mass)][0] # only take first, contains enough info
-                self.mods.append({
-                    'site': (residue, sitenum), 'type': self.get_modtype(mod, labileptmnames, stableptmnames),
-                    'mass': mod['mass'], 'name': mod['name'], 'name_lower': mod['name_lower'],
-                    'adjusted_mass': mod['adjusted_mass']
-                    })
+                self.mods.append(self.get_mod_dict(residue, sitenum, mod, labileptmnames,
+                    stableptmnames))
         self.sequence = f'{barepep}{msgfseq[start:]}'
 
-    def get_modtype(self, mod, labileptmnames, stableptmnames):
-        if not mod['var']:
-            mtype = 'fixed'
-        elif mod['name_lower'] in labileptmnames:
-            mtype = 'labile'
-        elif mod['name_lower'] in stableptmnames:
-            mtype = 'stable'
-        else:
-            mtype = 'variable'
-        return mtype
-
-    def parse_luciphor_peptide(self, luciline, ptms_map, labileptms, stabileptms):
+    def parse_luciphor_peptide(self, luciline, ptms_map, labileptmnames, stableptmnames):
         '''From a luciphor sequence, create a peptide with PTMs
         ptms_map = {f'{residue}int(79 + mass_S/T/Y)': {'name': Phospho, etc}
         '''
@@ -243,13 +254,11 @@ class PSM:
                 barepep += modpep[start:x.start()+1]
             start = x.end()
             ptm = ptms_map[f'{x.group(1)}{int(x.group(2))}']
-            if ptm['name_lower'] in labileptms:
+            if ptm['name_lower'] in labileptmnames:
                 sitenum = len(barepep) - 1 if len(barepep) else -100
                 residue = barepep[-1] if len(barepep) else '['
-                self.mods.append({
-                    'site': (residue, sitenum), 'type': self.get_modtype(ptm, labileptms, stabileptms),
-                    'mass': ptm['mass'], 'name': ptm['name'], 'name_lower': ptm['name_lower'],
-                    })
+                self.mods.append(self.get_mod_dict(residue, sitenum, ptm, labileptmnames,
+                    stableptmnames))
         self.sequence = f'{barepep}{modpep[start:]}'
         self.seq_in_scorepep_fmt = re.sub(r'([A-Z])\[[0-9]+\]', lambda x: x.group(1).lower(), modpep)
 
@@ -273,7 +282,7 @@ class PSM:
         lucimods = []
         for m in self.mods:
             if m['type'] != 'fixed':
-                lucimods.append((m['site'][1], str(m['mass'] + aa_weights_monoiso[m['site'][0]])))
+                lucimods.append((m['site_lucin'], str(m['mass'] + aa_weights_monoiso[m['aa']])))
         return ','.join([f'{x[0]}={x[1]}' for x in lucimods])
 
     def add_ptms_from_psm(self, psmmods):
@@ -288,7 +297,7 @@ class PSM:
         for ptm in self.mods:
             if ptm['type'] not in output_types:
                 continue
-            site = f'{ptm["site"][0]}{ptm["site"][1] + 1}'
+            site = f'{ptm["aa"]}{ptm["site_report"]}'
             try:
                 ptmsites[ptm['name']].append(site)
             except KeyError:
