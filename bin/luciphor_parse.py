@@ -139,9 +139,9 @@ def annotate_protein_and_flanks(psm, ptmpsm, tdb, ptmnames):
                 continue
             protseq = tdb[p].seq
             protptms = []
-            site_protlocs = [ptm['site'][1] + x for x in peplocs]
+            site_protlocs = [ptm['site_report'] + x for x in peplocs]
             protlocs = '/'.join([str(x) for x in site_protlocs])
-            protptms.append(f'{ptm["site"][0]}{protlocs}')
+            protptms.append(f'{ptm["aa"]}{protlocs}')
             flankpos = [(max(x-7, 0) , min(x+8, len(protseq))) for x in site_protlocs]
             flankseqs.update([str(protseq[x[0]:x[1]]) for x in flankpos])
             proteins_loc[p].append('{}:{}'.format(ptm['name'], ','.join(protptms)))
