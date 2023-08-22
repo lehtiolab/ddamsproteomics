@@ -3,10 +3,10 @@ Bootstrap:docker
 
 %labels
     DESCRIPTION Singularity image containing all requirements for the lehtiolab/ddamsproteomics pipeline
-    VERSION 2.13
+    VERSION 2.14
 
 %environment
-    PATH=/opt/conda/envs/ddamsproteomics-2.13/bin:$PATH
+    PATH=/opt/conda/envs/ddamsproteomics-2.14/bin:$PATH
     export PATH
 
 %files

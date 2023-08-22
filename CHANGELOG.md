@@ -1,4 +1,8 @@
 # lehtiolab/ddamsproteomics: Changelog
+## Version 2.14 [2023-08-22]
+- Fixed off-by-one error in PTM site nr reporting on proteins (#17)
+
+
 ## Version 2.13 [2023-07-14]
 - Fixed PTMs/TMT18 bug which crashed pipeline
 
