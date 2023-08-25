@@ -120,7 +120,10 @@ Examples of instruments can be found in [this MSGF+ parameter file](https://gith
 
 ### Input sequences: `--tdb`
 Target database. Decoy databases are created "tryptic-reverse" by the pipeline and searches are against a
-concatenated database (T-TDC). Default behaviour for MSGF+ is to not limit missed cleavage amount, but that can
+concatenated database (T-TDC). Decoy database proteins are thus the same length as target while keeping
+tryptic residues in place. Tryptic peptides are shuffled but not removed if they match a tryptic peptide
+in the target database.
+Default behaviour for MSGF+ is to not limit missed cleavage amount, but that can
 if desired be set by `--maxmiscleav`. For limiting peptide length you may use `--minpeplen` and `--maxpeplen`, while
 allowed charge states can be controlled with `--mincharge`, `--maxcharge`.
 
