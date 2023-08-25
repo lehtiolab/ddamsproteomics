@@ -1,4 +1,8 @@
 # lehtiolab/ddamsproteomics: Changelog
+## Version 2.15 [2023-08-25]
+- Revert to --ignore-target-hits for decoy generation, do not remove decoy tryptic peptides that match target
+
+
 ## Version 2.14 [2023-08-22]
 - Fixed off-by-one error in PTM site nr reporting on proteins (#17)
 
