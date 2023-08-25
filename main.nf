@@ -486,7 +486,7 @@ process createTargetDecoyFasta {
   """
   ${tdb.size() > 1 ? "cat ${tdb.collect() { "\"${it}\"" }.join(' ')} > tdb" : "mv '$tdb' tdb"}
   check_fasta.py tdb
-  msstitch makedecoy -i tdb -o decoy.fa --scramble tryp_rev
+  msstitch makedecoy -i tdb -o decoy.fa --scramble tryp_rev --ignore-target-hits
   cat tdb decoy.fa > db.fa
   """
 }
