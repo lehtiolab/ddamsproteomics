@@ -1122,7 +1122,7 @@ process luciphorPTMLocalizationScoring {
   msstitch split -i "${allpsms}" --splitcol \$(head -n1 "${allpsms}" | tr '\t' '\n' | grep -n ^TD\$ | cut -f 1 -d':')
   export MZML_PATH=\$(pwd)
   export MINPSMS=${params.minpsms_luciphor}
-  export ALGO=${['hcd', 'auto'].any { it == params.activation } ? '1' : '0'}
+  export ALGO=${['hcd', 'auto', 'any'].any { it == params.activation } ? '1' : '0'}
   export MAXPEPLEN=${params.maxpeplen}
   export MAXCHARGE=${params.maxcharge}
   export THREAD=${task.cpus * params.threadspercore}
