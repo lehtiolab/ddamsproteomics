@@ -1,4 +1,9 @@
 # lehtiolab/ddamsproteomics: Changelog
+## Version 2.16 [2023-08-30]
+- Fixed Luciphor algorithm selection to use HCD when activation type is auto/any, and not use CID then
+- Fix mergePTM process file quoting when only one set in it
+
+
 ## Version 2.15 [2023-08-25]
 - Revert to --ignore-target-hits for decoy generation, do not remove decoy tryptic peptides that match target
 
