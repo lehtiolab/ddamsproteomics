@@ -986,7 +986,7 @@ process percolator {
   """
   ${mzids.collect() { "echo '$it' >> metafile" }.join('&&')}
   msgf2pin -o percoin.tsv -e ${params.enzyme} -P "decoy_" metafile
-  percolator -j percoin.tsv -X perco.xml -N 500000 --decoy-xml-output
+  percolator -j percoin.tsv -X perco.xml -N 500000 --decoy-xml-output -Y
   mkdir outtables
   msstitch perco2psm --perco perco.xml -d outtables -i ${tsvs.collect() { "'$it'" }.join(' ')} --mzids ${mzids.collect() { "'$it'" }.join(' ')} ${!params.locptms ? "--filtpsm ${params.psmconflvl} --filtpep ${params.pepconflvl}" : ''}
   msstitch concat -i outtables/* -o allpsms
