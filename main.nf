@@ -505,13 +505,32 @@ def plate_or_no(it, length) {
   return it.size() > 3 ? it[3] : "no_plate"
 }
 
+
+
+regex_specialchars = '[&<>\'"]'
+def stripchars_infile(x, return_oldfile=false) {
+  // FIXME %, ?, * fn turns a basename into a list because they are wildcards
+  // Replace special characters since they cause trouble in percolator XML output downstream
+  // e.g. & is not allowed in XML apparently (percolator doesnt encode it)
+  // and LXML then crashes on reading it.
+  // Also NF doesnt quote e.g. semicolons it seems.
+  def scriptinfile = "${x.baseName}.${x.extension}"
+  def parsed_file = scriptinfile.replaceAll(regex_specialchars, '_')
+  if (return_oldfile) {
+    return [parsed_file != scriptinfile, parsed_file, scriptinfile]
+  } else {
+    return [parsed_file != scriptinfile, parsed_file]
+  }
+}
+
 // Parse mzML input to get files and sample names etc
 // get setname, sample name (baseName), input mzML file. 
 // Set platename to setname if not specified. 
 // Set fraction name to NA if not specified
 mzml_in
   .tap { mzmlfiles_counter; mzmlfiles_qlup_sets } // for counting-> timelimits; getting sets from supplied lookup
-  .map { it -> [it[2].replaceAll('[ ]+$', '').replaceAll('^[ ]+', ''), file(it[0]).baseName.replaceAll('[&<>\'"]', '_'), file(it[0]), it[1], plate_or_no(it, 3), fr_or_file(it, 4)] }
+  .map { it -> [it[2].replaceAll('[ ]+$', '').replaceAll('^[ ]+', ''), file(it[0]).baseName.replaceAll(regex_specialchars, '_'), file(it[0]), it[1], plate_or_no(it, 3), fr_or_file(it, 4)] }
+.view()
   .tap { mzmlfiles; mzml_luciphor; pre_isoquant; ms1quant; sample_mzmlfn}
   .combine(concatdb)
   .set { mzml_msgf }
@@ -520,32 +539,23 @@ mzml_in
 * Step 1: Extract quant data from peptide spectra
 */
 
-def stripchars_infile(x) {
-  // The string in "scriptinfile" does not have NF escaping characters like & (e.g. in FAIMS 35&65),
-  // which NF does to "infile". That would work fine but not if the files are quoted in the 
-  // script, then they cant be found when there is \&.
-  // Replace those characters anyway since they cause trouble in percolator XML output downstream
-  def scriptinfile = "${x.baseName}.${x.extension}"
-  def parsed_file = scriptinfile.replaceAll('[&<>\'"]', '_')
-  return [parsed_file != scriptinfile, scriptinfile, parsed_file]
-}
 
 process centroidMS1 {
   container 'chambm/pwiz-skyline-i-agree-to-the-vendor-licenses:3.0.20066-729ef9c41'
   when: !params.quantlookup && !params.noquant && setisobaric && setisobaric[setname]
 
   input:
-  set val(setname), val(sample), file(infile), val(instr), val(platename), val(fraction) from pre_isoquant
+  set val(setname), val(sample), path(infile), val(instr), val(platename), val(fraction) from pre_isoquant
 
   output:
-  set val(setname), val(sample), file(parsed_infile), val(instr), val(platename), val(fraction) into isoquant
+  set val(setname), val(sample), path(parsed_infile), val(instr), val(platename), val(fraction) into isoquant
 
   script:
-  (stripped_fn, scriptinfile, parsed_infile) = stripchars_infile(infile)
+  (is_stripped, parsed_infile) = stripchars_infile(infile)
   """
-  ${stripped_fn ? "ln -s '${scriptinfile}' '${parsed_infile}'" : ''}
+  ${is_stripped ? "ln -s ${infile} ${parsed_infile}" : ''}
   wine msconvert ${parsed_infile} --outfile centroidms1.mzML --filter 'peakPicking true 1' ${instr == 'timstof' ? "--filter sortByScanTime" : ''}
-  mv centroidms1.mzML '${parsed_infile}'
+  mv centroidms1.mzML ${parsed_infile}
   """
 }
 
@@ -554,21 +564,21 @@ process quantifyMS1 {
   when: !params.quantlookup && !params.noquant && !params.noms1quant
 
   input:
-  set val(setname), val(sample), file(infile), val(instr), val(platename), val(fraction) from ms1quant
+  set val(setname), val(sample), path(infile), val(instr), val(platename), val(fraction) from ms1quant
   file(hkconf) from Channel.fromPath("$baseDir/assets/hardklor.conf").first()
 
   output:
-  set val(sample), file("${sample}.features.tsv") optional true into dino_out 
-  set val(sample), file("${sample}.kr") optional true into kronik_out 
+  set val(sample), path("${sample}.features.tsv") optional true into dino_out 
+  set val(sample), path("${sample}.kr") optional true into kronik_out 
 
   script:
-  (stripped_fn, scriptinfile, parsed_infile) = stripchars_infile(infile)
+  (is_stripped, parsed_infile) = stripchars_infile(infile)
   """
-  ${stripped_fn ? "mv '${scriptinfile}' '${parsed_infile}'" : ''}
+  ${is_stripped ? "ln -s ${infile} ${parsed_infile}" : ''}
   # Dinosaur is first choice for MS1 quant
-  ${!params.hardklor ? "dinosaur --concurrency=${task.cpus * params.threadspercore} \"${parsed_infile}\"" : ''}
+  ${!params.hardklor ? "dinosaur --concurrency=${task.cpus * params.threadspercore} ${parsed_infile}" : ''}
   # Hardklor/Kronik can be used as a backup, using --hardklor
-  ${params.hardklor ? "hardklor <(cat $hkconf <(echo \"$parsed_infile\" hardklor.out)) && kronik -c 5 -d 3 -g 1 -m 8000 -n 600 -p 10 hardklor.out ${sample}.kr" : ''}
+  ${params.hardklor ? "hardklor <(cat $hkconf <(echo $parsed_infile hardklor.out)) && kronik -c 5 -d 3 -g 1 -m 8000 -n 600 -p 10 hardklor.out ${sample}.kr" : ''}
   """
 }
 
@@ -656,24 +666,23 @@ process complementSpectraLookupCleanPSMs {
   setnames = in_setnames.unique(false)
   """
   # If this is an addition to an old lookup, copy it and extract set names
-  cp "${tlup}" target_db.sqlite
-  cp "${dlup}" decoy_db.sqlite
+  cp ${tlup} target_db.sqlite
+  cp ${dlup} decoy_db.sqlite
   sqlite3 target_db.sqlite "SELECT set_name FROM biosets" > old_setnames
   # If adding to old lookup: grep new setnames in old and run msstitch deletesets if they match
   # use -x for grep since old_setnames must grep whole word
   if grep -xf old_setnames <(echo ${setnames.join('\n')} )
     then
-      msstitch deletesets -i "${tpsms}" -o t_cleaned_psms.txt --dbfile target_db.sqlite --setnames "${setnames.join(' ')}"
-      msstitch deletesets -i "${dpsms}" -o d_cleaned_psms.txt --dbfile decoy_db.sqlite --setnames "${setnames.join(' ')}"
-      ${params.ptmpsms ? "msstitch deletesets -i \"${ptmpsms}\" -o cleaned_ptmpsms.txt --setnames ${setnames.join(' ')}" : ''}
+      msstitch deletesets -i ${tpsms} -o t_cleaned_psms.txt --dbfile target_db.sqlite --setnames "${setnames.collect() { "'${it}'" }.join(' ')}"
+      msstitch deletesets -i ${dpsms} -o d_cleaned_psms.txt --dbfile decoy_db.sqlite --setnames "${setnames.collect() { "'${it}'" }.join(' ')}"
+      ${params.ptmpsms ? "msstitch deletesets -i ${ptmpsms} -o cleaned_ptmpsms.txt --setnames ${setnames.collect() {"'${it}'"}.join(' ')}" : ''}
     else
-      mv "${tpsms}" t_cleaned_psms.txt
-      mv "${dpsms}" d_cleaned_psms.txt
-      ${params.ptmpsms ? "mv '${ptmpsms}' cleaned_ptmpsms.txt" : ''}
+      mv ${tpsms} t_cleaned_psms.txt
+      mv ${dpsms} d_cleaned_psms.txt
+      ${params.ptmpsms ? "mv ${ptmpsms} cleaned_ptmpsms.txt" : ''}
   fi
   
-  ${mzmlfiles.collect() { it.toString() != it.toString().replaceAll('[&<>\'"]', '_') ? "mv '${it}' '${it.toString().replaceAll('[&<>\'"]', '_')}'" : ''}.findAll { it != '' }.join(' && ')}
-
+  ${mzmlfiles.collect() { stripchars_infile(it, return_oldfile=true) }.findAll{ it[0] }.collect() { "ln -s '${it[2]}' '${it[1]}'" }.join(' && ')}
   ${mzmlfiles.size() ? "msstitch storespectra --spectra ${mzmlfiles.collect() { "'${it.toString().replaceAll('[&<>\'"]', '_')}'" }.join(' ')} --setnames ${in_setnames.collect() { "'$it'" }.join(' ')} --dbfile target_db.sqlite" : ''}
   ${params.ptmpsms ? "cp target_db.sqlite ptms_db.sqlite" : ''}
 
@@ -696,9 +705,9 @@ process createNewSpectraLookup {
 
   script:
   """
-  ${mzmlfiles.collect() { it.toString() != it.toString().replaceAll('[&<>\'"]', '_') ? "mv '${it}' '${it.toString().replaceAll('[&<>\'"]', '_')}'" : ''}.findAll { it != ''}.join(' && ')}
+  ${mzmlfiles.collect() { stripchars_infile(it, return_oldfile=true) }.findAll{ it[0] }.collect() { "ln -s '${it[2]}' '${it[1]}'" }.join(' && ')}
 
-  msstitch storespectra --spectra ${mzmlfiles.collect() { "'$it'" }.join(' ')} --setnames ${setnames.collect() { "'$it'" }.join(' ')} -o target_db.sqlite
+  msstitch storespectra --spectra ${mzmlfiles.collect() { stripchars_infile(it)[1] }.join(' ')} --setnames ${setnames.collect() { "'$it'" }.join(' ')} -o target_db.sqlite
   ln -s target_db.sqlite decoy_db.sqlite
   """
 }
@@ -726,7 +735,7 @@ if (complementary_run) {
 
 // Collect all MS1 dinosaur/kronik output for quant lookup building process
 sample_mzmlfn
-  .map { [ it[1], stripchars_infile(it[2])[2] ] } // extract samplename, mzML
+  .map { [ it[1], stripchars_infile(it[2])[1] ] } // extract samplename, mzML
   .join(dino_out.concat(kronik_out), remainder: true)
   .join(isobaricxml, remainder: true)
   .toList()
@@ -801,9 +810,9 @@ process quantLookup {
   """
   # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
   cat $tlookup > target.sqlite
-  msstitch storequant --dbfile target.sqlite --spectra ${mzmlnames.collect() { "'$it'" }.join(' ')}  \
-    ${!params.noms1quant ? "--mztol ${params.ms1qmztol} --mztoltype ppm --rttol ${params.ms1qrttol} ${params.hardklor ? "--kronik ${ms1fns.collect() { "'$it'" }.join(' ')}" : "--dinosaur ${ms1fns.collect() { "'$it'" }.join(' ')}"}" : ''} \
-    ${params.isobaric ? "--isobaric ${isofns.collect() { "'$it'" }.join(' ')}" : ''}
+  msstitch storequant --dbfile target.sqlite --spectra ${mzmlnames.collect() { "'${it}'" }.join(' ')}  \
+    ${!params.noms1quant ? "--mztol ${params.ms1qmztol} --mztoltype ppm --rttol ${params.ms1qrttol} ${params.hardklor ? "--kronik ${ms1fns.collect() { "$it" }.join(' ')}" : "--dinosaur ${ms1fns.collect() { "$it" }.join(' ')}"}" : ''} \
+    ${params.isobaric ? "--isobaric ${isofns.collect() { "$it" }.join(' ')}" : ''}
   """
 }
 
@@ -868,11 +877,12 @@ process countMS2sPerPlate {
   """
   #!/usr/bin/env python
   import os
+  import re
   platesets = [\"${splates.join('", "')}\"]
   plates = [\"${platenames.join('", "')}\"]
   setnames = [\"${setnames.join('", "')}\"]
   fileplates = {}
-  for fn, setname, plate in zip([\"${mzmlfiles.collect() { it.toString().replaceAll('[&<>\'"]', '_')}.join('", "')}\"], setnames, plates):
+  for fn, setname, plate in zip([${mzmlfiles.collect() { "'${stripchars_infile(it)[1]}'" }.join(',')}], setnames, plates):
       try:
           fileplates[fn][setname] = plate
       except KeyError:
@@ -886,7 +896,7 @@ process countMS2sPerPlate {
               if setname in setnames:
                   continue
               setplate = '{}_{}'.format(setname, plate)
-              fn = os.path.basename(fpath)
+              fn = re.sub('${regex_specialchars.replaceAll("'", "\\\\'")}', '_', os.path.basename(fpath))
               if setplate not in platesets:
                   platesets.append(setplate)
               if fn not in fileplates:
@@ -928,10 +938,10 @@ process msgfPlus {
   cpus = availProcessors < 4 ? availProcessors : 4
 
   input:
-  set val(setname), val(sample), file(x), val(instrument), val(platename), val(fraction), file(db) from mzml_msgf
+  set val(setname), val(sample), path(infile), val(instrument), val(platename), val(fraction), path(db) from mzml_msgf
 
   output:
-  set val(setname), val(sample), file("${sample}.mzid"), file("${sample}.mzid.tsv") into mzids
+  set val(setname), val(sample), path("${sample}.mzid"), path("${sample}.mzid.tsv") into mzids
   
   script:
   isobtype = setisobaric && setisobaric[setname] ? setisobaric[setname] : false
@@ -948,15 +958,13 @@ process msgfPlus {
   // the string in "scriptinfile" does not have NF escaping characters like & (e.g. in FAIMS 35&65),
   // which NF does to "infile". That would work fine but not if the files are quoted in the 
   // script, then they cant be found when there is \&.
-  scriptinfile = "${x.baseName}.${x.extension}"
   // Replace those characters anyway since they cause trouble in percolator XML output downstream
-  parsed_infile = scriptinfile.replaceAll('[&<>\'"]', '_')
+  (is_stripped, parsed_infile) = stripchars_infile(infile)
   """
-  ${scriptinfile != parsed_infile ? "ln -s '${scriptinfile}' '${parsed_infile}'" : ''}
-
+  ${is_stripped ? "ln -s ${infile} '${parsed_infile}'" : ''}
   create_modfile.py ${params.maxvarmods} "${params.msgfmods}" "${params.mods}${isobtype ? ";${isobtype_parsed}" : ''}${params.ptms ? ";${params.ptms}" : ''}${params.locptms ? ";${params.locptms}" : ''}"
   
-  msgf_plus -Xmx${task.memory.toMega()}M -d $db -s "$parsed_infile" -o "${sample}.mzid" -thread ${task.cpus * params.threadspercore} -mod "mods.txt" -tda 0 -maxMissedCleavages $params.maxmiscleav -t ${params.prectol}  -ti ${params.iso_err} -m ${fragmeth} -inst ${msgfinstrument} -e ${enzyme} -protocol ${msgfprotocol} -ntt ${ntt} -minLength ${params.minpeplen} -maxLength ${params.maxpeplen} -minCharge ${params.mincharge} -maxCharge ${params.maxcharge} -n 1 -addFeatures 1
+  msgf_plus -Xmx${task.memory.toMega()}M -d $db -s '$parsed_infile' -o "${sample}.mzid" -thread ${task.cpus * params.threadspercore} -mod "mods.txt" -tda 0 -maxMissedCleavages $params.maxmiscleav -t ${params.prectol}  -ti ${params.iso_err} -m ${fragmeth} -inst ${msgfinstrument} -e ${enzyme} -protocol ${msgfprotocol} -ntt ${ntt} -minLength ${params.minpeplen} -maxLength ${params.maxpeplen} -minCharge ${params.mincharge} -maxCharge ${params.maxcharge} -n 1 -addFeatures 1
   msgf_plus -Xmx3500M edu.ucsd.msjava.ui.MzIDToTsv -i "${sample}.mzid" -o out.tsv
   awk -F \$'\\t' '{OFS=FS ; print \$0, "Biological set" ${fractionation ? ', "Strip", "Fraction"' : ''}}' <( head -n+1 out.tsv) > "${sample}.mzid.tsv"
   awk -F \$'\\t' '{OFS=FS ; print \$0, "$setname" ${fractionation ? ", \"$platename\", \"$fraction\"" : ''}}' <( tail -n+2 out.tsv) >> "${sample}.mzid.tsv"
@@ -988,7 +996,7 @@ process percolator {
   msgf2pin -o percoin.tsv -e ${params.enzyme} -P "decoy_" metafile
   percolator -j percoin.tsv -X perco.xml -N 500000 --decoy-xml-output -Y
   mkdir outtables
-  msstitch perco2psm --perco perco.xml -d outtables -i ${tsvs.collect() { "'$it'" }.join(' ')} --mzids ${mzids.collect() { "'$it'" }.join(' ')} ${!params.locptms ? "--filtpsm ${params.psmconflvl} --filtpep ${params.pepconflvl}" : ''}
+  msstitch perco2psm --perco perco.xml -d outtables -i ${listify(tsvs).collect(){ "${it}"}.join(' ')} --mzids ${listify(mzids).collect(){ "${it}"}.join(' ')} ${!params.locptms ? "--filtpsm ${params.psmconflvl} --filtpep ${params.pepconflvl}" : ''}
   msstitch concat -i outtables/* -o allpsms
   ${params.locptms ? 
     "msstitch conffilt -i allpsms -o filtpsm --confcolpattern 'PSM q-value' --confidence-lvl ${params.psmconflvl} --confidence-better lower && \
@@ -1072,10 +1080,18 @@ process createPSMTable {
   """
 }
 
-// Collect setnames and merge with PSM tables for peptide table creation
 def listify(it) {
+  /* This function is useful when needing a list even when having a single item
+  - Single items in channels get unpacked from a list
+  - Processes expect lists. Even though it would be fine
+  without a list, for single-item-lists any special characters are not escaped by NF
+  in the script, which leads to errors. See:
+  https://github.com/nextflow-io/nextflow/discussions/4240
+  */
   return it instanceof java.util.List ? it : [it]
 }
+
+// Collect setnames and merge with PSM tables for peptide table creation
 setpsmtables
   .map { it -> [it[0], listify(it[1])] }
   .map{ it -> [it[0], it[1].collect() { it.baseName.replaceFirst(/\.tsv$/, "") }, it[1]]}
@@ -1116,7 +1132,7 @@ process luciphorPTMLocalizationScoring {
   lab_ptms = params.locptms.tokenize(';').join(' ')
 
   """
-  ${mzmls.collect() { it.toString() != it.toString().replaceAll('[&<>\'"]', '_') ? "mv '${it}' '${it.toString().replaceAll('[&<>\'"]', '_')}'" : ''}.findAll {it != ''}.join(' && ')}
+  ${mzmls.collect() { stripchars_infile(it, return_oldfile=true) }.findAll{ it[0] }.collect() { "ln -s '${it[2]}' '${it[1]}'" }.join(' && ')}
   # Split allpsms to get target PSMs
   sed '0,/\\#SpecFile/s//SpectraFile/' -i "${allpsms}"
   msstitch split -i "${allpsms}" --splitcol \$(head -n1 "${allpsms}" | tr '\t' '\n' | grep -n ^TD\$ | cut -f 1 -d':')
@@ -1346,12 +1362,10 @@ process mergePTMPeps {
   script:
   peptable = params.totalproteomepsms ? 'ptm_peptides_total_proteome_adjusted.txt' : 'ptm_peptides_not_adjusted.txt'
   peptable_no_adjust = 'ptm_peptides_not_adjusted.txt'
-  listpeptides = listify(peptides)
-  listnotp_adj = listify(notp_adjust_peps)
   """
   cat ptmlup.sql > pepptmlup.sql
   # Create first table, input for which is either adjusted or not
-  msstitch merge -i ${listpeptides.collect() { "$it" }.join(' ')} --setnames ${setnames.collect() { "'$it'" }.join(' ')} --dbfile pepptmlup.sql -o mergedtable --no-group-annotation \
+  msstitch merge -i ${listify(peptides).collect() { "$it" }.join(' ')} --setnames ${setnames.collect() { "'$it'" }.join(' ')} --dbfile pepptmlup.sql -o mergedtable --no-group-annotation \
     --fdrcolpattern '^q-value' --pepcolpattern 'peptide PEP' --flrcolpattern 'FLR' \
     ${!params.noquant && !params.noms1quant ? "--ms1quantcolpattern area" : ''} \
     ${!params.noquant && setisobaric ? "--isobquantcolpattern plex" : ''}
@@ -1362,7 +1376,7 @@ process mergePTMPeps {
     join -j1 -o auto -t '\t' <(paste geneprots <(cut -f3 geneprots | tr -dc ';\\n'| awk '{print length+1}')) <(tail -n+2 mergedtable | sort -k1b,1) >> ${peptable}""" : "mv mergedtable ${peptable}"}
 
   # If total-proteome quant adjustment input was used above, create a second merged NON-adjusted peptide tables
-  ${params.totalproteomepsms ?  "msstitch merge -i ${listnotp_adj.collect() { "$it" }.join(' ')} --setnames ${setnames.collect() { "'$it'" }.join(' ')} \
+  ${params.totalproteomepsms ?  "msstitch merge -i ${listify(notp_adjust_peps).collect() { "$it" }.join(' ')} --setnames ${setnames.collect() { "'$it'" }.join(' ')} \
     --dbfile pepptmlup.sql -o mergedtable --no-group-annotation \
     --fdrcolpattern '^q-value' --pepcolpattern 'peptide PEP' --flrcolpattern 'FLR' \
     ${!params.noquant && !params.noms1quant ? "--ms1quantcolpattern area" : ''} \
@@ -1516,7 +1530,6 @@ process proteinPeptideSetMerge {
   set val(acctype), file('proteintable'), file(normfacs) into merged_feats
 
   script:
-  listtables = listify(tables)
   """
   # exchange sample names on isobaric fields in header
   # First add NO__GROUP marker for no-samplegroups clean sampletable from special chars
@@ -1532,7 +1545,7 @@ process proteinPeptideSetMerge {
 
   # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
   cat $lookup > db.sqlite
-  msstitch merge -i ${listtables.collect() { "$it" }.join(' ')} --setnames ${setnames.collect() { "'$it'" }.join(' ')} --dbfile db.sqlite -o mergedtable \
+  msstitch merge -i ${listify(tables).collect() { "$it" }.join(' ')} --setnames ${setnames.collect() { "'$it'" }.join(' ')} --dbfile db.sqlite -o mergedtable \
     --fdrcolpattern '^q-value\$' ${acctype != 'peptides' ? "--mergecutoff ${params.proteinconflvl}" : ''} \
     ${acctype == 'peptides' ? "--pepcolpattern 'peptide PEP'" : ''} \
     ${!params.noquant && !params.noms1quant ? "--ms1quantcolpattern area" : ''} \
