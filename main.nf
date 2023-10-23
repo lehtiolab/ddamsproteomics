@@ -1040,7 +1040,7 @@ hiriefpep = params.hirief ? Channel.fromPath([params.hirief, params.hirief]) : C
 
 process createPSMTable {
 
-  publishDir "${params.outdir}", mode: 'copy', overwrite: true, saveAs: {["target_psmlookup.sql", "decoy_psmlookup.sql", "target_psmtable.txt", "decoy_psmtable.txt"].contains(it) ? it : null}
+  publishDir "${params.outdir}", mode: 'copy', overwrite: true, saveAs: {["target_psmlookup.sql", "decoy_psmlookup.sql", "target_psmtable.txt", "decoy_psmtable.txt"].contains(it) && (is_rerun || !no_psms) ? it : null}
 
   input:
   set val(td), path(psms), path('lookup'), path(tdb), path(ddb), file('tppsms.txt'), file(cleaned_oldpsms) from prepsm
@@ -1053,20 +1053,24 @@ process createPSMTable {
   set val(td), file({setnames.collect() { "${it}.tsv" }}) optional true into setpsmtables
   file({setnames.collect() { "tppsms/${it}.tsv" }}) optional true into totalprotpsms_allsets
   set val(td), file("${psmlookup}") into psmlookup
+  file('warnings') optional true into psmwarnings
 
   script:
   psmlookup = "${td}_psmlookup.sql"
   outpsms = "${td}_psmtable.txt"
-  new_psms = !is_rerun && (psms.size() > 1 || psms[0].name != 'NO__FILE')
-
+  // NO__FILE is when target percolator has no output in any set, exit immediately if not rerun
+  no_psms = psms[0].name == 'NO__FILE'
+  no_target = td == 'target' && no_psms
+  no_decoy = td == 'decoy' && no_psms
   quant = !params.noquant && td == 'target'
   """
-  ${new_psms ? "msstitch concat -i ${psms.collect() {"$it"}.join(' ')} -o psms.txt" : ''}
-  ${new_psms && td == 'target' ? "tail -n+2 psms.txt | grep . >/dev/null || (>&2 echo 'No target PSMs made the combined PSM / peptide FDR cutoff (${params.psmconflvl} / ${params.pepconflvl})' && exit 1)" : ''}
+  ${no_target && !is_rerun ? "echo 'No target PSMs made the combined PSM / peptide FDR cutoff (${params.psmconflvl} / ${params.pepconflvl})' && exit 1" : ''}
+  ${no_decoy && !is_rerun ? "echo 'No decoy PSMs in any set at FDR cutoff, will not produce protein/gene tables' > warnings && touch ${outpsms} && touch ${psmlookup} && exit 0" : ''}
+  ${!is_rerun ? "msstitch concat -i ${listify(psms).collect() {"$it"}.join(' ')} -o psms.txt" : ''}
   # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
   cat lookup > $psmlookup
-  ${new_psms ? "sed '0,/\\#SpecFile/s//SpectraFile/' -i psms.txt": ''}
-  ${is_rerun || !new_psms ? "mv ${cleaned_oldpsms} psmsrefined" : "msstitch psmtable -i psms.txt --dbfile $psmlookup --addmiscleav -o psmsrefined --spectracol 1 \
+  ${!is_rerun ? "sed '0,/\\#SpecFile/s//SpectraFile/' -i psms.txt": ''}
+  ${is_rerun ? "mv ${cleaned_oldpsms} psmsrefined" : "msstitch psmtable -i psms.txt --dbfile $psmlookup --addmiscleav -o psmsrefined --spectracol 1 \
     ${params.onlypeptides ? '' : "--fasta \"${td == 'target' ? "${tdb}" : "${ddb}"}\" --genes"} \
     ${quant ? "${!params.noms1quant ? '--ms1quant' : ''} ${params.isobaric ? "--isobaric --min-precursor-purity ${params.minprecursorpurity}" : ''}" : ''} \
     ${!params.onlypeptides ? '--proteingroup' : ''} \
@@ -1488,6 +1492,7 @@ process proteinGeneSymbolTableFDR {
     
 
 percowarnings
+  .concat(psmwarnings)
   .concat(fdrwarnings)
   .concat(ptmwarnings)
   .concat(luciphor_warnings)
