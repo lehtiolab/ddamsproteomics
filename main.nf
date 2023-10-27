@@ -257,7 +257,7 @@ isop = params.isobaric ? params.isobaric.tokenize(' ') : false
 setisobaric = isop ? isop.collect() {
   y -> y.tokenize(':')
 }.collectEntries() {
-  x-> [x[0], x[1]]
+  x-> [x[0], x[1].replaceAll('tmtpro', 'tmt16plex')]
 } : false
 setdenoms = isop ? isop.collect() {
   y -> y.tokenize(':')
@@ -600,7 +600,6 @@ process isoquantSpectra {
   outfile = "${infile.baseName}.consensusXML"
   activationtype = [auto: 'auto', any: 'any', hcd:'beam-type collision-induced dissociation', cid:'Collision-induced dissociation', etd:'Electron transfer dissociation'][params.activation]
   isobtype = setisobaric && setisobaric[setname] ? setisobaric[setname] : false
-  isobtype = isobtype == 'tmtpro' ? 'tmt16plex' : isobtype
   plextype = isobtype ? isobtype.replaceFirst(/[0-9]+plex/, "") : 'false'
   massshift = [tmt:0.0013, itraq:0.00125, false:0][plextype]
 
@@ -1293,7 +1292,7 @@ process PTMPeptides {
   # proteins with which to median-center the PTM table with (if --normalize is passed)
   ${params.totalproteomepsms && normalize ? "msstitch isosummarize -i totalproteomepsms -o prots_mediancenter \
     --featcol \$(head -n1 totalproteomepsms | tr '\\t' '\\n' | grep -n '${dividebycol}' | cut -f 1 -d':') \
-    --isobquantcolpattern plex --minint 0.1 \
+    --isobquantcolpattern ${setisobaric[setname]} --minint 0.1 \
     ${denom && denom[0] == 'sweep' ? '--mediansweep --logisoquant': ''} \
     ${denom && params.keepnapsmsquant ? '--keep-psms-na-quant' : ''} \
     ${denom && !specialdenom ? "--logisoquant --denompatterns ${setdenoms[setname].join(' ')}": ''} \
@@ -1305,7 +1304,7 @@ process PTMPeptides {
   # (in case of --onlypeptides) table for relating the peptides to their gene/protein
   ${params.totalproteomepsms && denom ? "msstitch isosummarize -i totalproteomepsms -o tp_accessions \
     --featcol \$(head -n1 totalproteomepsms | tr '\\t' '\\n' | grep -n '${dividebycol}' | cut -f 1 -d':') \
-    --isobquantcolpattern plex --minint 0.1 \
+    --isobquantcolpattern ${setisobaric[setname]} --minint 0.1 \
     ${normalize ? "--median-normalize" : ''} \
     ${denom && denom[0] == 'sweep' ? '--mediansweep --logisoquant': ''} \
     ${denom && params.keepnapsmsquant ? '--keep-psms-na-quant' : ''} \
@@ -1316,7 +1315,7 @@ process PTMPeptides {
   # Create a PTM-peptide table which has normalized isobaric data
   msstitch peptides -i "ptms.txt" -o "${peptable}" --scorecolpattern svm --spectracol 1 \
     ${!params.noquant && params.noms1quant ? '--ms1quantcolpattern area' : ''} \
-    ${denom ? '--isobquantcolpattern plex --minint 0.1 --keep-psms-na-quant' : ''} \
+    ${denom ? "--isobquantcolpattern ${setisobaric[setname]} --minint 0.1 --keep-psms-na-quant" : ''} \
     ${denom && denom[0] == 'sweep' ? '--mediansweep --logisoquant': ''} \
     ${denom && denom[0] == 'intensity' ? '--medianintensity' : ''} \
     ${denom && !specialdenom ? "--logisoquant --denompatterns ${setdenoms[setname].join(' ')}": ''} \
@@ -1327,7 +1326,7 @@ process PTMPeptides {
   # this is not strictly necessary to do if there is no --totalproteomepsms, but will not be output 
   # in next step (merge) anyway then.
   msstitch peptides -i "ptms.txt" -o "${peptable}_no_tp_normalized" --scorecolpattern svm --spectracol 1 \
-    ${denom ? '--isobquantcolpattern plex --minint 0.1 --keep-psms-na-quant' : ''} \
+    ${denom ? "--isobquantcolpattern ${setisobaric[setname]} --minint 0.1 --keep-psms-na-quant" : ''} \
     ${denom && denom[0] == 'sweep' ? '--mediansweep --logisoquant': ''} \
     ${denom && denom[0] == 'intensity' ? '--medianintensity' : ''} \
     ${denom && !specialdenom ? "--logisoquant --denompatterns ${setdenoms[setname].join(' ')}": ''} \
@@ -1412,14 +1411,15 @@ process makePeptides {
 
   script:
   quant = !params.noquant && td == 'target'
-  denom = quant && setdenoms ? setdenoms[setname] : false
+  isoquant = quant && setisobaric && setisobaric[setname]
+  denom = isoquant && setdenoms ? setdenoms[setname] : false
   specialdenom = denom && (denom[0] == 'sweep' || denom[0] == 'intensity')
   normfactors = "${setname}_normfacs"
   """
   # Create peptide table from PSM table, picking best scoring unique peptides
   msstitch peptides -i psms -o "${setname}_peptides" --scorecolpattern svm --spectracol 1 --modelqvals \
-    ${quant ? "${!params.noms1quant ? '--ms1quantcolpattern area' : ''} ${setisobaric && setisobaric[setname] ? '--isobquantcolpattern plex --minint 0.1' : ''}" : ''} \
-    ${quant && setisobaric && setisobaric[setname] && params.keepnapsmsquant ? '--keep-psms-na-quant' : ''} \
+    ${quant ? "${!params.noms1quant ? '--ms1quantcolpattern area' : ''} ${isoquant ? "--isobquantcolpattern ${setisobaric[setname]} --minint 0.1" : ''}" : ''} \
+    ${isoquant && params.keepnapsmsquant ? '--keep-psms-na-quant' : ''} \
     ${denom && denom[0] == 'sweep' ? '--mediansweep --logisoquant' : ''} \
     ${denom && denom[0] == 'intensity' ? '--medianintensity' : ''} \
     ${denom && !specialdenom ? "--logisoquant --denompatterns ${setdenoms[setname].join(' ')}" : ''} \
@@ -1464,6 +1464,7 @@ process proteinGeneSymbolTableFDR {
   specialdenom = denom && (denom[0] == 'sweep' || denom[0] == 'intensity')
   normfactors = "${setname}_normfacs"
   quant = !params.noquant && (!params.noms1quant || params.isobaric)
+  isoquant = quant && setisobaric && setisobaric[setname]
   """
   # score col is linearmodel_qval or q-value, but if the column only contains 0.0 or NA (no linear modeling possible due to only q<10e-04), we use svm instead
   tscol=\$(head -1 tpeptides| tr '\\t' '\\n' | grep -n "${scorecolpat}" | cut -f 1 -d':')
@@ -1479,9 +1480,9 @@ process proteinGeneSymbolTableFDR {
   fi
   msstitch ${acctype} -i tpeptides --decoyfn dpeptides -o "${setname}_protfdr" --scorecolpattern "\$scpat" \$logflag \
     ${acctype != 'proteins' ? "--fdrtype picked --targetfasta '$tfasta' --decoyfasta '$dfasta' ${params.fastadelim ? "--fastadelim '${params.fastadelim}' --genefield '${params.genefield}'": ''}" : ''} \
-    ${!params.noquant ? "${!params.noms1quant ? '--ms1quant' : ''} ${setisobaric && setisobaric[setname] ? '--isobquantcolpattern plex --minint 0.1' : ''}" : ''} \
+    ${!params.noquant ? "${!params.noms1quant ? '--ms1quant' : ''} ${isoquant ? "--isobquantcolpattern ${setisobaric[setname]} --minint 0.1" : ''}" : ''} \
     ${quant ? '--psmtable tpsms' : ''} \
-    ${quant && setisobaric && setisobaric[setname] && params.keepnapsmsquant ? '--keep-psms-na-quant' : ''} \
+    ${isoquant && params.keepnapsmsquant ? '--keep-psms-na-quant' : ''} \
     ${denom && denom[0] == 'sweep' ? '--mediansweep --logisoquant' : ''} \
     ${denom && denom[0] == 'intensity' ? '--medianintensity' : ''} \
     ${denom && !specialdenom ? "--denompatterns ${setdenoms[setname].join(' ')} --logisoquant" : ''} \
