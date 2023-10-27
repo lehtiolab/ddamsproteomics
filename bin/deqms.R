@@ -13,7 +13,7 @@ lookup = sampletable$group
 names(lookup) = apply(cbind(sampletable[c('group', 'sample', 'set', 'ch')]), 1, paste, collapse='_')
 names(lookup) = gsub('[^a-zA-Z0-9_]', '_', names(lookup))
 
-feats = read.table('mergedtable', header=T, sep="\t", comment.char="", quote="")
+feats = read.table('grouptable', header=T, sep="\t", comment.char="", quote="")
 colnames(feats) = sapply(colnames(feats), function(x) sub('q.value', 'q-value', x))
 featcol = colnames(feats)[1]
 rownames(feats) = feats[,1]

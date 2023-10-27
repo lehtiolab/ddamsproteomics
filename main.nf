@@ -1560,11 +1560,13 @@ process proteinPeptideSetMerge {
   # Put annotation on header, use normal setname for finding, replace with clean name
   # "sed '0,/{RE}//{substitute}/..."  for only first line (0,/{RE} = read from 0 until RE,
   # then the empty // means use the previous RE (you could specify a new RE)
+  head -n1 mergedtable > tmph
   ${params.sampletable && setisobaric ?  
-    'while read line ; do read -a arr <<< $line ; sed -i "0,/"\$"\\t${arr[0]}_\\([a-z0-9]*plex\\)_${arr[1]}/s//\t${arr[4]}_${arr[3]}_${arr[2]}_\\1_${arr[1]}/" mergedtable; done < <(paste <(cut -f2 sampletable) clean_sampletable)' \
-  :  ''}
+    'while read line ; do read -a arr <<< $line ; sed -E "s/${arr[0]}_([a-z0-9]*plex)_${arr[1]}/${arr[4]}_${arr[3]}_${arr[2]}_\\1_${arr[1]}/" <(tail -n1 tmph | tr "\t" "\n") | tr "\n" "\t" | sed $"s/\\t$/\\n/" ; done < <(paste <(cut -f2 sampletable) clean_sampletable) >> tmph' :  ''}
+  ${params.sampletable && setisobaric ? "cat <(tail -n1 tmph) <(tail -n+2 mergedtable) > grouptable" : 'mv mergedtable grouptable'}
+
   # Run DEqMS if needed, use original sample table with NO__GROUP
-  ${params.deqms ? "numfields=\$(head -n1 mergedtable | tr '\t' '\n' | wc -l) && deqms.R && paste <(head -n1 mergedtable) <(head -n1 deqms_output | cut -f \$(( numfields+1 ))-\$(head -n1 deqms_output|wc -w)) > tmpheader && cat tmpheader <(tail -n+2 deqms_output) > proteintable" : 'mv mergedtable proteintable'}
+  ${params.deqms ? "numfields=\$(head -n1 grouptable | tr '\t' '\n' | wc -l) && deqms.R && paste <(head -n1 grouptable) <(head -n1 deqms_output | cut -f \$(( numfields+1 ))-\$(head -n1 deqms_output|wc -w)) > tmpheader && cat tmpheader <(tail -n+2 deqms_output) > proteintable" : 'mv grouptable proteintable'}
   """
 }
 
