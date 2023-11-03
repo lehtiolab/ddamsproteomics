@@ -205,10 +205,11 @@ params.oldmzmldef = false
 if (params.hirief && !file(params.hirief).exists()) exit 1, "Peptide pI data file not found: ${params.hirief}"
 if (params.hirief && !params.mzmldef) exit 1, "Cannot run HiRIEF delta pI calculation without fraction-annotated mzML definition file"
 if (params.sampletable) {
-  sampletable = file(params.sampletable)
+  // create value channel with first()
+  sampletable = Channel.fromPath(params.sampletable).first()
   if( !sampletable.exists() ) exit 1, "Sampletable file not found: ${params.sampletable}"
 } else {
-  sampletable = 0
+  sampletable = Channel.fromPath("${baseDir}/assets/NO__FILE").first()
 }
 
 complementary_run = params.targetpsmlookup && params.decoypsmlookup && params.targetpsms && params.decoypsms
@@ -1528,26 +1529,26 @@ process proteinPeptideSetMerge {
 
   input:
   set val(setnames), val(acctype), file(tables), file(normfacs) from ptables_to_merge
-  file(lookup) from tlookup
-  file('sampletable') from Channel.from(sampletable).first()
+  path(lookup) from tlookup
+  path('sampletable') from sampletable
   
   output:
-  set val(acctype), file('proteintable'), file('sampletable') into featqc_extra_peptide_samples
   set val(acctype), file('proteintable'), file(normfacs) into merged_feats
+  tuple val(acctype), path('proteintable'), path('clean_sampletable') into featqc_extra_peptide_samples
 
   script:
   """
   # exchange sample names on isobaric fields in header
   # First add NO__GROUP marker for no-samplegroups clean sampletable from special chars
-  ${params.sampletable ? 'awk -v FS="\\t" -v OFS="\\t" \'{if (NF==3) print $1,$2,$3,"NO__GROUP"; else print}\' sampletable > tmpsam && mv tmpsam sampletable' : ''}
+  ${params.sampletable ? 'awk -v FS="\\t" -v OFS="\\t" \'{if (NF==3) print $1,$2,$3,"NO__GROUP"; else print}\' sampletable > clean_sampletable' : 'mv sampletable clean_sampletable'}
   # Check if there are samplegroups at all
-  ${params.deqms ? 'grep -v NO__GROUP sampletable || (>&2 echo "Cannot run DEqMS without specified sample groups" && exit 1)': ''}
+  ${params.deqms ? 'grep -v NO__GROUP clean_sampletable || (>&2 echo "Cannot run DEqMS without specified sample groups" && exit 1)': ''}
   # Count amount samples per group and error on group with only one sample
-  ${params.deqms ? "grep -v NO__GROUP sampletable | cut -f 4 | sort | uniq -c | sed 's/\\s*//' | grep '^1 ' && (>&2 echo 'Cannot run DEqMS when any sample groups have only one sample, please review input' && exit 1)" : ''}
+  ${params.deqms ? "grep -v NO__GROUP clean_sampletable | cut -f 4 | sort | uniq -c | sed 's/\\s*//' | grep '^1 ' && (>&2 echo 'Cannot run DEqMS when any sample groups have only one sample, please review input' && exit 1)" : ''}
   # strip lead/trail space in set name 
-  paste <(cut -f1 sampletable) <(cut -f2 sampletable | sed "s/^\\s*//;s/\\s*\$//") <(cut -f3-4 sampletable) > nowhitespace && mv nowhitespace sampletable
+  ${params.sampletable ? 'paste <(cut -f1 clean_sampletable) <(cut -f2 clean_sampletable | sed "s/^\\s*//;s/\\s*\$//") <(cut -f3-4 clean_sampletable) > nowhitespace && mv nowhitespace clean_sampletable' : ''}
   # substitute other weird characters
-  ${params.sampletable ? 'sed "s/[^A-Za-z0-9_\\t]/_/g" sampletable > clean_sampletable' : ''}
+  ${params.sampletable ? 'sed "s/[^A-Za-z0-9_\\t]/_/g" clean_sampletable > sampletable_no_special_chars' : ''}
 
   # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
   cat $lookup > db.sqlite
@@ -1563,7 +1564,7 @@ process proteinPeptideSetMerge {
   # then the empty // means use the previous RE (you could specify a new RE)
   head -n1 mergedtable > tmph
   ${params.sampletable && setisobaric ?  
-    'while read line ; do read -a arr <<< $line ; sed -E "s/${arr[0]}_([a-z0-9]*plex)_${arr[1]}/${arr[4]}_${arr[3]}_${arr[2]}_\\1_${arr[1]}/" <(tail -n1 tmph | tr "\t" "\n") | tr "\n" "\t" | sed $"s/\\t$/\\n/" ; done < <(paste <(cut -f2 sampletable) clean_sampletable) >> tmph' :  ''}
+    'while read line ; do read -a arr <<< $line ; sed -E "s/${arr[0]}_([a-z0-9]*plex)_${arr[1]}/${arr[4]}_${arr[3]}_${arr[2]}_\\1_${arr[1]}/" <(tail -n1 tmph | tr "\t" "\n") | tr "\n" "\t" | sed $"s/\\t$/\\n/" ; done < <(paste <(cut -f2 clean_sampletable) sampletable_no_special_chars) >> tmph' :  ''}
   ${params.sampletable && setisobaric ? "cat <(tail -n1 tmph) <(tail -n+2 mergedtable) > grouptable" : 'mv mergedtable grouptable'}
 
   # Run DEqMS if needed, use original sample table with NO__GROUP
@@ -1631,7 +1632,7 @@ process featQC {
   publishDir "${params.outdir}", mode: 'copy', overwrite: true, saveAs: {it == "feats" ? "${acctype}_table.txt": null}
 
   input:
-  set val(acctype), file('feats'), file(normfacs), file(peptable), file(sampletable) from featqcinput
+  set val(acctype), path('feats'), path(normfacs), path(peptable), path('sampletable') from featqcinput
   val(setnames) from setnames_featqc
 
   output:
