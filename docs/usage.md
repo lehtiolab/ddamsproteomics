@@ -177,6 +177,11 @@ When passing `--totalproteomepsms`, the isobaric quant ratios for matching genes
 For normalizing PTM tables, `--normalize` can be used for median-centering. Since PTM tables can be somewhat small and possibly skewed in their quantitation, a separate gene table is prepared from the PSMs in `--totalproteomepsms`, to get the channel median normalization factors from.
 
 
+### Annotation of results
+To annotate peptide/protein/gene results after a search, marking hits in another protein fasta database (e.g. bait proteins, contaminants), you can if needed, supply those external fasta files by `--report_seqmatch 'dbfile1.fa;dbfile2.fa'`. This will generate
+one column for each file in the result files, containing the fasta IDs for the record that a peptide (or any peptide from a protein) matched to.
+
+
 ### Reusing data
 If you have finished a rather large analysis and wish to rerun a part of it or add more fractions, due to e.g. new MS data, you may do so by passing
 

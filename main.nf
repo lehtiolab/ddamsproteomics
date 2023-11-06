@@ -101,6 +101,9 @@ def helpMessage() {
       --keepnapsmsquant             By default the pipeline does not use PSMs with NA in any channel for isobaric 
                                     quant summarization. Use this flag and it will keep the 
                                     (potentially more noisy) PSMs in the analysis.
+      --report_seqmatch             Supply fasta files which peptides/proteins/genes post-search 
+                                    will get matched to for annotation in one column per such file.
+                                    Use --report_seqmatch 'file1.fa;file2.fa'
 
       REUSING PREVIOUS DATA
       --quantlookup FILE            Use previously generated SQLite lookup database containing spectra 
@@ -190,6 +193,7 @@ params.noquant = false
 params.noms1quant = false
 params.hardklor = false
 params.keepnapsmsquant = false
+params.report_seqmatch = false
 params.sampletable = false
 params.deqms = false
 params.targetpsmlookup = false
@@ -334,6 +338,7 @@ summary['Isobaric PSM minimum precursor purity'] = params.minprecursorpurity
 summary['Retention time tolerance for MS1 alignment'] = params.ms1qrttol
 summary['m/z tolerance for MS1 alignment'] = params.ms1qmztol
 summary['Keep PSMs for quant with NA in any channel'] = params.keepnapsmsquant
+summary['Post-search external annotation fasta'] = params.report_seqmatch
 summary['Explicit isobaric normalization'] = params.normalize
 summary['Perform DE analysis (implies normalization)'] = params.deqms
 summary['Output genes'] = params.genes
@@ -1533,8 +1538,9 @@ process proteinPeptideSetMerge {
   path('sampletable') from sampletable
   
   output:
-  set val(acctype), file('proteintable'), file(normfacs) into merged_feats
   tuple val(acctype), path('proteintable'), path('clean_sampletable') into featqc_extra_peptide_samples
+  tuple val(acctype), path('proteintable') into merged_feats
+  tuple val(acctype), path(normfacs) into normfacs
 
   script:
   """
@@ -1623,10 +1629,133 @@ featqc_extra_peptide_samples
   .map { it -> [it[1], it[2]] }
   .set { featqc_peptides_samples }
 
-merged_feats
-  .combine(featqc_peptides_samples)
-  .set { featqcinput }
+if (!params.report_seqmatch) {
+  merged_feats
+    .join(normfacs)
+    .combine(featqc_peptides_samples)
+    .set { featqcinput }
+  Channel.empty().set { post_match_fa }
+} else {
+  len_seqmatch = params.report_seqmatch.tokenize(';').size()
+  Channel.from(params.report_seqmatch)
+    .flatMap { it.tokenize(';') }
+    .map { file(it) }
+    .set { post_match_fa }
+  merged_feats
+    .branch { 
+      peps: it[0] == 'peptides' 
+      notpeps: it[0] != 'peptides'
+    }
+    .set { table_normfac_toseqmatch }
+}
 
+process createTrypticMatchDB {
+  /* Create a sequence match SQLite database to be used for filtering
+  PSM tables and percolator */
+
+  input:
+  path(sequences) from post_match_fa
+
+  output:
+  path(outfile) into postmatch_seqdb
+
+  script:
+  miscleav = params.maxmiscleav < 0 ? 2 : params.maxmiscleav
+  outfile = sequences.baseName.replaceAll('[^a-zA-Z0-9_-]', '_')
+  """
+  msstitch storeseq -i ${sequences} -o ${outfile} \
+    --minlen ${params.minpeplen} --cutproline \
+    --nterm-meth-loss --map-accessions \
+    ${miscleav ? "--miscleav ${miscleav}" : ''}
+  """
+}
+
+if (params.report_seqmatch) {
+  table_normfac_toseqmatch.peps
+    .map { it[1] } // peptide table
+    .combine(postmatch_seqdb)
+    .groupTuple()
+    .set { pepseqmatch } 
+} else {
+  Channel.empty().set { pepseqmatch }
+}
+
+
+process markPeptidesPresentInDB {
+  /* Match peptide sequences to user-provided sequences in a storeseq SQLite DB.
+  Mark peptides that match with a 1, else 0 in a new column.
+  Field name for column will be user-provided 
+  */
+
+  input:
+  tuple path(peptides), path(seqdbs) from pepseqmatch
+
+  output:
+  tuple val('peptides'), path(peptide_table_out) into peptides_tofeatqc
+  tuple path(jointable_out), path(seqdbs) into peps_seqmatched
+
+  script:
+  peptide_table_out = 'peptide_table.txt'
+  jointable_out = 'seqmatch_jointable'
+  """
+  # Get bare peptide (works also with -f1)
+  cut -f2 ${peptides} > pepseqs
+  sed -i '0,/Bare peptide/s//Peptide/' pepseqs
+  for seqdb in ${listify(seqdbs).join(' ')}
+    do msstitch seqmatch -i pepseqs -o tmppeps --dbfile \${seqdb} --matchcolname \${seqdb}
+    mv tmppeps pepseqs
+  done
+  paste <(cut -f2-${1+len_seqmatch} pepseqs) ${peptides} > ${jointable_out}
+  paste ${peptides} <(cut -f2-${1+len_seqmatch} pepseqs) > ${peptide_table_out}
+  """
+}
+
+if (params.report_seqmatch) {
+table_normfac_toseqmatch.notpeps // acctype, table
+  .combine(peps_seqmatched)
+  .set { feats_to_join_seqmatch }
+} else {
+  Channel.empty().set { feats_to_join_seqmatch }
+}
+
+process joinAnnotatedSeqmatchPeptides {
+  container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
+    'https://depot.galaxyproject.org/singularity/sqlite:3.33.0' :
+    'quay.io/biocontainers/sqlite:3.33.0'}"
+
+  input:
+  tuple val(acctype), path('feats'), path('peptides'), path(seqdbs) from feats_to_join_seqmatch
+  output:
+  tuple val(acctype), path('joinedfeats') into nonpeps_tofeatqc
+  
+  script:
+  headfield = [proteins: "Protein(s)", ensg: "Gene ID(s)", genes: "Gene name(s)"][acctype]
+  featfield = [proteins: "Protein ID", ensg: "Gene ID", genes: "Gene Name"][acctype]
+  """
+  acc_col=\$(head -n1 peptides | tr '\t' '\n' | grep -nw "${headfield}" | cut -f1 -d':')
+  cut -f1-${len_seqmatch},\${acc_col} peptides > seqmatches
+  echo "\$(head -n1 feats)\t${seqdbs.join('\t')}" > joinedfeats
+  sqlite3 test.db <<END_COMMANDS >> joinedfeats
+.mode tabs
+.import seqmatches seqmatch
+.import feats feats
+
+SELECT feats.*, ${listify(seqdbs).collect() {"sqm_group.${it}"}.join(',')} FROM feats
+JOIN (
+  SELECT "${headfield}", ${listify(seqdbs).collect() {"GROUP_CONCAT(DISTINCT $it) AS $it"}.join(',')}
+  FROM seqmatch GROUP BY "${headfield}") AS sqm_group
+ON sqm_group."${headfield}"=feats."${featfield}"
+END_COMMANDS
+  """
+}
+
+if (params.report_seqmatch) {
+  peptides_tofeatqc
+    .concat(nonpeps_tofeatqc)
+    .join(normfacs)
+    .combine(featqc_peptides_samples)
+    .set { featqcinput }
+}
 
 process featQC {
   publishDir "${params.outdir}", mode: 'copy', overwrite: true, saveAs: {it == "feats" ? "${acctype}_table.txt": null}
