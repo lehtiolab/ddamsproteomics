@@ -309,7 +309,7 @@ summary['Pipeline Name']  = 'lehtiolab/ddamsproteomics'
 summary['Pipeline Version'] = workflow.manifest.version
 summary['Run Name']     = custom_runName ?: workflow.runName
 summary['mzMLs']        = multifile_format(params.mzmls)
-summary['or mzML definition file']        = params.mzmldef
+summary['or mzML definition file']        = "${params.mzmldef ?: params.input}"
 summary['Target DB'] = multifile_format(params.tdb)
 summary['Sample annotations'] = params.sampletable
 summary['Modifications'] = params.mods
@@ -441,13 +441,16 @@ process get_software_versions {
     """
 }
 
+// params.input is for future use, so any system that wants unifying can use this already now
+// params.mzmldef will be deprecated in 3.0 with DSL 2
+mzmldef = params.mzmldef ?: params.input
 if (workflow.profile.tokenize(',').intersect(['test', 'test_nofrac'])) { 
   // Profile 'test' delivers mzmlPaths
   Channel
     .from(params.mzmlPaths)
     .set { mzml_in }
 }
-else if (!params.mzmldef && params.mzmls) {
+else if (!mzmldef && params.mzmls) {
   Channel
     .fromPath(params.mzmls)
     .map { it -> [it, params.instrument, 'NA'] }
@@ -458,7 +461,15 @@ else if (!params.mzmldef && params.mzmls) {
     .empty()
     .set { mzml_in }
 } else {
-  mzmllines = file("${params.mzmldef}").readLines().collect { it.tokenize('\t') }
+  header = ['mzmlfile', 'instrument', 'setname', 'plate', 'fraction']
+  mzmllines = file("${mzmldef}").readLines().collect { it.tokenize('\t') }
+  if (mzmllines[0] == header) {
+    /* As above, future use with pushing files with a header becomes enabled, as long as
+    they use this header format. We cannot do module importing etc yet, have to use DSL2
+    for that. That is something to strive for in the future.
+    */
+    mzmllines.remove(0)
+  }
   Channel
     .from(mzmllines)
     .set { mzml_in }
