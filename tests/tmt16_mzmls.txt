@@ -1,0 +1,3 @@
+mzmlfile	instrument	setname	plate	fraction
+test-data/ddamsproteomics/tmt16_fr07>_1000@.mzML	qe	0set-A	3-10	07
+test-data/ddamsproteomics/tmt16_fr08_1000.mzML	qe	0set-A	3-10	A2
