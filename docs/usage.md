@@ -132,12 +132,16 @@ allowed charge states can be controlled with `--mincharge`, `--maxcharge`.
 ```
 
 
-### Modifications: `--mods`, `--locptms`, `--ptms`
+### Modifications: `--mods`, `--locptms`, `--ptms`, `--phospho`, `--minpsms_luciphor`, `--ptm_minscore_high`
 Modifications as in UNIMOD, although only a selected number are available by name. You can extend this list
 by adding entries to `assets/msgfmods.txt`. `--ptms` and `--locptms` are for stable/labile PTMs respectively,
 and they can optionally get isobaric quantification normalization (below). Use `--maxvarmods` for specifying
 how many variable mods are allowed per peptide (default is 2). If your peptide sample is enriched for phosphorylated
-peptides, specify `--phospho` to inform the search engine about this.
+peptides, specify `--phospho` to inform the search engine about this. For labile PTM (Phospho mainly) false localization
+rate determination, [Luciphor2](https://github.com/dfermin/lucxor) is used, which can be slightly configured using
+`--minpsms_luciphor` to set the minimum number of PSMs per charge state that Luciphor needs (default is 50) to build
+a model, and `--ptm_minscore_high`, to set the minimum luciphor-score of a PTM (default 50) to be included in the
+column "other high scoring PTMs".
 
 ```bash
 --mods "Carbamidomethylation;Oxidation" --ptms Acetyl --locptms Phoshpo

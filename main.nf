@@ -316,6 +316,7 @@ summary['Modifications'] = params.mods
 summary['Labile PTMs'] = params.locptms
 summary['PTMs'] = params.ptms
 summary['Minimum Luciphor2 score of PTM'] = params.ptm_minscore_high
+summary['Minimum amount of PSMs per charge state for Luciphor2'] = params.minpsms_luciphor
 summary['Phospho enriched samples'] = params.phospho
 summary['Total proteome normalization PSM table'] = params.totalproteomepsms
 summary['Instrument'] = params.mzmldef ? 'Set per mzML file in mzml definition file' : params.instrument
@@ -536,7 +537,6 @@ def stripchars_infile(x, return_oldfile=false) {
 mzml_in
   .tap { mzmlfiles_counter; mzmlfiles_qlup_sets } // for counting-> timelimits; getting sets from supplied lookup
   .map { it -> [it[2].replaceAll('[ ]+$', '').replaceAll('^[ ]+', ''), file(it[0]).baseName.replaceAll(regex_specialchars, '_'), file(it[0]), it[1], plate_or_no(it, 3), fr_or_file(it, 4)] }
-.view()
   .tap { mzmlfiles; mzml_luciphor; pre_isoquant; ms1quant; sample_mzmlfn}
   .combine(concatdb)
   .set { mzml_msgf }
@@ -678,8 +678,8 @@ process complementSpectraLookupCleanPSMs {
   # use -x for grep since old_setnames must grep whole word
   if grep -xf old_setnames <(echo ${setnames.join('\n')} )
     then
-      msstitch deletesets -i ${tpsms} -o t_cleaned_psms.txt --dbfile target_db.sqlite --setnames "${setnames.collect() { "'${it}'" }.join(' ')}"
-      msstitch deletesets -i ${dpsms} -o d_cleaned_psms.txt --dbfile decoy_db.sqlite --setnames "${setnames.collect() { "'${it}'" }.join(' ')}"
+      msstitch deletesets -i ${tpsms} -o t_cleaned_psms.txt --dbfile target_db.sqlite --setnames ${setnames.collect() { "'${it}'" }.join(' ')}
+      msstitch deletesets -i ${dpsms} -o d_cleaned_psms.txt --dbfile decoy_db.sqlite --setnames ${setnames.collect() { "'${it}'" }.join(' ')}
       ${params.ptmpsms ? "msstitch deletesets -i ${ptmpsms} -o cleaned_ptmpsms.txt --setnames ${setnames.collect() {"'${it}'"}.join(' ')}" : ''}
     else
       mv ${tpsms} t_cleaned_psms.txt
