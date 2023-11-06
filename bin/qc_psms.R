@@ -135,7 +135,7 @@ for (plateid in plateids) {
   for (ptype in names(ptypes)) {
     fn = paste('PLATE', plateid, ptype, sep="___")
     if (ptypes[[ptype]][1] %in% colnames(subfeats)) {
-      if (ptype == 'fryield') {
+      if (ptype == 'fryield' && nrow(subfeats)) {
         yieldcounts = aggregate(as.formula(fryield_form), subfeats, length)
         plotdata = merge(yieldcounts, subfiles[xcol], all.y=T)
         p = ggplot(plotdata) + geom_bar(aes_string(x=xcol, y=ptypes[[ptype]][1]), stat='identity')
