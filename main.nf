@@ -253,8 +253,6 @@ if (params.onlypeptides) {
   }
 }
 
-availProcessors = Runtime.runtime.availableProcessors()
-
 // parse inputs that combine to form values or are otherwise more complex.
 
 // Isobaric input example: --isobaric 'set1:tmt10plex:127N:128N set2:tmt16plex:sweep set3:itraq8plex:intensity'
@@ -589,11 +587,12 @@ process quantifyMS1 {
   set val(sample), path("${sample}.kr") optional true into kronik_out 
 
   script:
+  threads = task.cpus * params.overbook_cpus_factor
   (is_stripped, parsed_infile) = stripchars_infile(infile)
   """
   ${is_stripped ? "ln -s ${infile} ${parsed_infile}" : ''}
   # Dinosaur is first choice for MS1 quant
-  ${!params.hardklor ? "dinosaur --concurrency=${task.cpus * params.threadspercore} ${parsed_infile}" : ''}
+  ${!params.hardklor ? "dinosaur --concurrency=${threads} ${parsed_infile}" : ''}
   # Hardklor/Kronik can be used as a backup, using --hardklor
   ${params.hardklor ? "hardklor <(cat $hkconf <(echo $parsed_infile hardklor.out)) && kronik -c 5 -d 3 -g 1 -m 8000 -n 600 -p 10 hardklor.out ${sample}.kr" : ''}
   """
@@ -951,7 +950,6 @@ if (fractionation) {
 */
 
 process msgfPlus {
-  cpus = availProcessors < 4 ? availProcessors : 4
 
   input:
   set val(setname), val(sample), path(infile), val(instrument), val(platename), val(fraction), path(db) from mzml_msgf
@@ -960,6 +958,7 @@ process msgfPlus {
   set val(setname), val(sample), path("${sample}.mzid"), path("${sample}.mzid.tsv") into mzids
   
   script:
+  threads = task.cpus * params.overbook_cpus_factor
   isobtype = setisobaric && setisobaric[setname] ? setisobaric[setname] : false
   isobtype_parsed = ['tmt16plex', 'tmt18plex'].any { it == isobtype } ? 'tmtpro' : isobtype
   // protcol 0 is automatic, msgf checks in mod file, TMT/phospho should be run with 1
@@ -980,7 +979,7 @@ process msgfPlus {
   ${is_stripped ? "ln -s ${infile} '${parsed_infile}'" : ''}
   create_modfile.py ${params.maxvarmods} "${params.msgfmods}" "${params.mods}${isobtype ? ";${isobtype_parsed}" : ''}${params.ptms ? ";${params.ptms}" : ''}${params.locptms ? ";${params.locptms}" : ''}"
   
-  msgf_plus -Xmx${task.memory.toMega()}M -d $db -s '$parsed_infile' -o "${sample}.mzid" -thread ${task.cpus * params.threadspercore} -mod "mods.txt" -tda 0 -maxMissedCleavages $params.maxmiscleav -t ${params.prectol}  -ti ${params.iso_err} -m ${fragmeth} -inst ${msgfinstrument} -e ${enzyme} -protocol ${msgfprotocol} -ntt ${ntt} -minLength ${params.minpeplen} -maxLength ${params.maxpeplen} -minCharge ${params.mincharge} -maxCharge ${params.maxcharge} -n 1 -addFeatures 1
+  msgf_plus -Xmx${task.memory.toMega()}M -d $db -s '$parsed_infile' -o "${sample}.mzid" -thread ${threads} -mod "mods.txt" -tda 0 -maxMissedCleavages $params.maxmiscleav -t ${params.prectol}  -ti ${params.iso_err} -m ${fragmeth} -inst ${msgfinstrument} -e ${enzyme} -protocol ${msgfprotocol} -ntt ${ntt} -minLength ${params.minpeplen} -maxLength ${params.maxpeplen} -minCharge ${params.mincharge} -maxCharge ${params.maxcharge} -n 1 -addFeatures 1
   msgf_plus -Xmx3500M edu.ucsd.msjava.ui.MzIDToTsv -i "${sample}.mzid" -o out.tsv
   awk -F \$'\\t' '{OFS=FS ; print \$0, "Biological set" ${fractionation ? ', "Strip", "Fraction"' : ''}}' <( head -n+1 out.tsv) > "${sample}.mzid.tsv"
   awk -F \$'\\t' '{OFS=FS ; print \$0, "$setname" ${fractionation ? ", \"$platename\", \"$fraction\"" : ''}}' <( tail -n+2 out.tsv) >> "${sample}.mzid.tsv"
@@ -1010,7 +1009,7 @@ process percolator {
   """
   ${mzids.collect() { "echo '$it' >> metafile" }.join('&&')}
   msgf2pin -o percoin.tsv -e ${params.enzyme} -P "decoy_" metafile
-  percolator -j percoin.tsv -X perco.xml -N 500000 --decoy-xml-output -Y
+  percolator -j percoin.tsv -X perco.xml -N 500000 --decoy-xml-output -Y --num-threads ${task.cpus}
   mkdir outtables
   msstitch perco2psm --perco perco.xml -d outtables -i ${listify(tsvs).collect(){ "${it}"}.join(' ')} --mzids ${listify(mzids).collect(){ "${it}"}.join(' ')} ${!params.locptms ? "--filtpsm ${params.psmconflvl} --filtpep ${params.pepconflvl}" : ''}
   msstitch concat -i outtables/* -o allpsms
@@ -1132,7 +1131,6 @@ mzml_luciphor
 
 process luciphorPTMLocalizationScoring {
 
-  cpus = availProcessors < 4 ? availProcessors : 4
   when: params.locptms
 
   input:
@@ -1143,6 +1141,7 @@ process luciphorPTMLocalizationScoring {
   path 'warnings' optional true into luciphor_warnings
 
   script:
+  threads = task.cpus * params.overbook_cpus_factor
   denom = !params.noquant && setdenoms ? setdenoms[setname] : false
   specialdenom = denom && (denom[0] == 'sweep' || denom[0] == 'intensity')
   isobtype = setisobaric && setisobaric[setname] ? "${setisobaric[setname]}" : ''
@@ -1161,7 +1160,7 @@ process luciphorPTMLocalizationScoring {
   export ALGO=${['hcd', 'auto', 'any'].any { it == params.activation } ? '1' : '0'}
   export MAXPEPLEN=${params.maxpeplen}
   export MAXCHARGE=${params.maxcharge}
-  export THREAD=${task.cpus * params.threadspercore}
+  export THREAD=${threads}
   export MS2TOLVALUE=0.025
   export MS2TOLTYPE=Da
   cat "$baseDir/assets/luciphor2_input_template.txt" | envsubst > lucinput.txt
