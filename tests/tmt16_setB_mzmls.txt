@@ -1,1 +1,1 @@
-test-data/ddamsproteomics/linked_tmt16_fr07_1000.mzML	qe	set-B	3-10	02
+${testdata}/linked_tmt16_fr07_1000.mzML	qe	set-B	3-10	02

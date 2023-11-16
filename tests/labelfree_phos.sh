@@ -3,9 +3,9 @@
 echo Phospho, labelfree, one luciphor setB not enough PSMs
 name=labelfree_phos
 lfphos_dir=test_output/${name}
-nextflow run -resume -profile standard,docker main.nf --name ${name} \
+nextflow run -resume -profile docker ${repodir}/main.nf --name ${name} \
     --outdir ${lfphos_dir} \
-    --mzmldef ${testdir}/lf_mzmls.txt \
+    --mzmldef <(cat ${testdir}/lf_mzmls.txt | envsubst) \
     --genes \
     --tdb ${testdata}/lf.fa \
     --psmconflvl 0.2 --pepconflvl 0.2 \
@@ -16,9 +16,9 @@ nextflow run -resume -profile standard,docker main.nf --name ${name} \
 
 # LF phos where we add replace a set with a "new" set
 name=labelfree_phos_addset
-nextflow run -resume -profile standard,docker main.nf --name ${name} \
+nextflow run -resume -profile docker ${repodir}/main.nf --name ${name} \
     --outdir test_output/${name} \
-    --mzmldef <(grep setA ${testdir}/lf_mzmls.txt) \
+    --mzmldef <(grep setA ${testdir}/lf_mzmls.txt | envsubst) \
     --oldmzmldef ${testdir}/lf_mzmls.txt \
     --genes \
     --tdb ${testdata}/lf.fa \
@@ -37,9 +37,9 @@ nextflow run -resume -profile standard,docker main.nf --name ${name} \
 # Test for when there are no decoy PSMs: 
 echo LF phos no decoy
 name=labelfree_phos_nodecoy
-nextflow run -resume -profile standard,docker main.nf --name ${name} \
+nextflow run -resume -profile docker ${repodir}/main.nf --name ${name} \
     --outdir test_output/${name} \
-    --mzmldef <(grep setA ${testdir}/lf_mzmls.txt) \
+    --mzmldef <(grep setA ${testdir}/lf_mzmls.txt | envsubst) \
     --genes \
     --tdb ${testdata}/lf.fa \
     --mods 'carbamidomethyl;oxidation' \
@@ -49,9 +49,9 @@ nextflow run -resume -profile standard,docker main.nf --name ${name} \
 # Test for when there are no target PSMs: crash in createPSMTable
 # FIXME Need to make sure this doesnt hang idefinitely
 name=labelfree_phos_notarget
-nextflow run -resume -profile standard,docker main.nf --name ${name} \
+nextflow run -resume -profile docker ${repodir}/main.nf --name ${name} \
     --outdir test_output/${name} \
-    --mzmldef <(grep setA ${testdir}/lf_mzmls.txt) \
+    --mzmldef <(grep setA ${testdir}/lf_mzmls.txt | envsubst) \
     --genes \
     --tdb ${testdata}/lf.fa \
     --mods 'carbamidomethyl;oxidation' \

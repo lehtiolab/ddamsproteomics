@@ -8,8 +8,8 @@ echo TMT16 test denom deqms hardklor keepnapsmsquant
 # Warning: not enough q-values/linear model q-values for gene FDR -> using svm
 name=tmt16denomdeq
 baseresults=test_output/${name}
-nextflow run -resume -profile standard,docker main.nf --name ${name} --outdir ${baseresults} \
-    --input "${testdir}/tmt16_mzmls.txt" \
+nextflow run -resume -profile docker ${repodir}/main.nf --name ${name} --outdir ${baseresults} \
+    --input <(cat "${testdir}/tmt16_mzmls.txt" | envsubst) \
     --sampletable "${testdir}/tmt16_samples.txt" \
     --hardklor --isobaric '0set-A:tmtpro:126:131N' \
     --tdb "${testdata}/tmt16_fa.fa" \
@@ -20,8 +20,8 @@ nextflow run -resume -profile standard,docker main.nf --name ${name} --outdir ${
 echo TMT16 phospho + acetyl and total protnorm
 name=tmt16_acetyl_phos
 baseresults=test_output/${name}
-nextflow run -resume -profile standard,docker main.nf --name ${name} --outdir ${baseresults} \
-    --mzmldef <(grep fr07 "${testdir}/tmt16_mzmls.txt") \
+nextflow run -resume -profile docker ${repodir}/main.nf --name ${name} --outdir ${baseresults} \
+    --mzmldef <(grep fr07 "${testdir}/tmt16_mzmls.txt" | envsubst) \
     --sampletable "${testdir}/tmt16_samples.txt" \
     --hardklor --isobaric '0set-A:tmtpro:126:131N' \
     --tdb "${testdata}/tmt16_fa.fa" \
@@ -35,8 +35,8 @@ echo TMT16 add a set, carbamyl, set-coloring PCA
 # change name, this mzML is already in  the existing data and spectraIDs will collide
 ln -fs "$(pwd)/test-data/ddamsproteomics/tmt16_fr07>_1000@.mzML" "$(pwd)/test-data/ddamsproteomics/linked_tmt16_fr07_1000.mzML"
 name=tmt16_addsetB
-nextflow run -resume -profile standard,docker main.nf --name ${name} --outdir test_output/${name} \
-    --mzmldef "${testdir}/tmt16_setB_mzmls.txt" \
+nextflow run -resume -profile docker ${repodir}/main.nf --name ${name} --outdir test_output/${name} \
+    --mzmldef <(cat "${testdir}/tmt16_setB_mzmls.txt"  | envsubst) \
     --sampletable "${testdir}/tmt16_setAB_samples.txt" \
     --isobaric '0set-A:tmtpro:126:131N set-B:tmt16plex:126:131N' \
     --tdb "${testdata}/tmt16_fa.fa" \
@@ -52,8 +52,8 @@ nextflow run -resume -profile standard,docker main.nf --name ${name} --outdir te
 
 echo TMT16 frac and non frac mix
 name=tmt16_mixfrac_lg
-nextflow run -resume -profile standard,docker main.nf --name ${name} --outdir test_output/${name} \
-    --mzmldef <(cat <(grep fr07 "${testdir}/tmt16_mzmls.txt") <(grep fr08 "${testdir}/tmt16_mzmls.txt" | cut -f1-3)) \
+nextflow run -resume -profile docker ${repodir}/main.nf --name ${name} --outdir test_output/${name} \
+    --mzmldef <(cat <(grep fr07 "${testdir}/tmt16_mzmls.txt") <(grep fr08 "${testdir}/tmt16_mzmls.txt" | cut -f1-3) | envsubst) \
     --sampletable "${testdir}/tmt16_samples.txt" \
     --hardklor --isobaric '0set-A:tmtpro:126:131N' \
     --tdb "${testdata}/tmt16_fa.fa" \
@@ -65,8 +65,8 @@ nextflow run -resume -profile standard,docker main.nf --name ${name} --outdir te
 # Test single file so we dont get intro trouble with the treat-single-list-as-string NF behaviour
 echo TMT16 single-file for escaping in listified steps
 name=tmt16_singlefile
-nextflow run -resume -profile standard,docker main.nf --name ${name} --outdir test_output/${name} \
-    --mzmldef <(grep fr08 "${testdir}/tmt16_mzmls.txt") \
+nextflow run -resume -profile docker ${repodir}/main.nf --name ${name} --outdir test_output/${name} \
+    --mzmldef <(grep fr08 "${testdir}/tmt16_mzmls.txt" | envsubst) \
     --sampletable "${testdir}/tmt16_samples.txt" \
     --hardklor --isobaric '0set-A:tmtpro:126:131N' \
     --tdb "${testdata}/tmt16_fa.fa" \

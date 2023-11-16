@@ -2,10 +2,19 @@
 
 export NXF_VER=22.10.5
 
-export testdir=tests/
-export testdata=static-resources/test-data/ddamsproteomics
+rundir=$(pwd)
+export repodir=$(dirname "$(realpath -s "$0")")
+export testdir="${repodir}/tests/"
+export testdata="${rundir}/static-resources/test-data/ddamsproteomics"
 
-rm -r test_output
+if [ -e "${testdata}" ]
+then
+    cd "${testdata}" && git checkout ddamsproteomics_test_data && cd "${rundir}"
+else
+    git clone --single-branch --branch ddamsproteomics_test_data https://github.com/lehtiolab/static-resources
+fi
+
+[ -e test_output ] && rm -r test_output
 
 bash ${testdir}/labelfree.sh
 bash ${testdir}/labelfree_phos.sh

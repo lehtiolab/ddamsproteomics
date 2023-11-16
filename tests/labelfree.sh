@@ -4,9 +4,9 @@ set -eu
 
 echo Normal labelfree test
 name=lf
-nextflow run -resume -profile standard,docker main.nf --name ${name} \
+nextflow run -resume -profile docker ${repodir}/main.nf --name ${name} \
     --outdir test_output/${name} \
-    --mzmldef ${testdir}/lf_mzmls.txt \
+    --mzmldef <(cat ${testdir}/lf_mzmls.txt | envsubst) \
     --genes \
     --tdb ${testdata}/lf.fa \
     --psmconflvl 0.2 --pepconflvl 0.2 \
@@ -21,9 +21,9 @@ nextflow run -resume -profile standard,docker main.nf --name ${name} \
 
 echo Labelfree run with warnings: no decoy in setA, no target in setB
 name=lf_notarget
-nextflow run -resume -profile standard,docker main.nf --name ${name} \
+nextflow run -resume -profile docker ${repodir}/main.nf --name ${name} \
     --outdir test_output/${name} \
-    --mzmldef ${testdir}/lf_mzmls.txt \
+    --mzmldef <(cat ${testdir}/lf_mzmls.txt | envsubst) \
     --genes \
     --tdb ${testdata}/lf.fa \
     --psmconflvl 0.005 --pepconflvl 0.2 \
@@ -31,9 +31,9 @@ nextflow run -resume -profile standard,docker main.nf --name ${name} \
 
 echo Labelfree run without fractions, with warnings: no decoy in setA, no target in setB
 name=lf_nofrac_notarget
-nextflow run -resume -profile standard,docker main.nf --name ${name} \
+nextflow run -resume -profile docker ${repodir}/main.nf --name ${name} \
     --outdir test_output/${name} \
-    --mzmldef ${testdir}/lf_mzmls_nofrac.txt \
+    --mzmldef <(cat ${testdir}/lf_mzmls_nofrac.txt | envsubst) \
     --genes \
     --tdb ${testdata}/lf.fa \
     --psmconflvl 0.005 --pepconflvl 0.2 \
@@ -42,9 +42,9 @@ nextflow run -resume -profile standard,docker main.nf --name ${name} \
 
 echo Single file labelfree test
 name=lf_singlefile
-nextflow run -resume -profile standard,docker main.nf --name ${name} \
+nextflow run -resume -profile docker ${repodir}/main.nf --name ${name} \
     --outdir test_output/${name} \
-    --mzmldef <(grep setA ${testdir}/lf_mzmls.txt) \
+    --mzmldef <(grep setA ${testdir}/lf_mzmls.txt | envsubst) \
     --genes \
     --tdb ${testdata}/lf.fa \
     --psmconflvl 0.2 --pepconflvl 0.2 \
