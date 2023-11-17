@@ -484,6 +484,9 @@ if (!mzmldef && params.mzmls) {
 
 
 process createTargetDecoyFasta {
+  container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
+    'https://depot.galaxyproject.org/singularity/msstitch:3.15--pyhdfd78af_0' :
+    'quay.io/biocontainers/msstitch:3.15--pyhdfd78af_0'}"
  
   input:
   path(tdb) from Channel.fromPath(params.tdb).toList()
@@ -702,6 +705,9 @@ process complementSpectraLookupCleanPSMs {
 
 
 process createNewSpectraLookup {
+  container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
+    'https://depot.galaxyproject.org/singularity/msstitch:3.15--pyhdfd78af_0' :
+    'quay.io/biocontainers/msstitch:3.15--pyhdfd78af_0'}"
 
   when: !params.quantlookup && !complementary_run
 
