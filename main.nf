@@ -442,13 +442,7 @@ process get_software_versions {
 // params.input is for future use, so any system that wants unifying can use this already now
 // params.mzmldef will be deprecated in 3.0 with DSL 2
 mzmldef = params.mzmldef ?: params.input
-if (workflow.profile.tokenize(',').intersect(['test', 'test_nofrac'])) { 
-  // Profile 'test' delivers mzmlPaths
-  Channel
-    .from(params.mzmlPaths)
-    .set { mzml_in }
-}
-else if (!mzmldef && params.mzmls) {
+if (!mzmldef && params.mzmls) {
   Channel
     .fromPath(params.mzmls)
     .map { it -> [it, params.instrument, 'NA'] }

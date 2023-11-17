@@ -6,7 +6,7 @@ echo TIMS TMT16, noms1quant
 
 name=tims_tmt16
 baseresults=test_output/${name}
-nextflow run -resume -profile docker ${repodir}/main.nf --name ${name} --outdir ${baseresults} \
+nextflow run -resume -profile test ${repodir}/main.nf --name ${name} --outdir ${baseresults} \
     --sampletable "${testdir}/tmt16_samples.txt" \
     --noms1quant \
     --mzmldef <(cat "${testdir}/tims_mzmls.txt" | envsubst) \

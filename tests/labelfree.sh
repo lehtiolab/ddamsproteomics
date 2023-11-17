@@ -4,7 +4,7 @@ set -eu
 
 echo Normal labelfree test
 name=lf
-nextflow run -resume -profile docker ${repodir}/main.nf --name ${name} \
+nextflow run -resume -profile test ${repodir}/main.nf --name ${name} \
     --outdir test_output/${name} \
     --mzmldef <(cat ${testdir}/lf_mzmls.txt | envsubst) \
     --genes \
@@ -21,7 +21,7 @@ nextflow run -resume -profile docker ${repodir}/main.nf --name ${name} \
 
 echo Labelfree run with warnings: no decoy in setA, no target in setB
 name=lf_notarget
-nextflow run -resume -profile docker ${repodir}/main.nf --name ${name} \
+nextflow run -resume -profile test ${repodir}/main.nf --name ${name} \
     --outdir test_output/${name} \
     --mzmldef <(cat ${testdir}/lf_mzmls.txt | envsubst) \
     --genes \
@@ -31,7 +31,7 @@ nextflow run -resume -profile docker ${repodir}/main.nf --name ${name} \
 
 echo Labelfree run without fractions, with warnings: no decoy in setA, no target in setB
 name=lf_nofrac_notarget
-nextflow run -resume -profile docker ${repodir}/main.nf --name ${name} \
+nextflow run -resume -profile test ${repodir}/main.nf --name ${name} \
     --outdir test_output/${name} \
     --mzmldef <(cat ${testdir}/lf_mzmls_nofrac.txt | envsubst) \
     --genes \
@@ -42,7 +42,7 @@ nextflow run -resume -profile docker ${repodir}/main.nf --name ${name} \
 
 echo Single file labelfree test
 name=lf_singlefile
-nextflow run -resume -profile docker ${repodir}/main.nf --name ${name} \
+nextflow run -resume -profile test ${repodir}/main.nf --name ${name} \
     --outdir test_output/${name} \
     --mzmldef <(grep setA ${testdir}/lf_mzmls.txt | envsubst) \
     --genes \
