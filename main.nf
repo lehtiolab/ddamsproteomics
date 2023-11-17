@@ -809,6 +809,9 @@ allsetnames
 
 
 process quantLookup {
+  container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
+    'https://depot.galaxyproject.org/singularity/msstitch:3.15--pyhdfd78af_0' :
+    'quay.io/biocontainers/msstitch:3.15--pyhdfd78af_0'}"
 
   publishDir "${params.outdir}", mode: 'copy', overwrite: true, saveAs: {it == 'target.sqlite' ? 'quant_lookup.sql' : null }
 
@@ -1447,6 +1450,10 @@ process mergePTMPeps {
 }
 
 process makePeptides {
+  container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
+    'https://depot.galaxyproject.org/singularity/msstitch:3.15--pyhdfd78af_0' :
+    'quay.io/biocontainers/msstitch:3.15--pyhdfd78af_0'}"
+
   input:
   set val(td), val(setname), file('psms') from psm_pep
   
@@ -1492,6 +1499,9 @@ pre_tprepgs_in
   .set { tprepgs_in }
 
 process proteinGeneSymbolTableFDR {
+  container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
+    'https://depot.galaxyproject.org/singularity/msstitch:3.15--pyhdfd78af_0' :
+    'quay.io/biocontainers/msstitch:3.15--pyhdfd78af_0'}"
   
   when: !params.onlypeptides
   input:
@@ -1691,6 +1701,9 @@ if (!params.report_seqmatch) {
 process createTrypticMatchDB {
   /* Create a sequence match SQLite database to be used for filtering
   PSM tables and percolator */
+  container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
+    'https://depot.galaxyproject.org/singularity/msstitch:3.15--pyhdfd78af_0' :
+    'quay.io/biocontainers/msstitch:3.15--pyhdfd78af_0'}"
 
   input:
   path(sequences) from post_match_fa
@@ -1725,6 +1738,9 @@ process markPeptidesPresentInDB {
   Mark peptides that match with a 1, else 0 in a new column.
   Field name for column will be user-provided 
   */
+  container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
+    'https://depot.galaxyproject.org/singularity/msstitch:3.15--pyhdfd78af_0' :
+    'quay.io/biocontainers/msstitch:3.15--pyhdfd78af_0'}"
 
   input:
   tuple path(peptides), path(seqdbs) from pepseqmatch
@@ -1738,8 +1754,8 @@ process markPeptidesPresentInDB {
   jointable_out = 'seqmatch_jointable'
   """
   # Get bare peptide (works also with -f1)
-  cut -f2 ${peptides} > pepseqs
-  sed -i '0,/Bare peptide/s//Peptide/' pepseqs
+  echo Peptide > pepseqs
+  cut -f2 ${peptides} | tail -n+2 >> pepseqs
   for seqdb in ${listify(seqdbs).join(' ')}
     do msstitch seqmatch -i pepseqs -o tmppeps --dbfile \${seqdb} --matchcolname \${seqdb}
     mv tmppeps pepseqs
