@@ -33,8 +33,10 @@ nextflow run -resume -profile test ${repodir}/main.nf --name ${name} --outdir ${
 echo TMT16 add a set, carbamyl, set-coloring PCA
 # Tests set adding, not using DEqMS, using own defined MSGF mod (carbamyl)
 # change name, this mzML is already in  the existing data and spectraIDs will collide
-ln -fs "$(pwd)/test-data/ddamsproteomics/tmt16_fr07>_1000@.mzML" "$(pwd)/test-data/ddamsproteomics/linked_tmt16_fr07_1000.mzML"
+ln -fs "${testdata}/tmt16_fr07>_1000@.mzML" "${testdata}/linked_tmt16_fr07_1000.mzML"
 name=tmt16_addsetB
+mkdir -p test_output/${name}
+cat "${testdir}/tmt16_mzmls.txt" | envsubst > test_output/${name}/oldmzmls
 nextflow run -resume -profile test ${repodir}/main.nf --name ${name} --outdir test_output/${name} \
     --mzmldef <(cat "${testdir}/tmt16_setB_mzmls.txt"  | envsubst) \
     --sampletable "${testdir}/tmt16_setAB_samples.txt" \
@@ -47,7 +49,7 @@ nextflow run -resume -profile test ${repodir}/main.nf --name ${name} --outdir te
     --decoypsms "${baseresults}/decoy_psmtable.txt" \
     --targetpsmlookup "${baseresults}/target_psmlookup.sql" \
     --decoypsmlookup "${baseresults}/decoy_psmlookup.sql" \
-    --oldmzmldef ${testdir}/tmt16_mzmls.txt \
+    --oldmzmldef test_output/${name}/oldmzmls \
     --hirief https://github.com/nf-core/test-datasets/raw/6defbf8a92a46b0ac48bb05f9ad96b62716b4a5d/testdata/formatted_known_peptides_ENSUniRefseq_TMT_predpi_20150825.txt
 
 echo TMT16 frac and non frac mix

@@ -23,7 +23,9 @@ echo TMT18 phos add a set
 #DEqMS w denominator, keepnapsmsquant, implicit normalizing (deqms forces normalize)
 # Warning: not enough q-values/linear model q-values for gene FDR -> using svm
 name=tmt18phos_addset
-ln -fs "$(pwd)/test-data/ddamsproteomics/tmt18_fr06_1000.mzML" "$(pwd)/test-data/ddamsproteomics/linked_tmt18_fr06_1000.mzML"
+mkdir -p test_output/${name}
+ln -fs "${testdata}/tmt18_fr06_1000.mzML" "${testdata}/linked_tmt18_fr06_1000.mzML"
+cat "${testdir}/tmt18_mzmls.txt" | envsubst > test_output/${name}/oldmzmls
 nextflow run -resume -profile test ${repodir}/main.nf --name ${name} --outdir test_output/${name} \
     --mzmldef <(sed 's/tmt18_fr/linked_tmt18_fr/;s/set-A/setB/' "${testdir}/tmt18_mzmls.txt" | envsubst) \
     --sampletable "${testdir}/tmt18_setAB_samples.txt" \
@@ -36,7 +38,7 @@ nextflow run -resume -profile test ${repodir}/main.nf --name ${name} --outdir te
     --targetpsmlookup "${baseresults}/target_psmlookup.sql" \
     --decoypsmlookup "${baseresults}/decoy_psmlookup.sql" \
     --ptmpsms "${baseresults}/ptm_psmtable.txt" \
-    --oldmzmldef ${testdir}/tmt18_mzmls.txt \
+    --oldmzmldef test_output/${name}/oldmzmls \
     --deqms --genes
 
 
@@ -44,6 +46,8 @@ echo TMT18 rerun with different settings post PSMs
 # No need for PSM conf lvl bc it is used in percolator before PSM table
 # But pep conf level is used also in QC so needs to be here
 name=tmt18phos_rerun
+mkdir -p test_output/${name}
+cat "${testdir}/tmt18_mzmls.txt" | envsubst > test_output/${name}/oldmzmls
 nextflow run -resume -profile test ${repodir}/main.nf --name ${name} --outdir test_output/${name} \
     --sampletable "${testdir}/tmt18_samples.txt" \
     --isobaric '0set-A:tmt18plex:131' \
@@ -56,4 +60,4 @@ nextflow run -resume -profile test ${repodir}/main.nf --name ${name} --outdir te
     --targetpsmlookup "${baseresults}/target_psmlookup.sql" \
     --decoypsmlookup "${baseresults}/decoy_psmlookup.sql" \
     --pepconflvl 0.05 \
-    --oldmzmldef <(cat "${testdir}/tmt18_mzmls.txt" | envsubst)
+    --oldmzmldef test_output/${name}/oldmzmls

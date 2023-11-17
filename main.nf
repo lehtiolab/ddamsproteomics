@@ -633,7 +633,7 @@ if (params.oldmzmldef) {
     .set { oldmzml_sets }
   oldmzmls_fn = Channel.fromPath(params.oldmzmldef).first()
 } else {
-  oldmzmls_fn = Channel.value(false)
+  oldmzmls_fn = Channel.fromPath("${baseDir}/assets/NO__FILE").first()
   oldmzml_sets = Channel.value([])
 }
 
@@ -884,7 +884,7 @@ process countMS2sPerPlate {
 
   input:
   set val(setnames), file(mzmlfiles), val(platenames), file('nr_spec_per_file') from scans_platecount
-  file oldmzmls_fn
+  path oldmzmls_fn
 
   output:
   set path('nr_spec_per_file'), path('scans_per_plate') into scans_perplate
