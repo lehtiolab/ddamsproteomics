@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import sys
-from luciphor_prep import Mods
+from mods import Mods
 
 
 def main():
