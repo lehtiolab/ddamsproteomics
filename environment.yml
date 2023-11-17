@@ -7,9 +7,8 @@ dependencies:
   - bioconda::hardklor=2.3.2
   - bioconda::kronik=2.20
   - bioconda::dinosaur=1.2.0
-  - bioconda::msstitch=3.13
+  - bioconda::msstitch=3.15
   - conda-forge::biopython=1.72
-  - bioconda::percolator=3.4
   - bioconda::luciphor2=2020_04_03
   - conda-forge::lxml=4.2.5
   - conda-forge::jinja2=2.10

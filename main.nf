@@ -958,7 +958,7 @@ process msgfPlus {
   set val(setname), val(sample), path(infile), val(instrument), val(platename), val(fraction), path(db) from mzml_msgf
 
   output:
-  set val(setname), val(sample), path("${sample}.mzid"), path("${sample}.mzid.tsv") into mzids
+  set val(setname), path("${sample}.mzid"), path("${sample}.mzid.tsv") into mzids
   
   script:
   threads = task.cpus * params.overbook_cpus_factor
@@ -993,26 +993,52 @@ process msgfPlus {
 
 mzids
   .groupTuple()
+  .tap { mzid_tsv_2psm }
   .set { mzids_2pin }
 
 
 process percolator {
+  container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
+    'https://depot.galaxyproject.org/singularity/percolator:3.5--hfd1433f_1' :
+    'quay.io/biocontainers/percolator:3.5--hfd1433f_1'}"
 
   input:
-  set val(setname), val(samples), file(mzids), file(tsvs) from mzids_2pin
+  set val(setname), file(mzids), file(tsvs) from mzids_2pin
   val(mzmlcount) from mzmlcount_percolator
 
   output:
-  set path("${setname}_target.tsv"), val('target') into tmzidtsv_perco optional true
-  set path("${setname}_decoy.tsv"), val('decoy') into dmzidtsv_perco optional true
-  set val(setname), file('allpsms') optional true into unfiltered_psms
-  file('warnings') optional true into percowarnings
+  tuple val(setname), path('perco.xml') into perco_out
 
   script:
   """
   ${mzids.collect() { "echo '$it' >> metafile" }.join('&&')}
   msgf2pin -o percoin.tsv -e ${params.enzyme} -P "decoy_" metafile
   percolator -j percoin.tsv -X perco.xml -N 500000 --decoy-xml-output -Y --num-threads ${task.cpus}
+  """
+}
+
+
+mzid_tsv_2psm
+  .join(perco_out)
+  .set { perco_mzidtsv }
+
+
+process percolatorToPsms {
+  container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
+    'https://depot.galaxyproject.org/singularity/msstitch:3.15--pyhdfd78af_0' :
+    'quay.io/biocontainers/msstitch:3.15--pyhdfd78af_0'}"
+
+  input:
+  tuple val(setname), path(mzids), path(tsvs), path(perco) from perco_mzidtsv
+
+  output:
+  tuple path("${setname}_target.tsv"), val('target') into tmzidtsv_perco optional true
+  tuple path("${setname}_decoy.tsv"), val('decoy') into dmzidtsv_perco optional true
+  tuple val(setname), path('allpsms') optional true into unfiltered_psms
+  file('warnings') optional true into percowarnings
+
+  script:
+  """
   mkdir outtables
   msstitch perco2psm --perco perco.xml -d outtables -i ${listify(tsvs).collect(){ "${it}"}.join(' ')} --mzids ${listify(mzids).collect(){ "${it}"}.join(' ')} ${!params.locptms ? "--filtpsm ${params.psmconflvl} --filtpep ${params.pepconflvl}" : ''}
   msstitch concat -i outtables/* -o allpsms
