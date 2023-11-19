@@ -425,13 +425,13 @@ process get_software_versions {
     """
     echo $workflow.manifest.version > v_pipeline.txt
     echo $workflow.nextflow.version > v_nextflow.txt
-    msgf_plus | head -n2 | grep Release > v_msgf.txt
+    echo 2023.01.1202 > v_msgf.txt
     ${!noms1 && !params.hardklor ? 'dinosaur | head -n2 | grep Dinosaur > v_dino.txt || true' : ''}
     ${!noms1 && params.hardklor ? 'hardklor | head -n1 > v_hk.txt || true' : ''}
     kronik | head -n2 | tr -cd '[:digit:],\\.' > v_kr.txt || true
     #luciphor2 |& grep Version > v_luci.txt # incorrect version from binary (2014), echo below
     echo Version: 2020_04_03 > v_luci.txt # deprecate when binary is correct
-    percolator -h |& head -n1 > v_perco.txt || true
+    echo 3.5 > v_perco.txt
     msstitch --version > v_mss.txt
     echo 2.9.1 > v_openms.txt
     Rscript <(echo "packageVersion('DEqMS')") > v_deqms.txt

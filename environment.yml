@@ -10,7 +10,7 @@ dependencies:
   - bioconda::msstitch=3.15
   - conda-forge::biopython=1.72
   - bioconda::luciphor2=2020_04_03
-  - conda-forge::lxml=4.2.5
+  - conda-forge::lxml=4.9.3
   - conda-forge::jinja2=2.10
   - conda-forge::r-argparse=2.0.1
   - conda-forge::r-ggplot2=3.3.1
