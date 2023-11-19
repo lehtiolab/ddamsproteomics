@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 
+red=$(tput setaf 1)
+green=$(tput setaf 2)
+reset=$(tput sgr0)
+
+
 export NXF_VER=22.10.5
 
 rundir=$(pwd)
@@ -16,11 +21,30 @@ fi
 
 [ -e test_output ] && rm -r test_output
 
-bash ${testdir}/labelfree.sh
-bash ${testdir}/labelfree_phos.sh
-bash ${testdir}/tmt16.sh
-bash ${testdir}/tmt18.sh
-bash ${testdir}/tmt16_18.sh
-bash ${testdir}/tims.sh
+declare -A results
 
+test_names=(
+    labelfree
+    labelfree_phos
+    tmt16
+    tmt18
+    tmt16_18
+    tims
+)
+
+for testname in ${test_names[@]}
+do
+    bash "${testdir}/${testname}.sh"
+    results["$testname"]="$?"
+done
+
+for testname in ${test_names[@]}
+do
+    if [[ ${results["$testname"]} == 0 ]]
+    then
+        echo ${green}"$testname" - SUCCESS ${reset}
+    else
+        echo ${red}"$testname" - FAIL ${reset}
+    fi
+done
 # FIXME look through all the QCs to check if runs are correct
