@@ -1,4 +1,13 @@
 # lehtiolab/ddamsproteomics: Changelog
+## Version 2.17 [2023-11-20]
+- Percolator forces concatenated T/D search instead of mix-max
+- Using mixed isobaric types possible
+- Catching some more warnings, empty results
+- Tests included
+- Add peptide-is-in external fasta columns
+- External config versions
+
+
 ## Version 2.16 [2023-08-30]
 - Fixed Luciphor algorithm selection to use HCD when activation type is auto/any, and not use CID then
 - Fix mergePTM process file quoting when only one set in it
