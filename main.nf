@@ -101,6 +101,9 @@ def helpMessage() {
       --keepnapsmsquant             By default the pipeline does not use PSMs with NA in any channel for isobaric 
                                     quant summarization. Use this flag and it will keep the 
                                     (potentially more noisy) PSMs in the analysis.
+      --report_seqmatch             Supply fasta files which peptides/proteins/genes post-search 
+                                    will get matched to for annotation in one column per such file.
+                                    Use --report_seqmatch 'file1.fa;file2.fa'
 
       REUSING PREVIOUS DATA
       --quantlookup FILE            Use previously generated SQLite lookup database containing spectra 
@@ -190,6 +193,7 @@ params.noquant = false
 params.noms1quant = false
 params.hardklor = false
 params.keepnapsmsquant = false
+params.report_seqmatch = false
 params.sampletable = false
 params.deqms = false
 params.targetpsmlookup = false
@@ -205,10 +209,11 @@ params.oldmzmldef = false
 if (params.hirief && !file(params.hirief).exists()) exit 1, "Peptide pI data file not found: ${params.hirief}"
 if (params.hirief && !params.mzmldef) exit 1, "Cannot run HiRIEF delta pI calculation without fraction-annotated mzML definition file"
 if (params.sampletable) {
-  sampletable = file(params.sampletable)
+  // create value channel with first()
+  sampletable = Channel.fromPath(params.sampletable).first()
   if( !sampletable.exists() ) exit 1, "Sampletable file not found: ${params.sampletable}"
 } else {
-  sampletable = 0
+  sampletable = Channel.fromPath("${baseDir}/assets/NO__FILE").first()
 }
 
 complementary_run = params.targetpsmlookup && params.decoypsmlookup && params.targetpsms && params.decoypsms
@@ -248,8 +253,6 @@ if (params.onlypeptides) {
   }
 }
 
-availProcessors = Runtime.runtime.availableProcessors()
-
 // parse inputs that combine to form values or are otherwise more complex.
 
 // Isobaric input example: --isobaric 'set1:tmt10plex:127N:128N set2:tmt16plex:sweep set3:itraq8plex:intensity'
@@ -257,7 +260,7 @@ isop = params.isobaric ? params.isobaric.tokenize(' ') : false
 setisobaric = isop ? isop.collect() {
   y -> y.tokenize(':')
 }.collectEntries() {
-  x-> [x[0], x[1]]
+  x-> [x[0], x[1].replaceAll('tmtpro', 'tmt16plex')]
 } : false
 setdenoms = isop ? isop.collect() {
   y -> y.tokenize(':')
@@ -304,13 +307,14 @@ summary['Pipeline Name']  = 'lehtiolab/ddamsproteomics'
 summary['Pipeline Version'] = workflow.manifest.version
 summary['Run Name']     = custom_runName ?: workflow.runName
 summary['mzMLs']        = multifile_format(params.mzmls)
-summary['or mzML definition file']        = params.mzmldef
+summary['or mzML definition file']        = "${params.mzmldef ?: params.input}"
 summary['Target DB'] = multifile_format(params.tdb)
 summary['Sample annotations'] = params.sampletable
 summary['Modifications'] = params.mods
 summary['Labile PTMs'] = params.locptms
 summary['PTMs'] = params.ptms
 summary['Minimum Luciphor2 score of PTM'] = params.ptm_minscore_high
+summary['Minimum amount of PSMs per charge state for Luciphor2'] = params.minpsms_luciphor
 summary['Phospho enriched samples'] = params.phospho
 summary['Total proteome normalization PSM table'] = params.totalproteomepsms
 summary['Instrument'] = params.mzmldef ? 'Set per mzML file in mzml definition file' : params.instrument
@@ -333,6 +337,7 @@ summary['Isobaric PSM minimum precursor purity'] = params.minprecursorpurity
 summary['Retention time tolerance for MS1 alignment'] = params.ms1qrttol
 summary['m/z tolerance for MS1 alignment'] = params.ms1qmztol
 summary['Keep PSMs for quant with NA in any channel'] = params.keepnapsmsquant
+summary['Post-search external annotation fasta'] = params.report_seqmatch
 summary['Explicit isobaric normalization'] = params.normalize
 summary['Perform DE analysis (implies normalization)'] = params.deqms
 summary['Output genes'] = params.genes
@@ -420,13 +425,13 @@ process get_software_versions {
     """
     echo $workflow.manifest.version > v_pipeline.txt
     echo $workflow.nextflow.version > v_nextflow.txt
-    msgf_plus | head -n2 | grep Release > v_msgf.txt
+    echo 2023.01.1202 > v_msgf.txt
     ${!noms1 && !params.hardklor ? 'dinosaur | head -n2 | grep Dinosaur > v_dino.txt || true' : ''}
     ${!noms1 && params.hardklor ? 'hardklor | head -n1 > v_hk.txt || true' : ''}
     kronik | head -n2 | tr -cd '[:digit:],\\.' > v_kr.txt || true
     #luciphor2 |& grep Version > v_luci.txt # incorrect version from binary (2014), echo below
     echo Version: 2020_04_03 > v_luci.txt # deprecate when binary is correct
-    percolator -h |& head -n1 > v_perco.txt || true
+    echo 3.5 > v_perco.txt
     msstitch --version > v_mss.txt
     echo 2.9.1 > v_openms.txt
     Rscript <(echo "packageVersion('DEqMS')") > v_deqms.txt
@@ -434,13 +439,10 @@ process get_software_versions {
     """
 }
 
-if (workflow.profile.tokenize(',').intersect(['test', 'test_nofrac'])) { 
-  // Profile 'test' delivers mzmlPaths
-  Channel
-    .from(params.mzmlPaths)
-    .set { mzml_in }
-}
-else if (!params.mzmldef && params.mzmls) {
+// params.input is for future use, so any system that wants unifying can use this already now
+// params.mzmldef will be deprecated in 3.0 with DSL 2
+mzmldef = params.mzmldef ?: params.input
+if (!mzmldef && params.mzmls) {
   Channel
     .fromPath(params.mzmls)
     .map { it -> [it, params.instrument, 'NA'] }
@@ -451,7 +453,15 @@ else if (!params.mzmldef && params.mzmls) {
     .empty()
     .set { mzml_in }
 } else {
-  mzmllines = file("${params.mzmldef}").readLines().collect { it.tokenize('\t') }
+  header = ['mzmlfile', 'instrument', 'setname', 'plate', 'fraction']
+  mzmllines = file("${mzmldef}").readLines().collect { it.tokenize('\t') }
+  if (mzmllines[0] == header) {
+    /* As above, future use with pushing files with a header becomes enabled, as long as
+    they use this header format. We cannot do module importing etc yet, have to use DSL2
+    for that. That is something to strive for in the future.
+    */
+    mzmllines.remove(0)
+  }
   Channel
     .from(mzmllines)
     .set { mzml_in }
@@ -474,6 +484,9 @@ else if (!params.mzmldef && params.mzmls) {
 
 
 process createTargetDecoyFasta {
+  container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
+    'https://depot.galaxyproject.org/singularity/msstitch:3.15--pyhdfd78af_0' :
+    'quay.io/biocontainers/msstitch:3.15--pyhdfd78af_0'}"
  
   input:
   path(tdb) from Channel.fromPath(params.tdb).toList()
@@ -505,13 +518,31 @@ def plate_or_no(it, length) {
   return it.size() > 3 ? it[3] : "no_plate"
 }
 
+
+
+regex_specialchars = '[&<>\'"]'
+def stripchars_infile(x, return_oldfile=false) {
+  // FIXME %, ?, * fn turns a basename into a list because they are wildcards
+  // Replace special characters since they cause trouble in percolator XML output downstream
+  // e.g. & is not allowed in XML apparently (percolator doesnt encode it)
+  // and LXML then crashes on reading it.
+  // Also NF doesnt quote e.g. semicolons it seems.
+  def scriptinfile = "${x.baseName}.${x.extension}"
+  def parsed_file = scriptinfile.replaceAll(regex_specialchars, '_')
+  if (return_oldfile) {
+    return [parsed_file != scriptinfile, parsed_file, scriptinfile]
+  } else {
+    return [parsed_file != scriptinfile, parsed_file]
+  }
+}
+
 // Parse mzML input to get files and sample names etc
 // get setname, sample name (baseName), input mzML file. 
 // Set platename to setname if not specified. 
 // Set fraction name to NA if not specified
 mzml_in
   .tap { mzmlfiles_counter; mzmlfiles_qlup_sets } // for counting-> timelimits; getting sets from supplied lookup
-  .map { it -> [it[2].replaceAll('[ ]+$', '').replaceAll('^[ ]+', ''), file(it[0]).baseName.replaceAll('[&<>\'"]', '_'), file(it[0]), it[1], plate_or_no(it, 3), fr_or_file(it, 4)] }
+  .map { it -> [it[2].replaceAll('[ ]+$', '').replaceAll('^[ ]+', ''), file(it[0]).baseName.replaceAll(regex_specialchars, '_'), file(it[0]), it[1], plate_or_no(it, 3), fr_or_file(it, 4)] }
   .tap { mzmlfiles; mzml_luciphor; pre_isoquant; ms1quant; sample_mzmlfn}
   .combine(concatdb)
   .set { mzml_msgf }
@@ -520,32 +551,23 @@ mzml_in
 * Step 1: Extract quant data from peptide spectra
 */
 
-def stripchars_infile(x) {
-  // The string in "scriptinfile" does not have NF escaping characters like & (e.g. in FAIMS 35&65),
-  // which NF does to "infile". That would work fine but not if the files are quoted in the 
-  // script, then they cant be found when there is \&.
-  // Replace those characters anyway since they cause trouble in percolator XML output downstream
-  def scriptinfile = "${x.baseName}.${x.extension}"
-  def parsed_file = scriptinfile.replaceAll('[&<>\'"]', '_')
-  return [parsed_file != scriptinfile, scriptinfile, parsed_file]
-}
 
 process centroidMS1 {
   container 'chambm/pwiz-skyline-i-agree-to-the-vendor-licenses:3.0.20066-729ef9c41'
   when: !params.quantlookup && !params.noquant && setisobaric && setisobaric[setname]
 
   input:
-  set val(setname), val(sample), file(infile), val(instr), val(platename), val(fraction) from pre_isoquant
+  set val(setname), val(sample), path(infile), val(instr), val(platename), val(fraction) from pre_isoquant
 
   output:
-  set val(setname), val(sample), file(parsed_infile), val(instr), val(platename), val(fraction) into isoquant
+  set val(setname), val(sample), path(parsed_infile), val(instr), val(platename), val(fraction) into isoquant
 
   script:
-  (stripped_fn, scriptinfile, parsed_infile) = stripchars_infile(infile)
+  (is_stripped, parsed_infile) = stripchars_infile(infile)
   """
-  ${stripped_fn ? "ln -s '${scriptinfile}' '${parsed_infile}'" : ''}
+  ${is_stripped ? "ln -s ${infile} ${parsed_infile}" : ''}
   wine msconvert ${parsed_infile} --outfile centroidms1.mzML --filter 'peakPicking true 1' ${instr == 'timstof' ? "--filter sortByScanTime" : ''}
-  mv centroidms1.mzML '${parsed_infile}'
+  mv centroidms1.mzML ${parsed_infile}
   """
 }
 
@@ -554,21 +576,22 @@ process quantifyMS1 {
   when: !params.quantlookup && !params.noquant && !params.noms1quant
 
   input:
-  set val(setname), val(sample), file(infile), val(instr), val(platename), val(fraction) from ms1quant
+  set val(setname), val(sample), path(infile), val(instr), val(platename), val(fraction) from ms1quant
   file(hkconf) from Channel.fromPath("$baseDir/assets/hardklor.conf").first()
 
   output:
-  set val(sample), file("${sample}.features.tsv") optional true into dino_out 
-  set val(sample), file("${sample}.kr") optional true into kronik_out 
+  set val(sample), path("${sample}.features.tsv") optional true into dino_out 
+  set val(sample), path("${sample}.kr") optional true into kronik_out 
 
   script:
-  (stripped_fn, scriptinfile, parsed_infile) = stripchars_infile(infile)
+  threads = task.cpus * params.overbook_cpus_factor
+  (is_stripped, parsed_infile) = stripchars_infile(infile)
   """
-  ${stripped_fn ? "mv '${scriptinfile}' '${parsed_infile}'" : ''}
+  ${is_stripped ? "ln -s ${infile} ${parsed_infile}" : ''}
   # Dinosaur is first choice for MS1 quant
-  ${!params.hardklor ? "dinosaur --concurrency=${task.cpus * params.threadspercore} \"${parsed_infile}\"" : ''}
+  ${!params.hardklor ? "dinosaur --concurrency=${threads} ${parsed_infile}" : ''}
   # Hardklor/Kronik can be used as a backup, using --hardklor
-  ${params.hardklor ? "hardklor <(cat $hkconf <(echo \"$parsed_infile\" hardklor.out)) && kronik -c 5 -d 3 -g 1 -m 8000 -n 600 -p 10 hardklor.out ${sample}.kr" : ''}
+  ${params.hardklor ? "hardklor <(cat $hkconf <(echo $parsed_infile hardklor.out)) && kronik -c 5 -d 3 -g 1 -m 8000 -n 600 -p 10 hardklor.out ${sample}.kr" : ''}
   """
 }
 
@@ -590,7 +613,6 @@ process isoquantSpectra {
   outfile = "${infile.baseName}.consensusXML"
   activationtype = [auto: 'auto', any: 'any', hcd:'beam-type collision-induced dissociation', cid:'Collision-induced dissociation', etd:'Electron transfer dissociation'][params.activation]
   isobtype = setisobaric && setisobaric[setname] ? setisobaric[setname] : false
-  isobtype = isobtype == 'tmtpro' ? 'tmt16plex' : isobtype
   plextype = isobtype ? isobtype.replaceFirst(/[0-9]+plex/, "") : 'false'
   massshift = [tmt:0.0013, itraq:0.00125, false:0][plextype]
 
@@ -611,7 +633,7 @@ if (params.oldmzmldef) {
     .set { oldmzml_sets }
   oldmzmls_fn = Channel.fromPath(params.oldmzmldef).first()
 } else {
-  oldmzmls_fn = Channel.value(false)
+  oldmzmls_fn = Channel.fromPath("${baseDir}/assets/NO__FILE").first()
   oldmzml_sets = Channel.value([])
 }
 
@@ -656,24 +678,23 @@ process complementSpectraLookupCleanPSMs {
   setnames = in_setnames.unique(false)
   """
   # If this is an addition to an old lookup, copy it and extract set names
-  cp "${tlup}" target_db.sqlite
-  cp "${dlup}" decoy_db.sqlite
+  cp ${tlup} target_db.sqlite
+  cp ${dlup} decoy_db.sqlite
   sqlite3 target_db.sqlite "SELECT set_name FROM biosets" > old_setnames
   # If adding to old lookup: grep new setnames in old and run msstitch deletesets if they match
   # use -x for grep since old_setnames must grep whole word
   if grep -xf old_setnames <(echo ${setnames.join('\n')} )
     then
-      msstitch deletesets -i "${tpsms}" -o t_cleaned_psms.txt --dbfile target_db.sqlite --setnames "${setnames.join(' ')}"
-      msstitch deletesets -i "${dpsms}" -o d_cleaned_psms.txt --dbfile decoy_db.sqlite --setnames "${setnames.join(' ')}"
-      ${params.ptmpsms ? "msstitch deletesets -i \"${ptmpsms}\" -o cleaned_ptmpsms.txt --setnames ${setnames.join(' ')}" : ''}
+      msstitch deletesets -i ${tpsms} -o t_cleaned_psms.txt --dbfile target_db.sqlite --setnames ${setnames.collect() { "'${it}'" }.join(' ')}
+      msstitch deletesets -i ${dpsms} -o d_cleaned_psms.txt --dbfile decoy_db.sqlite --setnames ${setnames.collect() { "'${it}'" }.join(' ')}
+      ${params.ptmpsms ? "msstitch deletesets -i ${ptmpsms} -o cleaned_ptmpsms.txt --setnames ${setnames.collect() {"'${it}'"}.join(' ')}" : ''}
     else
-      mv "${tpsms}" t_cleaned_psms.txt
-      mv "${dpsms}" d_cleaned_psms.txt
-      ${params.ptmpsms ? "mv '${ptmpsms}' cleaned_ptmpsms.txt" : ''}
+      mv ${tpsms} t_cleaned_psms.txt
+      mv ${dpsms} d_cleaned_psms.txt
+      ${params.ptmpsms ? "mv ${ptmpsms} cleaned_ptmpsms.txt" : ''}
   fi
   
-  ${mzmlfiles.collect() { it.toString() != it.toString().replaceAll('[&<>\'"]', '_') ? "mv '${it}' '${it.toString().replaceAll('[&<>\'"]', '_')}'" : ''}.findAll { it != '' }.join(' && ')}
-
+  ${mzmlfiles.collect() { stripchars_infile(it, return_oldfile=true) }.findAll{ it[0] }.collect() { "ln -s '${it[2]}' '${it[1]}'" }.join(' && ')}
   ${mzmlfiles.size() ? "msstitch storespectra --spectra ${mzmlfiles.collect() { "'${it.toString().replaceAll('[&<>\'"]', '_')}'" }.join(' ')} --setnames ${in_setnames.collect() { "'$it'" }.join(' ')} --dbfile target_db.sqlite" : ''}
   ${params.ptmpsms ? "cp target_db.sqlite ptms_db.sqlite" : ''}
 
@@ -684,6 +705,9 @@ process complementSpectraLookupCleanPSMs {
 
 
 process createNewSpectraLookup {
+  container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
+    'https://depot.galaxyproject.org/singularity/msstitch:3.15--pyhdfd78af_0' :
+    'quay.io/biocontainers/msstitch:3.15--pyhdfd78af_0'}"
 
   when: !params.quantlookup && !complementary_run
 
@@ -696,9 +720,9 @@ process createNewSpectraLookup {
 
   script:
   """
-  ${mzmlfiles.collect() { it.toString() != it.toString().replaceAll('[&<>\'"]', '_') ? "mv '${it}' '${it.toString().replaceAll('[&<>\'"]', '_')}'" : ''}.findAll { it != ''}.join(' && ')}
+  ${mzmlfiles.collect() { stripchars_infile(it, return_oldfile=true) }.findAll{ it[0] }.collect() { "ln -s '${it[2]}' '${it[1]}'" }.join(' && ')}
 
-  msstitch storespectra --spectra ${mzmlfiles.collect() { "'$it'" }.join(' ')} --setnames ${setnames.collect() { "'$it'" }.join(' ')} -o target_db.sqlite
+  msstitch storespectra --spectra ${mzmlfiles.collect() { stripchars_infile(it)[1] }.join(' ')} --setnames ${setnames.collect() { "'$it'" }.join(' ')} -o target_db.sqlite
   ln -s target_db.sqlite decoy_db.sqlite
   """
 }
@@ -726,7 +750,7 @@ if (complementary_run) {
 
 // Collect all MS1 dinosaur/kronik output for quant lookup building process
 sample_mzmlfn
-  .map { [ it[1], stripchars_infile(it[2])[2] ] } // extract samplename, mzML
+  .map { [ it[1], stripchars_infile(it[2])[1] ] } // extract samplename, mzML
   .join(dino_out.concat(kronik_out), remainder: true)
   .join(isobaricxml, remainder: true)
   .toList()
@@ -785,6 +809,9 @@ allsetnames
 
 
 process quantLookup {
+  container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
+    'https://depot.galaxyproject.org/singularity/msstitch:3.15--pyhdfd78af_0' :
+    'quay.io/biocontainers/msstitch:3.15--pyhdfd78af_0'}"
 
   publishDir "${params.outdir}", mode: 'copy', overwrite: true, saveAs: {it == 'target.sqlite' ? 'quant_lookup.sql' : null }
 
@@ -801,9 +828,9 @@ process quantLookup {
   """
   # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
   cat $tlookup > target.sqlite
-  msstitch storequant --dbfile target.sqlite --spectra ${mzmlnames.collect() { "'$it'" }.join(' ')}  \
-    ${!params.noms1quant ? "--mztol ${params.ms1qmztol} --mztoltype ppm --rttol ${params.ms1qrttol} ${params.hardklor ? "--kronik ${ms1fns.collect() { "'$it'" }.join(' ')}" : "--dinosaur ${ms1fns.collect() { "'$it'" }.join(' ')}"}" : ''} \
-    ${params.isobaric ? "--isobaric ${isofns.collect() { "'$it'" }.join(' ')}" : ''}
+  msstitch storequant --dbfile target.sqlite --spectra ${mzmlnames.collect() { "'${it}'" }.join(' ')}  \
+    ${!params.noms1quant ? "--mztol ${params.ms1qmztol} --mztoltype ppm --rttol ${params.ms1qrttol} ${params.hardklor ? "--kronik ${ms1fns.collect() { "$it" }.join(' ')}" : "--dinosaur ${ms1fns.collect() { "$it" }.join(' ')}"}" : ''} \
+    ${params.isobaric ? "--isobaric ${isofns.collect() { "$it" }.join(' ')}" : ''}
   """
 }
 
@@ -857,7 +884,7 @@ process countMS2sPerPlate {
 
   input:
   set val(setnames), file(mzmlfiles), val(platenames), file('nr_spec_per_file') from scans_platecount
-  file oldmzmls_fn
+  path oldmzmls_fn
 
   output:
   set path('nr_spec_per_file'), path('scans_per_plate') into scans_perplate
@@ -868,11 +895,12 @@ process countMS2sPerPlate {
   """
   #!/usr/bin/env python
   import os
+  import re
   platesets = [\"${splates.join('", "')}\"]
   plates = [\"${platenames.join('", "')}\"]
   setnames = [\"${setnames.join('", "')}\"]
   fileplates = {}
-  for fn, setname, plate in zip([\"${mzmlfiles.collect() { it.toString().replaceAll('[&<>\'"]', '_')}.join('", "')}\"], setnames, plates):
+  for fn, setname, plate in zip([${mzmlfiles.collect() { "'${stripchars_infile(it)[1]}'" }.join(',')}], setnames, plates):
       try:
           fileplates[fn][setname] = plate
       except KeyError:
@@ -886,7 +914,7 @@ process countMS2sPerPlate {
               if setname in setnames:
                   continue
               setplate = '{}_{}'.format(setname, plate)
-              fn = os.path.basename(fpath)
+              fn = re.sub('${regex_specialchars.replaceAll("'", "\\\\'")}', '_', os.path.basename(fpath))
               if setplate not in platesets:
                   platesets.append(setplate)
               if fn not in fileplates:
@@ -925,15 +953,18 @@ if (fractionation) {
 */
 
 process msgfPlus {
-  cpus = availProcessors < 4 ? availProcessors : 4
+  container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
+    'https://depot.galaxyproject.org/singularity/msgf_plus:2023.01.1202--hdfd78af_0' :
+    'quay.io/biocontainers/msgf_plus:2023.01.1202--hdfd78af_0'}"
 
   input:
-  set val(setname), val(sample), file(x), val(instrument), val(platename), val(fraction), file(db) from mzml_msgf
+  set val(setname), val(sample), path(infile), val(instrument), val(platename), val(fraction), path(db) from mzml_msgf
 
   output:
-  set val(setname), val(sample), file("${sample}.mzid"), file("${sample}.mzid.tsv") into mzids
+  set val(setname), path("${sample}.mzid"), path("${sample}.mzid.tsv") into mzids
   
   script:
+  threads = task.cpus * params.overbook_cpus_factor
   isobtype = setisobaric && setisobaric[setname] ? setisobaric[setname] : false
   isobtype_parsed = ['tmt16plex', 'tmt18plex'].any { it == isobtype } ? 'tmtpro' : isobtype
   // protcol 0 is automatic, msgf checks in mod file, TMT/phospho should be run with 1
@@ -948,17 +979,15 @@ process msgfPlus {
   // the string in "scriptinfile" does not have NF escaping characters like & (e.g. in FAIMS 35&65),
   // which NF does to "infile". That would work fine but not if the files are quoted in the 
   // script, then they cant be found when there is \&.
-  scriptinfile = "${x.baseName}.${x.extension}"
   // Replace those characters anyway since they cause trouble in percolator XML output downstream
-  parsed_infile = scriptinfile.replaceAll('[&<>\'"]', '_')
+  (is_stripped, parsed_infile) = stripchars_infile(infile)
   """
-  ${scriptinfile != parsed_infile ? "ln -s '${scriptinfile}' '${parsed_infile}'" : ''}
-
+  ${is_stripped ? "ln -s ${infile} '${parsed_infile}'" : ''}
   create_modfile.py ${params.maxvarmods} "${params.msgfmods}" "${params.mods}${isobtype ? ";${isobtype_parsed}" : ''}${params.ptms ? ";${params.ptms}" : ''}${params.locptms ? ";${params.locptms}" : ''}"
   
-  msgf_plus -Xmx${task.memory.toMega()}M -d $db -s "$parsed_infile" -o "${sample}.mzid" -thread ${task.cpus * params.threadspercore} -mod "mods.txt" -tda 0 -maxMissedCleavages $params.maxmiscleav -t ${params.prectol}  -ti ${params.iso_err} -m ${fragmeth} -inst ${msgfinstrument} -e ${enzyme} -protocol ${msgfprotocol} -ntt ${ntt} -minLength ${params.minpeplen} -maxLength ${params.maxpeplen} -minCharge ${params.mincharge} -maxCharge ${params.maxcharge} -n 1 -addFeatures 1
+  msgf_plus -Xmx${task.memory.toMega()}M -d $db -s '$parsed_infile' -o "${sample}.mzid" -thread ${threads} -mod "mods.txt" -tda 0 -maxMissedCleavages $params.maxmiscleav -t ${params.prectol}  -ti ${params.iso_err} -m ${fragmeth} -inst ${msgfinstrument} -e ${enzyme} -protocol ${msgfprotocol} -ntt ${ntt} -minLength ${params.minpeplen} -maxLength ${params.maxpeplen} -minCharge ${params.mincharge} -maxCharge ${params.maxcharge} -n 1 -addFeatures 1
   msgf_plus -Xmx3500M edu.ucsd.msjava.ui.MzIDToTsv -i "${sample}.mzid" -o out.tsv
-  awk -F \$'\\t' '{OFS=FS ; print \$0, "Biological set" ${fractionation ? ', "Strip", "Fraction"' : ''}}' <( head -n+1 out.tsv) > "${sample}.mzid.tsv"
+  awk -F \$'\\t' '{OFS=FS ; print \$0, "Biological set" ${fractionation ? ', "Strip", "Fraction"' : ''}}' <( head -n1 out.tsv) > "${sample}.mzid.tsv"
   awk -F \$'\\t' '{OFS=FS ; print \$0, "$setname" ${fractionation ? ", \"$platename\", \"$fraction\"" : ''}}' <( tail -n+2 out.tsv) >> "${sample}.mzid.tsv"
   rm ${db.baseName.replaceFirst(/\.fasta/, "")}.c*
   """
@@ -967,28 +996,54 @@ process msgfPlus {
 
 mzids
   .groupTuple()
+  .tap { mzid_tsv_2psm }
   .set { mzids_2pin }
 
 
 process percolator {
+  container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
+    'https://depot.galaxyproject.org/singularity/percolator:3.5--hfd1433f_1' :
+    'quay.io/biocontainers/percolator:3.5--hfd1433f_1'}"
 
   input:
-  set val(setname), val(samples), file(mzids), file(tsvs) from mzids_2pin
+  set val(setname), file(mzids), file(tsvs) from mzids_2pin
   val(mzmlcount) from mzmlcount_percolator
 
   output:
-  set path("${setname}_target.tsv"), val('target') into tmzidtsv_perco optional true
-  set path("${setname}_decoy.tsv"), val('decoy') into dmzidtsv_perco optional true
-  set val(setname), file('allpsms') optional true into unfiltered_psms
-  file('warnings') optional true into percowarnings
+  tuple val(setname), path('perco.xml') into perco_out
 
   script:
   """
   ${mzids.collect() { "echo '$it' >> metafile" }.join('&&')}
   msgf2pin -o percoin.tsv -e ${params.enzyme} -P "decoy_" metafile
-  percolator -j percoin.tsv -X perco.xml -N 500000 --decoy-xml-output
+  percolator -j percoin.tsv -X perco.xml -N 500000 --decoy-xml-output -Y --num-threads ${task.cpus}
+  """
+}
+
+
+mzid_tsv_2psm
+  .join(perco_out)
+  .set { perco_mzidtsv }
+
+
+process percolatorToPsms {
+  container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
+    'https://depot.galaxyproject.org/singularity/msstitch:3.15--pyhdfd78af_0' :
+    'quay.io/biocontainers/msstitch:3.15--pyhdfd78af_0'}"
+
+  input:
+  tuple val(setname), path(mzids), path(tsvs), path(perco) from perco_mzidtsv
+
+  output:
+  tuple path("${setname}_target.tsv"), val('target') into tmzidtsv_perco optional true
+  tuple path("${setname}_decoy.tsv"), val('decoy') into dmzidtsv_perco optional true
+  tuple val(setname), path('allpsms') optional true into unfiltered_psms
+  file('warnings') optional true into percowarnings
+
+  script:
+  """
   mkdir outtables
-  msstitch perco2psm --perco perco.xml -d outtables -i ${tsvs.collect() { "'$it'" }.join(' ')} --mzids ${mzids.collect() { "'$it'" }.join(' ')} ${!params.locptms ? "--filtpsm ${params.psmconflvl} --filtpep ${params.pepconflvl}" : ''}
+  msstitch perco2psm --perco perco.xml -d outtables -i ${listify(tsvs).collect(){ "${it}"}.join(' ')} --mzids ${listify(mzids).collect(){ "${it}"}.join(' ')} ${!params.locptms ? "--filtpsm ${params.psmconflvl} --filtpep ${params.pepconflvl}" : ''}
   msstitch concat -i outtables/* -o allpsms
   ${params.locptms ? 
     "msstitch conffilt -i allpsms -o filtpsm --confcolpattern 'PSM q-value' --confidence-lvl ${params.psmconflvl} --confidence-better lower && \
@@ -1032,7 +1087,7 @@ hiriefpep = params.hirief ? Channel.fromPath([params.hirief, params.hirief]) : C
 
 process createPSMTable {
 
-  publishDir "${params.outdir}", mode: 'copy', overwrite: true, saveAs: {["target_psmlookup.sql", "decoy_psmlookup.sql", "target_psmtable.txt", "decoy_psmtable.txt"].contains(it) ? it : null}
+  publishDir "${params.outdir}", mode: 'copy', overwrite: true, saveAs: {["target_psmlookup.sql", "decoy_psmlookup.sql", "target_psmtable.txt", "decoy_psmtable.txt"].contains(it) && (is_rerun || !no_psms) ? it : null}
 
   input:
   set val(td), path(psms), path('lookup'), path(tdb), path(ddb), file('tppsms.txt'), file(cleaned_oldpsms) from prepsm
@@ -1045,20 +1100,24 @@ process createPSMTable {
   set val(td), file({setnames.collect() { "${it}.tsv" }}) optional true into setpsmtables
   file({setnames.collect() { "tppsms/${it}.tsv" }}) optional true into totalprotpsms_allsets
   set val(td), file("${psmlookup}") into psmlookup
+  file('warnings') optional true into psmwarnings
 
   script:
   psmlookup = "${td}_psmlookup.sql"
   outpsms = "${td}_psmtable.txt"
-  new_psms = !is_rerun && (psms.size() > 1 || psms[0].name != 'NO__FILE')
-
+  // NO__FILE is when target percolator has no output in any set, exit immediately if not rerun
+  no_psms = psms[0].name == 'NO__FILE'
+  no_target = td == 'target' && no_psms
+  no_decoy = td == 'decoy' && no_psms
   quant = !params.noquant && td == 'target'
   """
-  ${new_psms ? "msstitch concat -i ${psms.collect() {"$it"}.join(' ')} -o psms.txt" : ''}
-  ${new_psms && td == 'target' ? "tail -n+2 psms.txt | grep . >/dev/null || (>&2 echo 'No target PSMs made the combined PSM / peptide FDR cutoff (${params.psmconflvl} / ${params.pepconflvl})' && exit 1)" : ''}
+  ${no_target && !is_rerun ? "echo 'No target PSMs made the combined PSM / peptide FDR cutoff (${params.psmconflvl} / ${params.pepconflvl})' && exit 1" : ''}
+  ${no_decoy && !is_rerun ? "echo 'No decoy PSMs in any set at FDR cutoff, will not produce protein/gene tables' > warnings && touch ${outpsms} && touch ${psmlookup} && exit 0" : ''}
+  ${!is_rerun ? "msstitch concat -i ${listify(psms).collect() {"$it"}.join(' ')} -o psms.txt" : ''}
   # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
   cat lookup > $psmlookup
-  ${new_psms ? "sed '0,/\\#SpecFile/s//SpectraFile/' -i psms.txt": ''}
-  ${is_rerun || !new_psms ? "mv ${cleaned_oldpsms} psmsrefined" : "msstitch psmtable -i psms.txt --dbfile $psmlookup --addmiscleav -o psmsrefined --spectracol 1 \
+  ${!is_rerun ? "sed '0,/\\#SpecFile/s//SpectraFile/' -i psms.txt": ''}
+  ${is_rerun ? "mv ${cleaned_oldpsms} psmsrefined" : "msstitch psmtable -i psms.txt --dbfile $psmlookup --addmiscleav -o psmsrefined --spectracol 1 \
     ${params.onlypeptides ? '' : "--fasta \"${td == 'target' ? "${tdb}" : "${ddb}"}\" --genes"} \
     ${quant ? "${!params.noms1quant ? '--ms1quant' : ''} ${params.isobaric ? "--isobaric --min-precursor-purity ${params.minprecursorpurity}" : ''}" : ''} \
     ${!params.onlypeptides ? '--proteingroup' : ''} \
@@ -1072,10 +1131,18 @@ process createPSMTable {
   """
 }
 
-// Collect setnames and merge with PSM tables for peptide table creation
 def listify(it) {
+  /* This function is useful when needing a list even when having a single item
+  - Single items in channels get unpacked from a list
+  - Processes expect lists. Even though it would be fine
+  without a list, for single-item-lists any special characters are not escaped by NF
+  in the script, which leads to errors. See:
+  https://github.com/nextflow-io/nextflow/discussions/4240
+  */
   return it instanceof java.util.List ? it : [it]
 }
+
+// Collect setnames and merge with PSM tables for peptide table creation
 setpsmtables
   .map { it -> [it[0], listify(it[1])] }
   .map{ it -> [it[0], it[1].collect() { it.baseName.replaceFirst(/\.tsv$/, "") }, it[1]]}
@@ -1096,7 +1163,6 @@ mzml_luciphor
 
 process luciphorPTMLocalizationScoring {
 
-  cpus = availProcessors < 4 ? availProcessors : 4
   when: params.locptms
 
   input:
@@ -1107,6 +1173,7 @@ process luciphorPTMLocalizationScoring {
   path 'warnings' optional true into luciphor_warnings
 
   script:
+  threads = task.cpus * params.overbook_cpus_factor
   denom = !params.noquant && setdenoms ? setdenoms[setname] : false
   specialdenom = denom && (denom[0] == 'sweep' || denom[0] == 'intensity')
   isobtype = setisobaric && setisobaric[setname] ? "${setisobaric[setname]}" : ''
@@ -1116,7 +1183,7 @@ process luciphorPTMLocalizationScoring {
   lab_ptms = params.locptms.tokenize(';').join(' ')
 
   """
-  ${mzmls.collect() { it.toString() != it.toString().replaceAll('[&<>\'"]', '_') ? "mv '${it}' '${it.toString().replaceAll('[&<>\'"]', '_')}'" : ''}.findAll {it != ''}.join(' && ')}
+  ${mzmls.collect() { stripchars_infile(it, return_oldfile=true) }.findAll{ it[0] }.collect() { "ln -s '${it[2]}' '${it[1]}'" }.join(' && ')}
   # Split allpsms to get target PSMs
   sed '0,/\\#SpecFile/s//SpectraFile/' -i "${allpsms}"
   msstitch split -i "${allpsms}" --splitcol \$(head -n1 "${allpsms}" | tr '\t' '\n' | grep -n ^TD\$ | cut -f 1 -d':')
@@ -1125,7 +1192,7 @@ process luciphorPTMLocalizationScoring {
   export ALGO=${['hcd', 'auto', 'any'].any { it == params.activation } ? '1' : '0'}
   export MAXPEPLEN=${params.maxpeplen}
   export MAXCHARGE=${params.maxcharge}
-  export THREAD=${task.cpus * params.threadspercore}
+  export THREAD=${threads}
   export MS2TOLVALUE=0.025
   export MS2TOLTYPE=Da
   cat "$baseDir/assets/luciphor2_input_template.txt" | envsubst > lucinput.txt
@@ -1273,7 +1340,7 @@ process PTMPeptides {
   # proteins with which to median-center the PTM table with (if --normalize is passed)
   ${params.totalproteomepsms && normalize ? "msstitch isosummarize -i totalproteomepsms -o prots_mediancenter \
     --featcol \$(head -n1 totalproteomepsms | tr '\\t' '\\n' | grep -n '${dividebycol}' | cut -f 1 -d':') \
-    --isobquantcolpattern plex --minint 0.1 \
+    --isobquantcolpattern ${setisobaric[setname]} --minint 0.1 \
     ${denom && denom[0] == 'sweep' ? '--mediansweep --logisoquant': ''} \
     ${denom && params.keepnapsmsquant ? '--keep-psms-na-quant' : ''} \
     ${denom && !specialdenom ? "--logisoquant --denompatterns ${setdenoms[setname].join(' ')}": ''} \
@@ -1285,7 +1352,7 @@ process PTMPeptides {
   # (in case of --onlypeptides) table for relating the peptides to their gene/protein
   ${params.totalproteomepsms && denom ? "msstitch isosummarize -i totalproteomepsms -o tp_accessions \
     --featcol \$(head -n1 totalproteomepsms | tr '\\t' '\\n' | grep -n '${dividebycol}' | cut -f 1 -d':') \
-    --isobquantcolpattern plex --minint 0.1 \
+    --isobquantcolpattern ${setisobaric[setname]} --minint 0.1 \
     ${normalize ? "--median-normalize" : ''} \
     ${denom && denom[0] == 'sweep' ? '--mediansweep --logisoquant': ''} \
     ${denom && params.keepnapsmsquant ? '--keep-psms-na-quant' : ''} \
@@ -1296,7 +1363,7 @@ process PTMPeptides {
   # Create a PTM-peptide table which has normalized isobaric data
   msstitch peptides -i "ptms.txt" -o "${peptable}" --scorecolpattern svm --spectracol 1 \
     ${!params.noquant && params.noms1quant ? '--ms1quantcolpattern area' : ''} \
-    ${denom ? '--isobquantcolpattern plex --minint 0.1 --keep-psms-na-quant' : ''} \
+    ${denom ? "--isobquantcolpattern ${setisobaric[setname]} --minint 0.1 --keep-psms-na-quant" : ''} \
     ${denom && denom[0] == 'sweep' ? '--mediansweep --logisoquant': ''} \
     ${denom && denom[0] == 'intensity' ? '--medianintensity' : ''} \
     ${denom && !specialdenom ? "--logisoquant --denompatterns ${setdenoms[setname].join(' ')}": ''} \
@@ -1307,7 +1374,7 @@ process PTMPeptides {
   # this is not strictly necessary to do if there is no --totalproteomepsms, but will not be output 
   # in next step (merge) anyway then.
   msstitch peptides -i "ptms.txt" -o "${peptable}_no_tp_normalized" --scorecolpattern svm --spectracol 1 \
-    ${denom ? '--isobquantcolpattern plex --minint 0.1 --keep-psms-na-quant' : ''} \
+    ${denom ? "--isobquantcolpattern ${setisobaric[setname]} --minint 0.1 --keep-psms-na-quant" : ''} \
     ${denom && denom[0] == 'sweep' ? '--mediansweep --logisoquant': ''} \
     ${denom && denom[0] == 'intensity' ? '--medianintensity' : ''} \
     ${denom && !specialdenom ? "--logisoquant --denompatterns ${setdenoms[setname].join(' ')}": ''} \
@@ -1346,12 +1413,10 @@ process mergePTMPeps {
   script:
   peptable = params.totalproteomepsms ? 'ptm_peptides_total_proteome_adjusted.txt' : 'ptm_peptides_not_adjusted.txt'
   peptable_no_adjust = 'ptm_peptides_not_adjusted.txt'
-  listpeptides = listify(peptides)
-  listnotp_adj = listify(notp_adjust_peps)
   """
   cat ptmlup.sql > pepptmlup.sql
   # Create first table, input for which is either adjusted or not
-  msstitch merge -i ${listpeptides.collect() { "$it" }.join(' ')} --setnames ${setnames.collect() { "'$it'" }.join(' ')} --dbfile pepptmlup.sql -o mergedtable --no-group-annotation \
+  msstitch merge -i ${listify(peptides).collect() { "$it" }.join(' ')} --setnames ${setnames.collect() { "'$it'" }.join(' ')} --dbfile pepptmlup.sql -o mergedtable --no-group-annotation \
     --fdrcolpattern '^q-value' --pepcolpattern 'peptide PEP' --flrcolpattern 'FLR' \
     ${!params.noquant && !params.noms1quant ? "--ms1quantcolpattern area" : ''} \
     ${!params.noquant && setisobaric ? "--isobquantcolpattern plex" : ''}
@@ -1362,7 +1427,7 @@ process mergePTMPeps {
     join -j1 -o auto -t '\t' <(paste geneprots <(cut -f3 geneprots | tr -dc ';\\n'| awk '{print length+1}')) <(tail -n+2 mergedtable | sort -k1b,1) >> ${peptable}""" : "mv mergedtable ${peptable}"}
 
   # If total-proteome quant adjustment input was used above, create a second merged NON-adjusted peptide tables
-  ${params.totalproteomepsms ?  "msstitch merge -i ${listnotp_adj.collect() { "$it" }.join(' ')} --setnames ${setnames.collect() { "'$it'" }.join(' ')} \
+  ${params.totalproteomepsms ?  "msstitch merge -i ${listify(notp_adjust_peps).collect() { "$it" }.join(' ')} --setnames ${setnames.collect() { "'$it'" }.join(' ')} \
     --dbfile pepptmlup.sql -o mergedtable --no-group-annotation \
     --fdrcolpattern '^q-value' --pepcolpattern 'peptide PEP' --flrcolpattern 'FLR' \
     ${!params.noquant && !params.noms1quant ? "--ms1quantcolpattern area" : ''} \
@@ -1385,6 +1450,10 @@ process mergePTMPeps {
 }
 
 process makePeptides {
+  container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
+    'https://depot.galaxyproject.org/singularity/msstitch:3.15--pyhdfd78af_0' :
+    'quay.io/biocontainers/msstitch:3.15--pyhdfd78af_0'}"
+
   input:
   set val(td), val(setname), file('psms') from psm_pep
   
@@ -1394,14 +1463,15 @@ process makePeptides {
 
   script:
   quant = !params.noquant && td == 'target'
-  denom = quant && setdenoms ? setdenoms[setname] : false
+  isoquant = quant && setisobaric && setisobaric[setname]
+  denom = isoquant && setdenoms ? setdenoms[setname] : false
   specialdenom = denom && (denom[0] == 'sweep' || denom[0] == 'intensity')
   normfactors = "${setname}_normfacs"
   """
   # Create peptide table from PSM table, picking best scoring unique peptides
   msstitch peptides -i psms -o "${setname}_peptides" --scorecolpattern svm --spectracol 1 --modelqvals \
-    ${quant ? "${!params.noms1quant ? '--ms1quantcolpattern area' : ''} ${setisobaric && setisobaric[setname] ? '--isobquantcolpattern plex --minint 0.1' : ''}" : ''} \
-    ${quant && setisobaric && setisobaric[setname] && params.keepnapsmsquant ? '--keep-psms-na-quant' : ''} \
+    ${quant ? "${!params.noms1quant ? '--ms1quantcolpattern area' : ''} ${isoquant ? "--isobquantcolpattern ${setisobaric[setname]} --minint 0.1" : ''}" : ''} \
+    ${isoquant && params.keepnapsmsquant ? '--keep-psms-na-quant' : ''} \
     ${denom && denom[0] == 'sweep' ? '--mediansweep --logisoquant' : ''} \
     ${denom && denom[0] == 'intensity' ? '--medianintensity' : ''} \
     ${denom && !specialdenom ? "--logisoquant --denompatterns ${setdenoms[setname].join(' ')}" : ''} \
@@ -1429,6 +1499,9 @@ pre_tprepgs_in
   .set { tprepgs_in }
 
 process proteinGeneSymbolTableFDR {
+  container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
+    'https://depot.galaxyproject.org/singularity/msstitch:3.15--pyhdfd78af_0' :
+    'quay.io/biocontainers/msstitch:3.15--pyhdfd78af_0'}"
   
   when: !params.onlypeptides
   input:
@@ -1446,6 +1519,7 @@ process proteinGeneSymbolTableFDR {
   specialdenom = denom && (denom[0] == 'sweep' || denom[0] == 'intensity')
   normfactors = "${setname}_normfacs"
   quant = !params.noquant && (!params.noms1quant || params.isobaric)
+  isoquant = quant && setisobaric && setisobaric[setname]
   """
   # score col is linearmodel_qval or q-value, but if the column only contains 0.0 or NA (no linear modeling possible due to only q<10e-04), we use svm instead
   tscol=\$(head -1 tpeptides| tr '\\t' '\\n' | grep -n "${scorecolpat}" | cut -f 1 -d':')
@@ -1461,9 +1535,9 @@ process proteinGeneSymbolTableFDR {
   fi
   msstitch ${acctype} -i tpeptides --decoyfn dpeptides -o "${setname}_protfdr" --scorecolpattern "\$scpat" \$logflag \
     ${acctype != 'proteins' ? "--fdrtype picked --targetfasta '$tfasta' --decoyfasta '$dfasta' ${params.fastadelim ? "--fastadelim '${params.fastadelim}' --genefield '${params.genefield}'": ''}" : ''} \
-    ${!params.noquant ? "${!params.noms1quant ? '--ms1quant' : ''} ${setisobaric && setisobaric[setname] ? '--isobquantcolpattern plex --minint 0.1' : ''}" : ''} \
+    ${!params.noquant ? "${!params.noms1quant ? '--ms1quant' : ''} ${isoquant ? "--isobquantcolpattern ${setisobaric[setname]} --minint 0.1" : ''}" : ''} \
     ${quant ? '--psmtable tpsms' : ''} \
-    ${quant && setisobaric && setisobaric[setname] && params.keepnapsmsquant ? '--keep-psms-na-quant' : ''} \
+    ${isoquant && params.keepnapsmsquant ? '--keep-psms-na-quant' : ''} \
     ${denom && denom[0] == 'sweep' ? '--mediansweep --logisoquant' : ''} \
     ${denom && denom[0] == 'intensity' ? '--medianintensity' : ''} \
     ${denom && !specialdenom ? "--denompatterns ${setdenoms[setname].join(' ')} --logisoquant" : ''} \
@@ -1474,6 +1548,7 @@ process proteinGeneSymbolTableFDR {
     
 
 percowarnings
+  .concat(psmwarnings)
   .concat(fdrwarnings)
   .concat(ptmwarnings)
   .concat(luciphor_warnings)
@@ -1508,31 +1583,31 @@ process proteinPeptideSetMerge {
 
   input:
   set val(setnames), val(acctype), file(tables), file(normfacs) from ptables_to_merge
-  file(lookup) from tlookup
-  file('sampletable') from Channel.from(sampletable).first()
+  path(lookup) from tlookup
+  path('sampletable') from sampletable
   
   output:
-  set val(acctype), file('proteintable'), file('sampletable') into featqc_extra_peptide_samples
-  set val(acctype), file('proteintable'), file(normfacs) into merged_feats
+  tuple val(acctype), path('proteintable'), path('clean_sampletable') into featqc_extra_peptide_samples
+  tuple val(acctype), path('proteintable') into merged_feats
+  tuple val(acctype), path(normfacs) into normfacs
 
   script:
-  listtables = listify(tables)
   """
   # exchange sample names on isobaric fields in header
   # First add NO__GROUP marker for no-samplegroups clean sampletable from special chars
-  ${params.sampletable ? 'awk -v FS="\\t" -v OFS="\\t" \'{if (NF==3) print $1,$2,$3,"NO__GROUP"; else print}\' sampletable > tmpsam && mv tmpsam sampletable' : ''}
+  ${params.sampletable ? 'awk -v FS="\\t" -v OFS="\\t" \'{if (NF==3) print $1,$2,$3,"NO__GROUP"; else print}\' sampletable > clean_sampletable' : 'mv sampletable clean_sampletable'}
   # Check if there are samplegroups at all
-  ${params.deqms ? 'grep -v NO__GROUP sampletable || (>&2 echo "Cannot run DEqMS without specified sample groups" && exit 1)': ''}
+  ${params.deqms ? 'grep -v NO__GROUP clean_sampletable || (>&2 echo "Cannot run DEqMS without specified sample groups" && exit 1)': ''}
   # Count amount samples per group and error on group with only one sample
-  ${params.deqms ? "grep -v NO__GROUP sampletable | cut -f 4 | sort | uniq -c | sed 's/\\s*//' | grep '^1 ' && (>&2 echo 'Cannot run DEqMS when any sample groups have only one sample, please review input' && exit 1)" : ''}
+  ${params.deqms ? "grep -v NO__GROUP clean_sampletable | cut -f 4 | sort | uniq -c | sed 's/\\s*//' | grep '^1 ' && (>&2 echo 'Cannot run DEqMS when any sample groups have only one sample, please review input' && exit 1)" : ''}
   # strip lead/trail space in set name 
-  paste <(cut -f1 sampletable) <(cut -f2 sampletable | sed "s/^\\s*//;s/\\s*\$//") <(cut -f3-4 sampletable) > nowhitespace && mv nowhitespace sampletable
+  ${params.sampletable ? 'paste <(cut -f1 clean_sampletable) <(cut -f2 clean_sampletable | sed "s/^\\s*//;s/\\s*\$//") <(cut -f3-4 clean_sampletable) > nowhitespace && mv nowhitespace clean_sampletable' : ''}
   # substitute other weird characters
-  ${params.sampletable ? 'sed "s/[^A-Za-z0-9_\\t]/_/g" sampletable > clean_sampletable' : ''}
+  ${params.sampletable ? 'sed "s/[^A-Za-z0-9_\\t]/_/g" clean_sampletable > sampletable_no_special_chars' : ''}
 
   # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
   cat $lookup > db.sqlite
-  msstitch merge -i ${listtables.collect() { "$it" }.join(' ')} --setnames ${setnames.collect() { "'$it'" }.join(' ')} --dbfile db.sqlite -o mergedtable \
+  msstitch merge -i ${listify(tables).collect() { "$it" }.join(' ')} --setnames ${setnames.collect() { "'$it'" }.join(' ')} --dbfile db.sqlite -o mergedtable \
     --fdrcolpattern '^q-value\$' ${acctype != 'peptides' ? "--mergecutoff ${params.proteinconflvl}" : ''} \
     ${acctype == 'peptides' ? "--pepcolpattern 'peptide PEP'" : ''} \
     ${!params.noquant && !params.noms1quant ? "--ms1quantcolpattern area" : ''} \
@@ -1542,11 +1617,13 @@ process proteinPeptideSetMerge {
   # Put annotation on header, use normal setname for finding, replace with clean name
   # "sed '0,/{RE}//{substitute}/..."  for only first line (0,/{RE} = read from 0 until RE,
   # then the empty // means use the previous RE (you could specify a new RE)
+  head -n1 mergedtable > tmph
   ${params.sampletable && setisobaric ?  
-    'while read line ; do read -a arr <<< $line ; sed -i "0,/"\$"\\t${arr[0]}_\\([a-z0-9]*plex\\)_${arr[1]}/s//\t${arr[4]}_${arr[3]}_${arr[2]}_\\1_${arr[1]}/" mergedtable; done < <(paste <(cut -f2 sampletable) clean_sampletable)' \
-  :  ''}
+    'while read line ; do read -a arr <<< $line ; sed -E "s/${arr[0]}_([a-z0-9]*plex)_${arr[1]}/${arr[4]}_${arr[3]}_${arr[2]}_\\1_${arr[1]}/" <(tail -n1 tmph | tr "\t" "\n") | tr "\n" "\t" | sed $"s/\\t$/\\n/" ; done < <(paste <(cut -f2 clean_sampletable) sampletable_no_special_chars) >> tmph' :  ''}
+  ${params.sampletable && setisobaric ? "cat <(tail -n1 tmph) <(tail -n+2 mergedtable) > grouptable" : 'mv mergedtable grouptable'}
+
   # Run DEqMS if needed, use original sample table with NO__GROUP
-  ${params.deqms ? "numfields=\$(head -n1 mergedtable | tr '\t' '\n' | wc -l) && deqms.R && paste <(head -n1 mergedtable) <(head -n1 deqms_output | cut -f \$(( numfields+1 ))-\$(head -n1 deqms_output|wc -w)) > tmpheader && cat tmpheader <(tail -n+2 deqms_output) > proteintable" : 'mv mergedtable proteintable'}
+  ${params.deqms ? "numfields=\$(head -n1 grouptable | tr '\t' '\n' | wc -l) && deqms.R && paste <(head -n1 grouptable) <(head -n1 deqms_output | cut -f \$(( numfields+1 ))-\$(head -n1 deqms_output|wc -w)) > tmpheader && cat tmpheader <(tail -n+2 deqms_output) > proteintable" : 'mv grouptable proteintable'}
   """
 }
 
@@ -1601,16 +1678,145 @@ featqc_extra_peptide_samples
   .map { it -> [it[1], it[2]] }
   .set { featqc_peptides_samples }
 
-merged_feats
-  .combine(featqc_peptides_samples)
-  .set { featqcinput }
+if (!params.report_seqmatch) {
+  merged_feats
+    .join(normfacs)
+    .combine(featqc_peptides_samples)
+    .set { featqcinput }
+  Channel.empty().set { post_match_fa }
+} else {
+  len_seqmatch = params.report_seqmatch.tokenize(';').size()
+  Channel.from(params.report_seqmatch)
+    .flatMap { it.tokenize(';') }
+    .map { file(it) }
+    .set { post_match_fa }
+  merged_feats
+    .branch { 
+      peps: it[0] == 'peptides' 
+      notpeps: it[0] != 'peptides'
+    }
+    .set { table_normfac_toseqmatch }
+}
 
+process createTrypticMatchDB {
+  /* Create a sequence match SQLite database to be used for filtering
+  PSM tables and percolator */
+  container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
+    'https://depot.galaxyproject.org/singularity/msstitch:3.15--pyhdfd78af_0' :
+    'quay.io/biocontainers/msstitch:3.15--pyhdfd78af_0'}"
+
+  input:
+  path(sequences) from post_match_fa
+
+  output:
+  path(outfile) into postmatch_seqdb
+
+  script:
+  miscleav = params.maxmiscleav < 0 ? 2 : params.maxmiscleav
+  outfile = sequences.baseName.replaceAll('[^a-zA-Z0-9_-]', '_')
+  """
+  msstitch storeseq -i ${sequences} -o ${outfile} \
+    --minlen ${params.minpeplen} --cutproline \
+    --nterm-meth-loss --map-accessions \
+    ${miscleav ? "--miscleav ${miscleav}" : ''}
+  """
+}
+
+if (params.report_seqmatch) {
+  table_normfac_toseqmatch.peps
+    .map { it[1] } // peptide table
+    .combine(postmatch_seqdb)
+    .groupTuple()
+    .set { pepseqmatch } 
+} else {
+  Channel.empty().set { pepseqmatch }
+}
+
+
+process markPeptidesPresentInDB {
+  /* Match peptide sequences to user-provided sequences in a storeseq SQLite DB.
+  Mark peptides that match with a 1, else 0 in a new column.
+  Field name for column will be user-provided 
+  */
+  container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
+    'https://depot.galaxyproject.org/singularity/msstitch:3.15--pyhdfd78af_0' :
+    'quay.io/biocontainers/msstitch:3.15--pyhdfd78af_0'}"
+
+  input:
+  tuple path(peptides), path(seqdbs) from pepseqmatch
+
+  output:
+  tuple val('peptides'), path(peptide_table_out) into peptides_tofeatqc
+  tuple path(jointable_out), path(seqdbs) into peps_seqmatched
+
+  script:
+  peptide_table_out = 'peptide_table.txt'
+  jointable_out = 'seqmatch_jointable'
+  """
+  # Get bare peptide (works also with -f1)
+  echo Peptide > pepseqs
+  cut -f2 ${peptides} | tail -n+2 >> pepseqs
+  for seqdb in ${listify(seqdbs).join(' ')}
+    do msstitch seqmatch -i pepseqs -o tmppeps --dbfile \${seqdb} --matchcolname \${seqdb}
+    mv tmppeps pepseqs
+  done
+  paste <(cut -f2-${1+len_seqmatch} pepseqs) ${peptides} > ${jointable_out}
+  paste ${peptides} <(cut -f2-${1+len_seqmatch} pepseqs) > ${peptide_table_out}
+  """
+}
+
+if (params.report_seqmatch) {
+table_normfac_toseqmatch.notpeps // acctype, table
+  .combine(peps_seqmatched)
+  .set { feats_to_join_seqmatch }
+} else {
+  Channel.empty().set { feats_to_join_seqmatch }
+}
+
+process joinAnnotatedSeqmatchPeptides {
+  container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
+    'https://depot.galaxyproject.org/singularity/sqlite:3.33.0' :
+    'quay.io/biocontainers/sqlite:3.33.0'}"
+
+  input:
+  tuple val(acctype), path('feats'), path('peptides'), path(seqdbs) from feats_to_join_seqmatch
+  output:
+  tuple val(acctype), path('joinedfeats') into nonpeps_tofeatqc
+  
+  script:
+  headfield = [proteins: "Protein(s)", ensg: "Gene ID(s)", genes: "Gene name(s)"][acctype]
+  featfield = [proteins: "Protein ID", ensg: "Gene ID", genes: "Gene Name"][acctype]
+  """
+  acc_col=\$(head -n1 peptides | tr '\t' '\n' | grep -nw "${headfield}" | cut -f1 -d':')
+  cut -f1-${len_seqmatch},\${acc_col} peptides > seqmatches
+  echo "\$(head -n1 feats)\t${seqdbs.join('\t')}" > joinedfeats
+  sqlite3 test.db <<END_COMMANDS >> joinedfeats
+.mode tabs
+.import seqmatches seqmatch
+.import feats feats
+
+SELECT feats.*, ${listify(seqdbs).collect() {"sqm_group.${it}"}.join(',')} FROM feats
+JOIN (
+  SELECT "${headfield}", ${listify(seqdbs).collect() {"GROUP_CONCAT(DISTINCT $it) AS $it"}.join(',')}
+  FROM seqmatch GROUP BY "${headfield}") AS sqm_group
+ON sqm_group."${headfield}"=feats."${featfield}"
+END_COMMANDS
+  """
+}
+
+if (params.report_seqmatch) {
+  peptides_tofeatqc
+    .concat(nonpeps_tofeatqc)
+    .join(normfacs)
+    .combine(featqc_peptides_samples)
+    .set { featqcinput }
+}
 
 process featQC {
   publishDir "${params.outdir}", mode: 'copy', overwrite: true, saveAs: {it == "feats" ? "${acctype}_table.txt": null}
 
   input:
-  set val(acctype), file('feats'), file(normfacs), file(peptable), file(sampletable) from featqcinput
+  set val(acctype), path('feats'), path(normfacs), path(peptable), path('sampletable') from featqcinput
   val(setnames) from setnames_featqc
 
   output:

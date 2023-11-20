@@ -132,12 +132,16 @@ allowed charge states can be controlled with `--mincharge`, `--maxcharge`.
 ```
 
 
-### Modifications: `--mods`, `--locptms`, `--ptms`
+### Modifications: `--mods`, `--locptms`, `--ptms`, `--phospho`, `--minpsms_luciphor`, `--ptm_minscore_high`
 Modifications as in UNIMOD, although only a selected number are available by name. You can extend this list
 by adding entries to `assets/msgfmods.txt`. `--ptms` and `--locptms` are for stable/labile PTMs respectively,
 and they can optionally get isobaric quantification normalization (below). Use `--maxvarmods` for specifying
 how many variable mods are allowed per peptide (default is 2). If your peptide sample is enriched for phosphorylated
-peptides, specify `--phospho` to inform the search engine about this.
+peptides, specify `--phospho` to inform the search engine about this. For labile PTM (Phospho mainly) false localization
+rate determination, [Luciphor2](https://github.com/dfermin/lucxor) is used, which can be slightly configured using
+`--minpsms_luciphor` to set the minimum number of PSMs per charge state that Luciphor needs (default is 50) to build
+a model, and `--ptm_minscore_high`, to set the minimum luciphor-score of a PTM (default 50) to be included in the
+column "other high scoring PTMs".
 
 ```bash
 --mods "Carbamidomethylation;Oxidation" --ptms Acetyl --locptms Phoshpo
@@ -175,6 +179,11 @@ As mentioned, labile PTMS reported by the search engine will be scored using Luc
 When passing `--totalproteomepsms`, the isobaric quant ratios for matching genes from a global search (i.e. no modifications) will be subtracted from the PTM peptide table quant. If `--onlypeptides` is used, quant from proteins will be used as a denominator.
 
 For normalizing PTM tables, `--normalize` can be used for median-centering. Since PTM tables can be somewhat small and possibly skewed in their quantitation, a separate gene table is prepared from the PSMs in `--totalproteomepsms`, to get the channel median normalization factors from.
+
+
+### Annotation of results
+To annotate peptide/protein/gene results after a search, marking hits in another protein fasta database (e.g. bait proteins, contaminants), you can if needed, supply those external fasta files by `--report_seqmatch 'dbfile1.fa;dbfile2.fa'`. This will generate
+one column for each file in the result files, containing the fasta IDs for the record that a peptide (or any peptide from a protein) matched to.
 
 
 ### Reusing data

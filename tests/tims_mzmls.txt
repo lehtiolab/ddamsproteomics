@@ -1,0 +1,1 @@
+${testdata}/tims_500_2.mzML	timstof	0set-A	3-10	10
