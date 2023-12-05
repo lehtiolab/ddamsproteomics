@@ -1362,7 +1362,7 @@ process PTMPeptides {
 
   # Create a PTM-peptide table which has normalized isobaric data
   msstitch peptides -i "ptms.txt" -o "${peptable}" --scorecolpattern svm --spectracol 1 \
-    ${!params.noquant && params.noms1quant ? '--ms1quantcolpattern area' : ''} \
+    ${!params.noquant && !params.noms1quant ? '--ms1quantcolpattern area' : ''} \
     ${denom ? "--isobquantcolpattern ${setisobaric[setname]} --minint 0.1 --keep-psms-na-quant" : ''} \
     ${denom && denom[0] == 'sweep' ? '--mediansweep --logisoquant': ''} \
     ${denom && denom[0] == 'intensity' ? '--medianintensity' : ''} \
