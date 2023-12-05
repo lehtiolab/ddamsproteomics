@@ -250,7 +250,7 @@ precursorcols = c(featcol, colnames(feats)[grep('area', colnames(feats))])
 if (length(precursorcols) > 1) {
     svg('precursorarea', height=(nrsets + 1), width=width)
     if (nrow(na.omit(feats[,precursorcols]))) {
-      parea = melt(feats, id.vars=featcol, na.rm=T, measure.vars = precursorcols)
+      parea = melt(feats, id.vars=featcol, na.rm=T, measure.vars = precursorcols[2:length(precursorcols)])
       parea$Set = sub('_MS1.*', '', parea$variable)
       print(ggplot(parea) + 
         geom_boxplot(aes(fct_rev(Set), value)) + scale_y_log10() + coord_flip() + ylab("Intensity") + theme_bw() + theme(axis.title=element_text(size=15), axis.text=element_text(size=10), axis.title.y=element_blank()))

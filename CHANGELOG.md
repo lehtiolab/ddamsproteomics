@@ -6,6 +6,7 @@
 - Tests included
 - Add peptide-is-in external fasta columns
 - External config versions
+- Base container and R libraries updates
 
 
 ## Version 2.16 [2023-08-30]
