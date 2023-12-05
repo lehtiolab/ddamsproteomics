@@ -1047,8 +1047,8 @@ process percolatorToPsms {
   msstitch concat -i outtables/* -o allpsms
   ${params.locptms ? 
     "msstitch conffilt -i allpsms -o filtpsm --confcolpattern 'PSM q-value' --confidence-lvl ${params.psmconflvl} --confidence-better lower && \
-    msstitch conffilt -i filtpsm -o psms --confcolpattern 'peptide q-value' --confidence-lvl ${params.pepconflvl} --confidence-better lower" : 'mv allpsms psms'}
-  msstitch split -i psms --splitcol \$(head -n1 psms | tr '\t' '\n' | grep -n ^TD\$ | cut -f 1 -d':')
+    msstitch conffilt -i filtpsm -o psms --confcolpattern 'peptide q-value' --confidence-lvl ${params.pepconflvl} --confidence-better lower" : 'cp allpsms psms'}
+  msstitch split -i psms --splitcol TD
   ${['target', 'decoy'].collect() { 
     "test -f '${it}.tsv' && mv '${it}.tsv' '${setname}_${it}.tsv' || echo 'No ${it} PSMs found for set ${setname} at PSM FDR ${params.psmconflvl} and peptide FDR ${params.pepconflvl} ${it == 'decoy' ? '(not possible to output protein/gene FDR)' : ''}' >> warnings" }.join(' && ') }
   """
@@ -1186,7 +1186,7 @@ process luciphorPTMLocalizationScoring {
   ${mzmls.collect() { stripchars_infile(it, return_oldfile=true) }.findAll{ it[0] }.collect() { "ln -s '${it[2]}' '${it[1]}'" }.join(' && ')}
   # Split allpsms to get target PSMs
   sed '0,/\\#SpecFile/s//SpectraFile/' -i "${allpsms}"
-  msstitch split -i "${allpsms}" --splitcol \$(head -n1 "${allpsms}" | tr '\t' '\n' | grep -n ^TD\$ | cut -f 1 -d':')
+  msstitch split -i "${allpsms}" --splitcol TD
   export MZML_PATH=\$(pwd)
   export MINPSMS=${params.minpsms_luciphor}
   export ALGO=${['hcd', 'auto', 'any'].any { it == params.activation } ? '1' : '0'}

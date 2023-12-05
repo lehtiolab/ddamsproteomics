@@ -246,17 +246,20 @@ if (feattype != 'peptides') {
 }
 
 # precursorarea
-if (length(grep('area', names(feats)))) {
-    parea = melt(feats, id.vars=featcol, na.rm=T, measure.vars = colnames(feats)[grep('area', colnames(feats))])
-    parea$Set = sub('_MS1.*', '', parea$variable)
-    if (nrow(parea)) {
-      svg('precursorarea', height=(nrsets + 1), width=width)
+precursorcols = c(featcol, colnames(feats)[grep('area', colnames(feats))])
+if (length(precursorcols) > 1) {
+    svg('precursorarea', height=(nrsets + 1), width=width)
+    if (nrow(na.omit(feats[,precursorcols]))) {
+      parea = melt(feats, id.vars=featcol, na.rm=T, measure.vars = precursorcols)
+      parea$Set = sub('_MS1.*', '', parea$variable)
       print(ggplot(parea) + 
         geom_boxplot(aes(fct_rev(Set), value)) + scale_y_log10() + coord_flip() + ylab("Intensity") + theme_bw() + theme(axis.title=element_text(size=15), axis.text=element_text(size=10), axis.title.y=element_blank()))
-      dev.off()
+    } else {
+      print(ggplot(data.frame()) + geom_point() + xlim(0, 10) + ylim(0, 100) + theme_bw() +
+            geom_text(aes(5, 50, label=sprintf('No MS1 found in %s', feattype))))
     }
+    dev.off()
 }
-
 
 # DEqMS volcano plots
 deqpval_cols = grep('_sca.P.Value$', names(feats))
@@ -283,8 +286,8 @@ if (length(deqpval_cols)) {
         geom_vline(xintercept = c(-1,1), colour = "red") + # Add fold change cutoffs
         geom_hline(yintercept = 3, colour = "red") + # Add significance cutoffs
         geom_vline(xintercept = 0, colour = "black") # Add 0 lines
-      if (feattype != 'peptides') {
-	topfeats = feats[order(feats[logpname], decreasing=TRUE)[1:10], ]
+      if (feattype != 'peptides' && nrow(na.omit(feats[logpname]))) {
+	    topfeats = feats[order(feats[,logpname], decreasing=TRUE)[1:10], ]
         plot = plot + geom_text_repel(data=topfeats)
       }
       print(plot)

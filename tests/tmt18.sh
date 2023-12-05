@@ -2,10 +2,11 @@
 
 set -eu
 
-echo TMT18 phos
+echo TMT18 phos, no MS1 found somehow
 # Test TMT18, Phos, 
 #DEqMS w denominator, implicit normalizing (deqms forces normalize)
 # Warning: not enough q-values/linear model q-values for gene FDR -> using svm
+# Also no MS1 values matching PSMs, which is not specified
 name=tmt18phos
 baseresults=test_output/${name}
 nextflow run -resume -profile test ${repodir}/main.nf --name ${name} --outdir ${baseresults} \
@@ -42,7 +43,7 @@ nextflow run -resume -profile test ${repodir}/main.nf --name ${name} --outdir te
     --deqms --genes
 
 
-echo TMT18 rerun with different settings post PSMs
+echo TMT18 rerun with different settings post PSMs, --noms1quant
 # No need for PSM conf lvl bc it is used in percolator before PSM table
 # But pep conf level is used also in QC so needs to be here
 name=tmt18phos_rerun
@@ -54,6 +55,7 @@ nextflow run -resume -profile test ${repodir}/main.nf --name ${name} --outdir te
     --tdb "${testdata}/tmt18_fa.fa" \
     --mods 'carbamidomethyl;oxidation' \
     --locptms Phospho \
+    --noms1quant \
     --targetpsms "${baseresults}/target_psmtable.txt" \
     --decoypsms "${baseresults}/decoy_psmtable.txt" \
     --ptmpsms "${baseresults}/ptm_psmtable.txt" \
