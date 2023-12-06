@@ -247,9 +247,10 @@ if (feattype != 'peptides') {
 
 # precursorarea
 precursorcols = c(featcol, colnames(feats)[grep('area', colnames(feats))])
+anyrowsms1 = nrow(feats[rowSums(is.na(feats[,precursorcols])) != length(precursorcols),])
 if (length(precursorcols) > 1) {
     svg('precursorarea', height=(nrsets + 1), width=width)
-    if (nrow(na.omit(feats[,precursorcols]))) {
+    if (anyrowsms1) {
       parea = melt(feats, id.vars=featcol, na.rm=T, measure.vars = precursorcols[2:length(precursorcols)])
       parea$Set = sub('_MS1.*', '', parea$variable)
       print(ggplot(parea) + 
