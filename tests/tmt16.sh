@@ -5,7 +5,7 @@ set -eu
 echo TMT16 test denom deqms hardklor keepnapsmsquant
 # no hirief, so it can be added in the addsetB test even if not used here
 # Test TMT16, DEqMS w denominator, keepnapsmsquant, implicit normalizing (deqms forces normalize)
-# Warning: not enough q-values/linear model q-values for gene FDR -> using svm
+# Warning: no decoys for any set (aka only setA)
 name=tmt16denomdeq
 baseresults=test_output/${name}
 nextflow run -resume -profile test ${repodir}/main.nf --name ${name} --outdir ${baseresults} \
@@ -20,7 +20,7 @@ nextflow run -resume -profile test ${repodir}/main.nf --name ${name} --outdir ${
 echo TMT16 phospho + acetyl and total protnorm
 name=tmt16_acetyl_phos
 baseresults=test_output/${name}
-nextflow run -resume -profile test ${repodir}/main.nf --name ${name} --outdir ${baseresults} \
+nextflow run -resume -profile test ${repodir}/main.nf --name ${name} --outdir test_output/${name} \
     --mzmldef <(grep fr07 "${testdir}/tmt16_mzmls.txt" | envsubst) \
     --sampletable "${testdir}/tmt16_samples.txt" \
     --hardklor --isobaric '0set-A:tmtpro:126:131N' \

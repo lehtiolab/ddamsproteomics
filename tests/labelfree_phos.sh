@@ -23,7 +23,7 @@ nextflow run -resume -profile test ${repodir}/main.nf --name ${name} \
     --genes \
     --tdb ${testdata}/lf.fa \
     --psmconflvl 0.2 --pepconflvl 0.2 \
-    --min_psms_luciphor 3 \
+    --minpsms_luciphor 3 \
     --mods 'carbamidomethyl;oxidation' \
     --targetpsms ${lfphos_dir}/target_psmtable.txt \
     --decoypsms ${lfphos_dir}/decoy_psmtable.txt \

@@ -19,7 +19,7 @@ nextflow run -resume -profile test ${repodir}/main.nf --name ${name} \
 # Cannot only do no-decoy warning since decoys have higher q-value than targets
 # No target in setA / no decoy setB: 0.005
 
-echo Labelfree run with warnings: no decoy in setA, no target in setB
+echo Labelfree run with warnings: no decoy in setB, no target in setA
 name=lf_notarget
 nextflow run -resume -profile test ${repodir}/main.nf --name ${name} \
     --outdir test_output/${name} \

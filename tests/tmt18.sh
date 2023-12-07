@@ -22,7 +22,7 @@ nextflow run -resume -profile test ${repodir}/main.nf --name ${name} --outdir ${
 echo TMT18 phos add a set
 # Test TMT18, Phos, 
 #DEqMS w denominator, keepnapsmsquant, implicit normalizing (deqms forces normalize)
-# Warning: not enough q-values/linear model q-values for gene FDR -> using svm
+# Not enough PSMs for decoy in new set -> No proteins/genes in QC at all, also not for old set
 name=tmt18phos_addset
 mkdir -p test_output/${name}
 ln -fs "${testdata}/tmt18_fr06_1000.mzML" "${testdata}/linked_tmt18_fr06_1000.mzML"
