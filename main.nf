@@ -151,6 +151,7 @@ params.plaintext_email = false
 
 params.mzmls = false
 params.mzmldef = false
+params.input = false
 params.tdb = false
 params.mods = false
 params.locptms = false
@@ -205,9 +206,13 @@ params.oldmzmldef = false
 
 // Validate and set file inputs
 
+// params.input is for future use, so any system that wants unifying can use this already now
+// params.mzmldef will be deprecated in 3.0 with DSL 2
+mzmldef = params.mzmldef ?: params.input
+
 // Files which are not standard can be checked here
 if (params.hirief && !file(params.hirief).exists()) exit 1, "Peptide pI data file not found: ${params.hirief}"
-if (params.hirief && !params.mzmldef) exit 1, "Cannot run HiRIEF delta pI calculation without fraction-annotated mzML definition file"
+if (params.hirief && !mzmldef) exit 1, "Cannot run HiRIEF delta pI calculation without fraction-annotated mzML definition file"
 if (params.sampletable) {
   // create value channel with first()
   sampletable = Channel.fromPath(params.sampletable).first()
@@ -217,7 +222,7 @@ if (params.sampletable) {
 }
 
 complementary_run = params.targetpsmlookup && params.decoypsmlookup && params.targetpsms && params.decoypsms
-is_rerun = complementary_run && !params.mzmldef
+is_rerun = complementary_run && !mzmldef
 
 if (complementary_run) {
   if (params.quantlookup) exit 1, "When specifying a complementary you may not pass --quantlookup"
@@ -307,7 +312,7 @@ summary['Pipeline Name']  = 'lehtiolab/ddamsproteomics'
 summary['Pipeline Version'] = workflow.manifest.version
 summary['Run Name']     = custom_runName ?: workflow.runName
 summary['mzMLs']        = multifile_format(params.mzmls)
-summary['or mzML definition file']        = "${params.mzmldef ?: params.input}"
+summary['or mzML definition file']        = mzmldef 
 summary['Target DB'] = multifile_format(params.tdb)
 summary['Sample annotations'] = params.sampletable
 summary['Modifications'] = params.mods
@@ -317,7 +322,7 @@ summary['Minimum Luciphor2 score of PTM'] = params.ptm_minscore_high
 summary['Minimum amount of PSMs per charge state for Luciphor2'] = params.minpsms_luciphor
 summary['Phospho enriched samples'] = params.phospho
 summary['Total proteome normalization PSM table'] = params.totalproteomepsms
-summary['Instrument'] = params.mzmldef ? 'Set per mzML file in mzml definition file' : params.instrument
+summary['Instrument'] = mzmldef ? 'Set per mzML file in mzml definition file' : params.instrument
 summary['Precursor tolerance'] = params.prectol
 summary['Isotope error'] = params.iso_err
 summary['Fragmentation method'] = params.frag
@@ -439,9 +444,6 @@ process get_software_versions {
     """
 }
 
-// params.input is for future use, so any system that wants unifying can use this already now
-// params.mzmldef will be deprecated in 3.0 with DSL 2
-mzmldef = params.mzmldef ?: params.input
 if (!mzmldef && params.mzmls) {
   Channel
     .fromPath(params.mzmls)
