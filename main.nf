@@ -908,8 +908,11 @@ process countMS2sPerPlate {
       except KeyError:
           fileplates[fn] = {setname: plate} 
   if ${complementary_run ? 1 : 0}:
+      header = ['mzmlfile', 'instrument', 'setname', 'plate', 'fraction']
       with open('$oldmzmls_fn') as oldmzfp:
           for line in oldmzfp:
+              if line.strip('\\n').split('\\t') == header:
+                  continue
               fpath, inst, setname, plate, fraction = line.strip('\\n').split('\\t')
               # old mzmls also contain files that are no longer used (i.e. removed from set)
               # filter by skipping any setname that is in the current new setnames
