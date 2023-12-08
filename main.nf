@@ -1301,7 +1301,10 @@ process createPTMLookup {
   msstitch split -i "${ptmtable}" --splitcol bioset
   ${setnames.collect() { "test -f '${it}.tsv' || echo 'No PTMs found for set ${it}' >> warnings" }.join(' && ') }
   # No PTMs at all overwrites the per-set messages
-  tail -n+2 ${ptmtable} | head | grep . >/dev/null || echo 'No PTMs found in any set' > warnings
+  if [[ \$(wc -l <ptm_psmtable.txt) -lt 2 ]]
+  then
+    echo 'No PTMs found in any set' > warnings
+  fi
   """
 }
 

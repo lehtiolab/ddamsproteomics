@@ -247,8 +247,8 @@ if (feattype != 'peptides') {
 
 # precursorarea
 precursorcols = c(featcol, colnames(feats)[grep('area', colnames(feats))])
-anyrowsms1 = nrow(feats[rowSums(is.na(feats[,precursorcols])) != length(precursorcols),])
 if (length(precursorcols) > 1) {
+    anyrowsms1 = nrow(feats[rowSums(is.na(feats[,precursorcols])) != length(precursorcols),])
     svg('precursorarea', height=(nrsets + 1), width=width)
     if (anyrowsms1) {
       parea = melt(feats, id.vars=featcol, na.rm=T, measure.vars = precursorcols[2:length(precursorcols)])
