@@ -456,7 +456,7 @@ if (!mzmldef && params.mzmls) {
     .set { mzml_in }
 } else {
   header = ['mzmlfile', 'instrument', 'setname', 'plate', 'fraction']
-  mzmllines = file("${mzmldef}").readLines().collect { it.tokenize('\t') }
+  mzmllines = file(mzmldef).readLines().collect { it.tokenize('\t') }
   if (mzmllines[0] == header) {
     /* As above, future use with pushing files with a header becomes enabled, as long as
     they use this header format. We cannot do module importing etc yet, have to use DSL2
