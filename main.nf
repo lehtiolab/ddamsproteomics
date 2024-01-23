@@ -963,7 +963,7 @@ process msgfPlus {
     'quay.io/biocontainers/msgf_plus:2023.01.1202--hdfd78af_0'}"
 
   input:
-  set val(setname), val(sample), path(infile), val(instrument), val(platename), val(fraction), path(db) from mzml_msgf
+  set val(setname), val(sample), path(mzml), val(instrument), val(platename), val(fraction), path(db) from mzml_msgf
 
   output:
   set val(setname), path("${sample}.mzid"), path("${sample}.mzid.tsv") into mzids
@@ -985,9 +985,9 @@ process msgfPlus {
   // which NF does to "infile". That would work fine but not if the files are quoted in the 
   // script, then they cant be found when there is \&.
   // Replace those characters anyway since they cause trouble in percolator XML output downstream
-  (is_stripped, parsed_infile) = stripchars_infile(infile)
+  (is_stripped, parsed_infile) = stripchars_infile(mzml)
   """
-  ${is_stripped ? "ln -s ${infile} '${parsed_infile}'" : ''}
+  ${is_stripped ? "ln -s ${mzml} '${parsed_infile}'" : ''}
   create_modfile.py ${params.maxvarmods} "${params.msgfmods}" "${params.mods}${isobtype ? ";${isobtype_parsed}" : ''}${params.ptms ? ";${params.ptms}" : ''}${params.locptms ? ";${params.locptms}" : ''}"
   
   msgf_plus -Xmx${task.memory.toMega()}M -d $db -s '$parsed_infile' -o "${sample}.mzid" -thread ${threads} -mod "mods.txt" -tda 0 -maxMissedCleavages $params.maxmiscleav -t ${params.prectol}  -ti ${params.iso_err} -m ${fragmeth} -inst ${msgfinstrument} -e ${enzyme} -protocol ${msgfprotocol} -ntt ${ntt} -minLength ${params.minpeplen} -maxLength ${params.maxpeplen} -minCharge ${params.mincharge} -maxCharge ${params.maxcharge} -n 1 -addFeatures 1
