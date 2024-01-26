@@ -23,8 +23,9 @@ def helpMessage() {
 
     Mandatory arguments:
       --mzmls                       Path to mzML files
-      --mzmldef                     Alternative to --mzml: path to file containing list of mzMLs 
+      --input                       Alternative to --mzml: path to file containing list of mzMLs 
                                     with instrument, sample set and fractionation annotation (see docs)
+      --mzmldef                     Same as --input, deprecated
       --tdb                         Path to target FASTA protein databases, can be (quoted) '/path/to/*.fa'
       -profile                      Configuration profile to use. Can use multiple (comma separated)
                                     Available: standard, conda, docker, singularity, awsbatch, test
@@ -455,9 +456,8 @@ if (!mzmldef && params.mzmls) {
     .empty()
     .set { mzml_in }
 } else {
-  header = ['mzmlfile', 'instrument', 'setname', 'plate', 'fraction']
   mzmllines = file(mzmldef).readLines().collect { it.tokenize('\t') }
-  if (mzmllines[0] == header) {
+  if (mzmllines[0][0] == 'mzmlfile') {
     /* As above, future use with pushing files with a header becomes enabled, as long as
     they use this header format. We cannot do module importing etc yet, have to use DSL2
     for that. That is something to strive for in the future.
@@ -908,10 +908,9 @@ process countMS2sPerPlate {
       except KeyError:
           fileplates[fn] = {setname: plate} 
   if ${complementary_run ? 1 : 0}:
-      header = ['mzmlfile', 'instrument', 'setname', 'plate', 'fraction']
       with open('$oldmzmls_fn') as oldmzfp:
           for line in oldmzfp:
-              if line.strip('\\n').split('\\t') == header:
+              if line.strip('\\n').split('\\t')[0] == 'mzmlfile':
                   continue
               fpath, inst, setname, plate, fraction = line.strip('\\n').split('\\t')
               # old mzmls also contain files that are no longer used (i.e. removed from set)
