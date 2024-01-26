@@ -1,3 +1,4 @@
+mzmlfile	instrument	setname	plate	fraction
 ${testdata}/lf_phos_fr09&weirdchars:_500.mzML	qe	setA
 ${testdata}/lf_phos_fr10>_500.mzML	qe	setB
 ${testdata}/lf_phos_fr11_500.mzML	qe	setB
