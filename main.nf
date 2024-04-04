@@ -591,7 +591,7 @@ process quantifyMS1 {
   """
   ${is_stripped ? "ln -s ${infile} ${parsed_infile}" : ''}
   # Dinosaur is first choice for MS1 quant
-  ${!params.hardklor ? "dinosaur --concurrency=${threads} ${parsed_infile}" : ''}
+  ${!params.hardklor ? "dinosaur -Xmx${task.memory.toMega()}M --concurrency=${threads} ${parsed_infile}" : ''}
   # Hardklor/Kronik can be used as a backup, using --hardklor
   ${params.hardklor ? "hardklor <(cat $hkconf <(echo $parsed_infile hardklor.out)) && kronik -c 5 -d 3 -g 1 -m 8000 -n 600 -p 10 hardklor.out ${sample}.kr" : ''}
   """
