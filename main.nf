@@ -499,7 +499,7 @@ process createTargetDecoyFasta {
 
   script:
   """
-  ${tdb.size() > 1 ? "cat ${tdb.collect() { "\"${it}\"" }.join(' ')} > tdb" : "mv '$tdb' tdb"}
+  ${listify(tdb).size() > 1 ? "cat ${tdb.collect() { "\"${it}\"" }.join(' ')} > tdb" : "mv '$tdb' tdb"}
   check_fasta.py tdb
   msstitch makedecoy -i tdb -o decoy.fa --scramble tryp_rev --ignore-target-hits
   cat tdb decoy.fa > db.fa
@@ -1018,7 +1018,7 @@ process percolator {
 
   script:
   """
-  ${mzids.collect() { "echo '$it' >> metafile" }.join('&&')}
+  ${listify(mzids).collect() { "echo $it >> metafile" }.join(' && ')}
   msgf2pin -o percoin.tsv -e ${params.enzyme} -P "decoy_" metafile
   percolator -j percoin.tsv -X perco.xml -N 500000 --decoy-xml-output -Y --num-threads ${task.cpus}
   """
