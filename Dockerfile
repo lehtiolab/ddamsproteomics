@@ -7,7 +7,7 @@ RUN conda config --add channels defaults
 RUN conda config --add channels bioconda
 RUN conda config --add channels conda-forge
 
-RUN conda create -n ddamsproteomics-2.17 \
+RUN conda create -n ddamsproteomics-2.18 \
   hardklor=2.3.2 \
   kronik=2.20 \
   dinosaur=1.2.0 \
@@ -24,4 +24,4 @@ RUN conda create -n ddamsproteomics-2.17 \
   bioconductor-deqms=1.18.0 \
   r-cairo=1.6_2
 RUN conda clean -a
-ENV PATH /opt/conda/envs/ddamsproteomics-2.17/bin:$PATH
+ENV PATH /opt/conda/envs/ddamsproteomics-2.18/bin:$PATH

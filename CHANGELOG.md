@@ -1,4 +1,9 @@
 # lehtiolab/ddamsproteomics: Changelog
+## Version 2.18 [2024-04-05]
+- Increase heap size for dinosaur to handle bigger files
+- Make percolator accept unknown non-UNIMOD modifications
+- Minor fixes, file special characters
+
 ## Version 2.17 [2023-11-20]
 - Percolator forces concatenated T/D search instead of mix-max
 - Using mixed isobaric types possible
