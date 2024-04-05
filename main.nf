@@ -994,6 +994,7 @@ process msgfPlus {
   awk -F \$'\\t' '{OFS=FS ; print \$0, "Biological set" ${fractionation ? ', "Strip", "Fraction"' : ''}}' <( head -n1 out.tsv) > "${sample}.mzid.tsv"
   awk -F \$'\\t' '{OFS=FS ; print \$0, "$setname" ${fractionation ? ", \"$platename\", \"$fraction\"" : ''}}' <( tail -n+2 out.tsv) >> "${sample}.mzid.tsv"
   rm ${db.baseName.replaceFirst(/\.fasta/, "")}.c*
+  ${params.mods.contains('Unknown') ? "sed -i '/unknown modification/s/PSI-MS/UNIMOD/' '${sample}.mzid'" : ''}
   """
 }
 

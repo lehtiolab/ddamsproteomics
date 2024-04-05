@@ -13,7 +13,7 @@ nextflow run -resume -profile test ${repodir}/main.nf --name ${name} --outdir ${
     --sampletable "${testdir}/tmt16_samples.txt" \
     --hardklor --isobaric '0set-A:tmtpro:126:131N' \
     --tdb "${testdata}/tmt16_fa.fa" \
-    --mods 'carbamidomethyl;oxidation' \
+    --mods 'carbamidomethyl;oxidation;43.005814,*,opt,N-term,Unknown' \
     --deqms --keepnapsmsquant --genes \
 
 
