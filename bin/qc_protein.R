@@ -273,8 +273,8 @@ if (length(deqpval_cols)) {
   cartprod = expand.grid(s_table, s_table)
   cartprod = cartprod[cartprod$Var1 != cartprod$Var2,]
   for (comparison in paste(cartprod$Var1, cartprod$Var2, sep='.')) {
-    logfcname = sprintf('%s_logFC', comparison) 
-    if (length(grep(logfcname, names(feats)))) {
+    re_logfcname = sprintf('^%s_logFC', comparison) 
+    if (length(grep(re_logfcname, names(feats)))) {
       compnice = sub('[.]', ' vs. ', comparison)
       logpname = sprintf('%s_log.sca.pval', comparison)
       feats[, logpname] = -log10(feats[, sprintf('%s_sca.P.Value', comparison)])
