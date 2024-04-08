@@ -1627,7 +1627,7 @@ process proteinPeptideSetMerge {
   # then the empty // means use the previous RE (you could specify a new RE)
   head -n1 mergedtable > tmph
   ${params.sampletable && setisobaric ?  
-    'while read line ; do read -a arr <<< $line ; sed -E "s/${arr[0]}_([a-z0-9]*plex)_${arr[1]}/${arr[4]}_${arr[3]}_${arr[2]}_\\1_${arr[1]}/" <(tail -n1 tmph | tr "\t" "\n") | tr "\n" "\t" | sed $"s/\\t$/\\n/" ; done < <(paste <(cut -f2 clean_sampletable) sampletable_no_special_chars) >> tmph' :  ''}
+    'while read line ; do read -a arr <<< $line ; sed -E "s/^${arr[0]}_([a-z0-9]*plex)_${arr[1]}/${arr[4]}_${arr[3]}_${arr[2]}_\\1_${arr[1]}/" <(tail -n1 tmph | tr "\t" "\n") | tr "\n" "\t" | sed $"s/\\t$/\\n/" ; done < <(paste <(cut -f2 clean_sampletable) sampletable_no_special_chars) >> tmph' :  ''}
   ${params.sampletable && setisobaric ? "cat <(tail -n1 tmph) <(tail -n+2 mergedtable) > grouptable" : 'mv mergedtable grouptable'}
 
   # Run DEqMS if needed, use original sample table with NO__GROUP

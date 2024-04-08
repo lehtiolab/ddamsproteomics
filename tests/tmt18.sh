@@ -28,9 +28,9 @@ mkdir -p test_output/${name}
 ln -fs "${testdata}/tmt18_fr06_1000.mzML" "${testdata}/linked_tmt18_fr06_1000.mzML"
 cat "${testdir}/tmt18_mzmls.txt" | envsubst > test_output/${name}/oldmzmls
 nextflow run -resume -profile test ${repodir}/main.nf --name ${name} --outdir test_output/${name} \
-    --mzmldef <(sed 's/tmt18_fr/linked_tmt18_fr/;s/set-A/setB/' "${testdir}/tmt18_mzmls.txt" | envsubst) \
+    --mzmldef <(sed 's/tmt18_fr/linked_tmt18_fr/;s/0set-A/20set-A/' "${testdir}/tmt18_mzmls.txt" | envsubst) \
     --sampletable "${testdir}/tmt18_setAB_samples.txt" \
-    --hardklor --isobaric '0set-A:tmt18plex:sweep 0setB:tmt18plex:sweep' \
+    --hardklor --isobaric '0set-A:tmt18plex:sweep 20set-A:tmt18plex:sweep' \
     --tdb "${testdata}/tmt18_fa.fa" \
     --mods 'carbamidomethyl;oxidation' \
     --locptms Phospho --psmconflvl 0.02 --pepconflvl 0.05 \
