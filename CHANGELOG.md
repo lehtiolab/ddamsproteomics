@@ -1,7 +1,8 @@
 # lehtiolab/ddamsproteomics: Changelog
-## Version 2.18 [2024-04-05]
+## Version 2.18 [2024-04-08]
 - Increase heap size for dinosaur to handle bigger files
 - Make percolator accept unknown non-UNIMOD modifications
+- Fix issue where set/sample group names were not correctly matched if they overlap
 - Minor fixes, file special characters
 
 ## Version 2.17 [2023-11-20]
