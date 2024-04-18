@@ -9,6 +9,8 @@ sampletable = read.table('clean_sampletable', header=F, sep='\t', comment.char='
 colnames(sampletable) = c('ch', 'set', 'sample', 'group')
 sampletable$group = sub('[^a-zA-Z0-9_]', '_', sampletable$group)
 sampletable$group = sub('^([0-9])', 'X\\1', sampletable$group)
+sampletable = sampletable[order(sapply(sampletable$ch, function(x) sub('N', 'A', x))),]
+
 lookup = sampletable$group
 names(lookup) = apply(cbind(sampletable[c('group', 'sample', 'set', 'ch')]), 1, paste, collapse='_')
 names(lookup) = gsub('[^a-zA-Z0-9_]', '_', names(lookup))
