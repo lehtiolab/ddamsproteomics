@@ -9,7 +9,7 @@ baseresults=test_output/${name}
 nextflow run -resume -profile test ${repodir}/main.nf --name ${name} --outdir ${baseresults} \
     --sampletable "${testdir}/tmt16_samples.txt" \
     --noms1quant \
-    --mzmldef <(cat "${testdir}/tims_mzmls.txt" | envsubst) \
+    --input <(cat "${testdir}/tims_mzmls.txt" | envsubst) \
     --genes \
     --isobaric '0set-A:tmtpro:126:131C' \
     --tdb "${testdata}/tims_fa.fa" \
