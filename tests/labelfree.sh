@@ -6,7 +6,7 @@ echo Normal labelfree test
 name=lf
 nextflow run -resume -profile test ${repodir}/main.nf --name ${name} \
     --outdir test_output/${name} \
-    --mzmldef <(cat ${testdir}/lf_mzmls.txt | envsubst) \
+    --input <(cat ${testdir}/lf_mzmls.txt | envsubst) \
     --genes \
     --tdb ${testdata}/lf.fa \
     --psmconflvl 0.2 --pepconflvl 0.2 \
@@ -23,7 +23,7 @@ echo Labelfree run with warnings: no decoy in setB, no target in setA
 name=lf_notarget
 nextflow run -resume -profile test ${repodir}/main.nf --name ${name} \
     --outdir test_output/${name} \
-    --mzmldef <(cat ${testdir}/lf_mzmls.txt | envsubst) \
+    --input <(cat ${testdir}/lf_mzmls.txt | envsubst) \
     --genes \
     --tdb ${testdata}/lf.fa \
     --psmconflvl 0.005 --pepconflvl 0.2 \
@@ -33,7 +33,7 @@ echo Labelfree run without fractions, with warnings: no decoy in setA, no target
 name=lf_nofrac_notarget
 nextflow run -resume -profile test ${repodir}/main.nf --name ${name} \
     --outdir test_output/${name} \
-    --mzmldef <(cat ${testdir}/lf_mzmls_nofrac.txt | envsubst) \
+    --input <(cat ${testdir}/lf_mzmls_nofrac.txt | envsubst) \
     --genes \
     --tdb ${testdata}/lf.fa \
     --psmconflvl 0.005 --pepconflvl 0.2 \
@@ -44,7 +44,7 @@ echo Single file labelfree test
 name=lf_singlefile
 nextflow run -resume -profile test ${repodir}/main.nf --name ${name} \
     --outdir test_output/${name} \
-    --mzmldef <(grep setA ${testdir}/lf_mzmls.txt | envsubst) \
+    --input <(cat <(head -n1 ${testdir}/lf_mzmls.txt) <(grep setA ${testdir}/lf_mzmls.txt | envsubst)) \
     --genes \
     --tdb ${testdata}/lf.fa \
     --psmconflvl 0.2 --pepconflvl 0.2 \

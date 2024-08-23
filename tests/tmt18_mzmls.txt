@@ -1,1 +1,2 @@
+mzmlfile	instrument	setname	plate	fraction
 ${testdata}/tmt18_fr06_1000.mzML	qe	0set-A	3-10	06

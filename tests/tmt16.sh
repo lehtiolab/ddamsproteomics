@@ -21,7 +21,7 @@ echo TMT16 phospho + acetyl and total protnorm
 name=tmt16_acetyl_phos
 baseresults=test_output/${name}
 nextflow run -resume -profile test ${repodir}/main.nf --name ${name} --outdir test_output/${name} \
-    --mzmldef <(grep fr07 "${testdir}/tmt16_mzmls.txt" | envsubst) \
+    --input <(cat <(head -n1 ${testdir}/tmt16_mzmls.txt) <(grep fr07 ${testdir}/tmt16_mzmls.txt | envsubst)) \
     --sampletable "${testdir}/tmt16_samples.txt" \
     --hardklor --isobaric '0set-A:tmtpro:126:131N' \
     --tdb "${testdata}/tmt16_fa.fa" \
@@ -55,7 +55,7 @@ nextflow run -resume -profile test ${repodir}/main.nf --name ${name} --outdir te
 echo TMT16 frac and non frac mix
 name=tmt16_mixfrac_lg
 nextflow run -resume -profile test ${repodir}/main.nf --name ${name} --outdir test_output/${name} \
-    --mzmldef <(cat <(grep fr07 "${testdir}/tmt16_mzmls.txt") <(grep fr08 "${testdir}/tmt16_mzmls.txt" | cut -f1-3) | envsubst) \
+    --input <(cat <(head -n1 ${testdir}/tmt16_mzmls.txt) <(grep fr07 ${testdir}/tmt16_mzmls.txt) <(grep fr08 "${testdir}/tmt16_mzmls.txt" | cut -f1-3) | envsubst) \
     --sampletable "${testdir}/tmt16_samples.txt" \
     --hardklor --isobaric '0set-A:tmtpro:126:131N' \
     --tdb "${testdata}/tmt16_fa.fa" \
@@ -68,7 +68,7 @@ nextflow run -resume -profile test ${repodir}/main.nf --name ${name} --outdir te
 echo TMT16 single-file for escaping in listified steps
 name=tmt16_singlefile
 nextflow run -resume -profile test ${repodir}/main.nf --name ${name} --outdir test_output/${name} \
-    --mzmldef <(grep fr08 "${testdir}/tmt16_mzmls.txt" | envsubst) \
+    --input <(cat <(head -n1 ${testdir}/tmt16_mzmls.txt) <(grep fr08 ${testdir}/tmt16_mzmls.txt) | envsubst) \
     --sampletable "${testdir}/tmt16_samples.txt" \
     --hardklor --isobaric '0set-A:tmtpro:126:131N' \
     --tdb "${testdata}/tmt16_fa.fa" \

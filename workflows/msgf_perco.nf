@@ -88,8 +88,8 @@ process percolatorToPsms {
   tuple val(setname), path(perco), path(mzids), path(tsvs)
 
   output:
-  tuple path("${setname}_target.tsv"), val('target'), emit: tmzidtsv_perco optional true
-  tuple path("${setname}_decoy.tsv"), val('decoy'), emit: dmzidtsv_perco optional true
+  tuple val('target'), path("${setname}_target.tsv"), emit: tmzidtsv_perco optional true
+  tuple val('decoy'), path("${setname}_decoy.tsv"), emit: dmzidtsv_perco optional true
   tuple val(setname), path('allpsms'), emit: unfiltered_psms optional true
   path('warnings'), emit: percowarnings optional true
 
@@ -123,7 +123,7 @@ workflow MSGFPERCO {
   mzml_in
   | map { [it.setname]}
   | groupTuple
-  | map { [it[0], setisobaric && setisobaric[it[0]] ? setisobaric[it[0]] : false, params.maxvarmods, file(params.msgfmods), params.ptms, params.locptms] }
+  | map { [it[0], setisobaric && setisobaric[it[0]] ? setisobaric[it[0]] : false, params.maxvarmods, file(params.msgfmods), params.mods, params.ptms, params.locptms] }
   | createMods
 
   mzml_in
