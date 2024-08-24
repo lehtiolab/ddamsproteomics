@@ -230,14 +230,14 @@ process kronik {
 process complementSpectraLookupCleanPSMs {
 
   input:
-  tuple val(in_setnames), path(mzmlfiles), val(platenames) path(tlup), path(dlup), path(tpsms), path(dpsms), path(ptmpsms)
+  tuple val(in_setnames), path(mzmlfiles), val(platenames), path(tlup), path(dlup), path(tpsms), path(dpsms), path(ptmpsms)
 
   output:
-  tuple path('t_cleaned_psms.txt'), path('d_cleaned_psms.txt') into cleaned_psms
+  tuple path('t_cleaned_psms.txt'), path('d_cleaned_psms.txt'), emit: psms
   tuple path('target_db.sqlite'), path('decoy_db.sqlite'), emit: dbs
-  path 'cleaned_ptmpsms.txt' into cleaned_ptmpsms optional true
-  path 'ptms_db.sqlite' into ptm_lookup_old optional true
-  file('all_setnames') into oldnewsets 
+  //path('cleaned_ptmpsms.txt'), emit: ptmpsms optional true
+  //path('ptms_db.sqlite'), emit: ptm_lookup optional true
+  //file('all_setnames') into oldnewsets 
   
   script:
   setnames = in_setnames.unique(false)
@@ -319,11 +319,11 @@ process createPSMTable {
     'quay.io/biocontainers/msstitch:3.16--pyhdfd78af_0'}"
 
   input:
-  tuple val(td), path(psms), path('lookup'), path(tdb), path(ddb), path('oldpsms'), val(is_rerun), val(complementary_run), val(do_ms1), val(do_isobaric), val(onlypeptides)
+  tuple val(td), path(psms), path('lookup'), path(tdb), path(ddb), path('oldpsms'), val(complementary_run), val(do_ms1), val(do_isobaric), val(onlypeptides)
 
   output:
-  tuple val(td), file("${outpsms}"), emit: psmtable
-  path("${psmlookup}"), emit: lookup
+  tuple val(td), path("${outpsms}"), emit: psmtable
+  tuple val(td), path("${psmlookup}"), emit: lookup
   path('warnings'), emit: warnings optional true
 
   script:
@@ -332,23 +332,19 @@ process createPSMTable {
   no_target = td == 'target' && psms.size() == 0
   no_decoy = td == 'decoy' && psms.size() == 0
   """
-  ${no_target && !is_rerun ? "echo 'No target PSMs made the combined PSM / peptide FDR cutoff' && exit 1" : ''}
-  ${no_decoy && !is_rerun ? "echo 'No decoy PSMs in any set at FDR cutoff, will not produce protein/gene tables' > warnings && touch ${outpsms} && touch ${psmlookup} && exit 0" : ''}
-  ${!is_rerun ? "msstitch concat -i ${listify(psms).collect() {"$it"}.join(' ')} -o psms.txt" : ''}
+  ${no_target ? "echo 'No target PSMs made the combined PSM / peptide FDR cutoff' && exit 1" : ''}
+  ${no_decoy ? "echo 'No decoy PSMs in any set at FDR cutoff, will not produce protein/gene tables' > warnings && touch ${outpsms} && touch ${psmlookup} && exit 0" : ''}
+  msstitch concat -i ${listify(psms).collect() {"$it"}.join(' ')} -o psms.txt
   # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
   cat lookup > $psmlookup
-  ${!is_rerun ? "sed '0,/\\#SpecFile/s//SpectraFile/' -i psms.txt": ''}
+  sed '0,/\\#SpecFile/s//SpectraFile/' -i psms.txt
 # --addmiscleav 
-  ${is_rerun ? "mv oldpsms psmsrefined" : "msstitch psmtable -i psms.txt --dbfile $psmlookup -o ${outpsms} \
+  msstitch psmtable -i psms.txt --dbfile $psmlookup -o ${outpsms} \
       ${onlypeptides ? '' : "--fasta \"${td == 'target' ? "${tdb}" : "${ddb}"}\" --genes"} \
       ${do_ms1 ? '--ms1quant' : ''} \
       ${do_isobaric ? "--isobaric --min-precursor-purity ${params.minprecursorpurity}" : ''} \
       ${!onlypeptides ? '--proteingroup' : ''} \
-      ${complementary_run ? '--oldpsms oldpsms' : ''}"
-  }
-  # sed 's/\\#SpecFile/SpectraFile/' -i psmsrefined
-  # In decoy PSM table process, also split the target total proteome normalizer table if necessary.
-  # Doing it in decoy saves time, since target is usally largest table and slower
+      ${complementary_run ? '--oldpsms oldpsms' : ''}
   """
 }
 
@@ -551,9 +547,9 @@ if (params.sampletable) {
   is_rerun = complementary_run && !params.input
   if (is_rerun) {
     fractionation_in = false
-    Channel
-      .empty()
-      .set { mzml_in }
+    mzml_in = Channel.empty()
+    mzml_list = []
+    mzmls = []
   } else {
     mzmls = msgf_info_map(params.input)
     mzml_list = mzmls.collect { k,v -> v}
@@ -587,13 +583,25 @@ if (params.sampletable) {
   
   } else {
     old_fractionation = false
-    prev_results = Channel.fromPath([nofile, nofile, nofile, nofile, nofile])
   }
 
   fractionation = fractionation_in || old_fractionation
   if (fractionation && complementary_run && (!params.oldmzmldef || !file(params.oldmzmldef).exists())) {
     exit 1, 'Fractionation with complementing run needs an --oldmzmldef file'
   }
+
+
+  if (params.oldmzmldef) { 
+    // oldmzml_lines = file("${params.oldmzmldef}").readLines().collect { it.tokenize('\t') }
+    oldmzmls = msgf_info_map(params.oldmzmldef)
+    oldmzml_sets = oldmzmls.collect { k,v -> v.setname }.unique()
+    oldmzmls_fn = Channel.fromPath(params.oldmzmldef).first()
+  } else {
+    oldmzmls_fn = Channel.fromPath("${baseDir}/assets/NO__FILE").first()
+    oldmzml_sets = []
+  }
+
+  all_setnames = [mzml_list.collect { it.setname }.unique()] + oldmzml_sets
 
   // parse inputs that combine to form values or are otherwise more complex.
   // Isobaric input example: --isobaric 'set1:tmt10plex:127N:128N set2:tmt16plex:sweep set3:itraq8plex:intensity'
@@ -609,6 +617,7 @@ if (params.sampletable) {
     x-> [x[0], x[2..-1]]
   } : [false:1]
   
+  do_ms1 = !params.noquant && !params.noms1quant
   normalize = (!params.noquant && (params.normalize || params.deqms) && params.isobaric)
 
     //.tap { mzmlfiles_counter; mzmlfiles_qlup_sets } // for counting-> timelimits; getting sets from supplied lookup
@@ -624,21 +633,6 @@ if (params.sampletable) {
     .map { it -> it[0..2] } // remove basenames, fractions
     .set { mzmlfiles_all_sort }
 
-  // Collect all mzMLs into single item to pass to lookup builder and spectra counter
-  if (params.oldmzmldef) { 
-    oldmzml_lines = file("${params.oldmzmldef}").readLines().collect { it.tokenize('\t') }
-    Channel
-      .from(oldmzml_lines)
-      .map { it -> it[2].replaceAll('[ ]+$', '').replaceAll('^[ ]+', '') }
-      .unique()
-      .toList()
-      .set { oldmzml_sets }
-    oldmzmls_fn = Channel.fromPath(params.oldmzmldef).first()
-  } else {
-    oldmzmls_fn = Channel.fromPath("${baseDir}/assets/NO__FILE").first()
-    oldmzml_sets = Channel.value([])
-  }
-
 
 /*
 // FIXME this needed still?
@@ -653,62 +647,54 @@ if (params.sampletable) {
 */
 
   // Spec lookup prep if needed
-  if (complementary_run) {
+  do_quant = false
+  if (is_rerun) {
+    // Do nothing
+
+  } else if (complementary_run) {
     mzmlfiles_all_sort
     | combine(prev_results.toList())
     | complementSpectraLookupCleanPSMs
     complementSpectraLookupCleanPSMs.out.dbs
     | set { tdspeclookup }
+    complementSpectraLookupCleanPSMs.out.psms
+    | flatMap { [['target', it[0]], ['decoy', it[1]]] }
+    | set { oldpsms_ch }
+    do_quant = !params.noquant
 
-  } else if (!params.quantlookup) {
-    mzmlfiles_all_sort
-    | createNewSpectraLookup
-    | map { [it, it] }
-    | set { tdspeclookup }
-  }
-
-  // Quant lookup preparing if needed
-  if (params.noquant && !params.quantlookup) {
-    // Noquant, fresh spectra lookup scenario -> spec lookup ready for PSMs, PTMs
-    tdspeclookup
-      .flatMap { it -> [['target', it], ['decoy', it]] }
-      .set { specquant_lookups }
-  
   } else if (params.quantlookup) {
     // Runs with a premade quant lookup eg from previous search
     Channel
       .fromPath(params.quantlookup)
-      .flatMap { it -> [['target', it], ['decoy', it]] }
+      .flatMap { [['target', it], ['decoy', it]] }
       .set { specquant_lookups }
 
-  } else if (is_rerun) {
-// FIXME how to deal with these in reruns?
-    // In case of rerun with same sets, no new search but only some different post-identification
-    // output options
-    //prespectoquant  // contains  t, d lookups
-    //  .flatMap { it -> [[it[0], 'target'], [it[1], 'decoy']] }
-    //  .set{ specquant_lookups }
+  } else if (params.noquant && !params.quantlookup) {
+    // Noquant, fresh spectra lookup scenario -> spec lookup ready for PSMs, PTMs
+    mzmlfiles_all_sort
+    | createNewSpectraLookup
+    | map { [it, it] }
+      .flatMap { [['target', it], ['decoy', it]] }
+      .set { specquant_lookups }
 
-  } else if (complementary_run) {
-    // FIXME wtf to do here?
+  } else if (!params.quantlookup) {
+    // Normal case - no rerun, fresh everything
+    mzmlfiles_all_sort
+    | createNewSpectraLookup
+    | map { [it, it] }
+    | set { tdspeclookup }
+    do_quant = true
+  }
 
-  } else {
-    // Normal case - no rerun, fresh everythin
-    //if (setisobaric) {
-      mzml_in
-      | filter { setisobaric[it.setname] }
-      | map { [it.setname, it.mzmlfile, it.instrument] }
-      | centroidMS1
-      | map { it + setisobaric[it[0]] }
-      | isobaricQuant
-      | set { iso_processed }
-    //} else {
-      mzml_in
-      | filter { !setisobaric[it.setname] }
-      | map { [stripchars_infile(it.mzmlfile)[1], file(it.sample)] }
-      | concat(iso_processed)
-      | set { iso_q }
-    //}
+  if (do_quant) {
+    mzml_in
+    | filter { setisobaric[it.setname] }
+    | map { [it.setname, it.mzmlfile, it.instrument] }
+    | centroidMS1
+    | map { it + setisobaric[it[0]] }
+    | isobaricQuant
+    | set { iso_processed }
+
     if (!params.noms1quant) {
       if (params.hardklor) {
         mzml_in
@@ -728,7 +714,10 @@ if (params.sampletable) {
       | map { [stripchars_infile(it.mzmlfile)[1], file(it.sample)] }
       | set { ms1_q }
     }
-    iso_q
+    mzml_in
+    | filter { !setisobaric[it.setname] }
+    | map { [stripchars_infile(it.mzmlfile)[1], file(it.sample)] }
+    | concat(iso_processed)
     | join(ms1_q, remainder: true)
     | toList
     | map { it.sort({a, b -> a[0] <=> b[0]}) }
@@ -741,26 +730,36 @@ if (params.sampletable) {
     | set { specquant_lookups }
   }
 
+
   tdb = Channel.fromPath(params.tdb)
   createTargetDecoyFasta(tdb)
   // bothdbs.into { psmdbs; fdrdbs; ptmdbs }
-  MSGFPERCO(mzml_in, createTargetDecoyFasta.out.concatdb, setisobaric, fractionation, mzmls)
-
-  do_ms1 = !params.noquant && !params.noms1quant
-  all_setnames = [mzml_list.collect { it.setname }.unique()]
-
-  MSGFPERCO.out.t_tsv
-  | ifEmpty(['target', []])
-  | concat(MSGFPERCO.out.d_tsv)
-  | join(specquant_lookups)
-  | combine(createTargetDecoyFasta.out.bothdbs)
-  | combine(nofile_ch) // old psms FIXME
-  | map { it + [is_rerun, complementary_run, do_ms1 && it[0] == 'target', params.isobaric && it[0] == 'target', params.onlypeptides]}
-  | createPSMTable
+  if (!is_rerun) {
+    MSGFPERCO(mzml_in, createTargetDecoyFasta.out.concatdb, setisobaric, fractionation, mzmls)
+  
+    MSGFPERCO.out.t_tsv
+    | ifEmpty(['target', 'notafile'])
+    | concat(MSGFPERCO.out.d_tsv)
+    | groupTuple
+    | join(specquant_lookups)
+    | combine(createTargetDecoyFasta.out.bothdbs)
+    | join(complementary_run ? oldpsms_ch : nofile_ch.flatMap { [['target', it], ['decoy', it]] })
+    | map { it + [complementary_run, do_ms1 && it[0] == 'target', params.isobaric && it[0] == 'target', params.onlypeptides]}
+    | createPSMTable
+    createPSMTable.out.psmtable.set { psmtables_ch }
+    createPSMTable.out.lookup.set { psmlookups_ch }
+    createPSMTable.out.warnings.set { psmwarnings_ch }
+  } else {
+    Channel.from([['target', file(params.targetpsmlookup)], ['decoy', file(params.decoypsmlookup)]])
+      .set { psmlookups_ch }
+    Channel.from([['target', file(params.targetpsms)], ['decoy', file(params.decoypsms)]])
+      .set { psmtables_ch }
+    psmwarnings_ch = Channel.empty()
+  }
 
   if (params.hirief) {
     hiriefpep = Channel.fromPath(params.hirief)
-    createPSMTable.out.psmtable
+    psmtables_ch
     | filter { it[0] == 'target' }
     | map { [it[1], params.strips]  }
     | combine(hiriefpep)
@@ -768,12 +767,12 @@ if (params.sampletable) {
     | map { ['target', it] + all_setnames }
     | set { target_psmtable }
   } else {
-    createPSMTable.out.psmtable
+    psmtables_ch
     | filter { it[0] == 'target' }
     | map { it + all_setnames }
     | set { target_psmtable }
   }
-  createPSMTable.out.psmtable
+  psmtables_ch
   | filter { it[0] == 'decoy' }
   | map { it + all_setnames }
   | concat(target_psmtable)
@@ -886,8 +885,8 @@ if (!params.quantlookup) {
 //  publishDir "${params.outdir}", mode: 'copy', overwrite: true, saveAs: {["target_psmlookup.sql", "decoy_psmlookup.sql", "target_psmtable.txt", "decoy_psmtable.txt"].contains(it) && (is_rerun || !no_psms) ? it : null}
 
   target_psmtable.map { it[1] }
-  .concat(createPSMTable.out.psmtable | filter { it[0] == 'decoy' } | map { it[1] })
-  .concat(createPSMTable.out.lookup)
+  .concat(psmtables_ch | filter { it[0] == 'decoy' } | map { it[1] })
+  .concat(psmlookups_ch | map { it[1] })
   .subscribe { it.copyTo("${params.outdir}/${it.baseName}.${it.extension}") }
 }
 
