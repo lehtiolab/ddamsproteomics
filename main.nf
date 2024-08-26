@@ -376,11 +376,10 @@ process splitPSMs {
   tuple val(td), path('psms'), val(setnames)
 
   output:
-  tuple val(td), file({setnames.collect() { "${it}.tsv" }}) optional true
+  tuple val(td), path({listify(setnames).collect { "${it}.tsv" }}) optional true
 
   script:
   """
-echo ${setnames}
   msstitch split -i psms --splitcol bioset
   """
 }
@@ -415,6 +414,7 @@ process makePeptides {
   output:
   //set val(setname), val(td), file(psms), file("${setname}_peptides") into prepgs_in
   //set val(setname), val('peptides'), val(td), file("${setname}_peptides"), path(normfactors) optional true into peptides_out
+  tuple val(setname), val(td), path("${setname}_peptides"), path(normfactors)
 
   script:
 //  quant = !params.noquant && td == 'target'
@@ -433,6 +433,129 @@ process makePeptides {
     ${denoms && !specialdenom ? "--logisoquant --denompatterns ${denoms.join(' ')}" : ''} \
     ${normalize_isob ? "--median-normalize" : ''}
   ${normalize_isob ? "sed 's/^/$setname'\$'\t/' < normalization_factors_psms > '$normfactors'" : "touch '$normfactors'"}
+  """
+}
+
+
+process proteinGeneSymbolTableFDR {
+  container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
+    'https://depot.galaxyproject.org/singularity/msstitch:3.16--pyhdfd78af_0' :
+    'quay.io/biocontainers/msstitch:3.16--pyhdfd78af_0'}"
+ 
+  input:
+  tuple val(setname), path('tpeptides'), path('tpsms'), path('dpeptides'), path(tfasta), path(dfasta), val(acctype), val(do_ms1), val(isobaric), val(denom), val(keepnapsms_quant), val(normalize)
+
+  output:
+  tuple val(setname), val(acctype), path("${setname}_protfdr"), path(normfactors), emit: tables
+  path('warnings'), emit: warnings optional true
+
+  script:
+  scorecolpat = acctype == 'proteins' ? '^q-value$' : 'linear model'
+  specialdenom = denom && (denom[0] == 'sweep' || denom[0] == 'intensity')
+  normfactors = "${setname}_normfacs"
+  """
+  # score col is linearmodel_qval or q-value, but if the column only contains 0.0 or NA (no linear modeling possible due to only q<10e-04), we use svm instead
+  tscol=\$(head -1 tpeptides| tr '\\t' '\\n' | grep -n "${scorecolpat}" | cut -f 1 -d':')
+  dscol=\$(head -1 dpeptides| tr '\\t' '\\n' | grep -n "${scorecolpat}" | cut -f 1 -d':')
+  if [ -n "\$(cut -f \$tscol tpeptides| tail -n+2 | egrep -v '(NA\$|0\\.0\$)')" ] && [ -n "\$(cut -f \$dscol dpeptides| tail -n+2 | egrep -v '(NA\$|0\\.0\$)')" ]
+    then
+      scpat="${scorecolpat}"
+      logflag="--logscore"
+    else
+      scpat="svm"
+      logflag=""
+      echo 'Not enough q-values or linear-model q-values for peptides to calculate FDR for ${acctype} of set ${setname}, using svm score instead to calculate FDR.' >> warnings
+  fi
+  msstitch ${acctype} -i tpeptides --decoyfn dpeptides -o "${setname}_protfdr" --scorecolpattern "\$scpat" \$logflag \
+    ${acctype != 'proteins' ? "--fdrtype picked --targetfasta '$tfasta' --decoyfasta '$dfasta' ${params.fastadelim ? "--fastadelim '${params.fastadelim}' --genefield '${params.genefield}'": ''}" : ''} \
+    ${do_ms1 ? '--ms1quant' : ''} ${isobaric ? "--isobquantcolpattern ${isobaric} --minint 0.1" : ''} \
+    ${do_ms1 || isobaric ? '--psmtable tpsms' : ''} \
+    ${keepnapsms_quant ? '--keep-psms-na-quant' : ''} \
+    ${denom && denom[0] == 'sweep' ? '--mediansweep --logisoquant' : ''} \
+    ${denom && denom[0] == 'intensity' ? '--medianintensity' : ''} \
+    ${denom && !specialdenom ? "--denompatterns ${denom.join(' ')} --logisoquant" : ''} \
+    ${normalize ? "--median-normalize" : ''}
+    ${normalize ? "sed 's/^/$setname'\$'\t/' < normalization_factors_tpsms > '$normfactors'" : "touch '$normfactors'"}
+  """
+}
+
+
+process sampleTableCheckClean {
+  input:
+  tuple path('sampletable'), val(do_deqms)
+
+  output:
+  tuple path('clean_sampletable'), path('sampletable_no_special_chars')
+  
+  script:
+  """
+  # First add NO__GROUP marker for no-samplegroups clean sampletable from special chars
+  awk -v FS="\\t" -v OFS="\\t" \'{if (NF==3) print \$1,\$2,\$3,"NO__GROUP"; else print}\' sampletable > clean_sampletable
+  # Check if there are samplegroups at all
+  ${do_deqms ? 'grep -v NO__GROUP clean_sampletable || (>&2 echo "Cannot run DEqMS without specified sample groups" && exit 1)': ''}
+  # Count amount samples per group and error on group with only one sample
+  ${do_deqms ? "grep -v NO__GROUP clean_sampletable | cut -f 4 | sort | uniq -c | sed 's/\\s*//' | grep '^1 ' && (>&2 echo 'Cannot run DEqMS when any sample groups have only one sample, please review input' && exit 1)" : ''}
+  # strip lead/trail space in set name 
+  paste <(cut -f1 clean_sampletable) <(cut -f2 clean_sampletable | sed "s/^\\s*//;s/\\s*\$//") <(cut -f3-4 clean_sampletable) > nowhitespace && mv nowhitespace clean_sampletable
+  # substitute other weird characters
+  sed "s/[^A-Za-z0-9_\\t]/_/g" clean_sampletable > sampletable_no_special_chars
+  """
+}
+
+
+process proteinPeptideSetMerge {
+
+  container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
+    'https://depot.galaxyproject.org/singularity/msstitch:3.16--pyhdfd78af_0' :
+    'quay.io/biocontainers/msstitch:3.16--pyhdfd78af_0'}"
+
+  input:
+  tuple val(setnames), val(acctype), file(tables), file(normfacs), path(lookup), path(sampletable_with_special_chars), path('sampletable_no_special_chars'), val(do_isobaric), val(do_ms1), val(proteinconflvl), val(do_pgroup), val(do_deqms)
+  
+  output:
+  tuple val(acctype), path('grouptable')
+  //tuple val(acctype), path('proteintable'), path('clean_sampletable') into featqc_extra_peptide_samples
+  //tuple val(acctype), path('proteintable') into merged_feats
+  //tuple val(acctype), path(normfacs) into normfacs
+
+  script:
+  sampletable_iso = sampletable_with_special_chars.name != 'NO__FILE' && do_isobaric
+  """
+
+  # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
+  cat $lookup > db.sqlite
+  msstitch merge -i ${listify(tables).collect() { "$it" }.join(' ')} --setnames ${setnames.collect() { "'$it'" }.join(' ')} --dbfile db.sqlite -o mergedtable \
+    --fdrcolpattern '^q-value\$' ${acctype != 'peptides' ? "--mergecutoff ${proteinconflvl}" : ''} \
+    ${acctype == 'peptides' ? "--pepcolpattern 'peptide PEP'" : ''} \
+    ${do_ms1 ? "--ms1quantcolpattern area" : ''} \
+    ${do_isobaric ? "--isobquantcolpattern plex" : ''} \
+    ${do_pgroup ? "--no-group-annotation" : ''}
+   
+  # Put annotation on header, use normal setname for finding, replace with clean name
+  # "sed '0,/{RE}//{substitute}/..."  for only first line (0,/{RE} = read from 0 until RE,
+  # then the empty // means use the previous RE (you could specify a new RE)
+  head -n1 mergedtable > tmph
+  sampletable_with_special_chars="$sampletable_with_special_chars"
+  ${sampletable_iso ?
+    'while read line ; do read -a arr <<< $line ; sed -E "s/^${arr[0]}_([a-z0-9]*plex)_${arr[1]}/${arr[4]}_${arr[3]}_${arr[2]}_\\1_${arr[1]}/" <(tail -n1 tmph | tr "\t" "\n") | tr "\n" "\t" | sed $"s/\\t$/\\n/" ; done < <(paste <(cut -f2 $sampletable_with_special_chars) sampletable_no_special_chars) >> tmph' :  ''}
+  ${sampletable_iso ? "cat <(tail -n1 tmph) <(tail -n+2 mergedtable) > grouptable" : 'mv mergedtable grouptable'}
+  """
+}
+
+
+process DEqMS {
+  container 'lehtiolab/deqms'
+  
+  input:
+  tuple val(acctype), path('grouptable'), path('sampletable')
+
+  output:
+  tuple val(acctype), path('proteintable')
+
+  script:
+  """
+  # Run DEqMS if needed, use original sample table with NO__GROUP
+  numfields=\$(head -n1 grouptable | tr '\t' '\n' | wc -l) && deqms.R && paste <(head -n1 grouptable) <(head -n1 deqms_output | cut -f \$(( numfields+1 ))-\$(head -n1 deqms_output|wc -w)) > tmpheader && cat tmpheader <(tail -n+2 deqms_output) > proteintable
   """
 }
 
@@ -594,14 +717,14 @@ if (params.sampletable) {
   if (params.oldmzmldef) { 
     // oldmzml_lines = file("${params.oldmzmldef}").readLines().collect { it.tokenize('\t') }
     oldmzmls = msgf_info_map(params.oldmzmldef)
-    oldmzml_sets = oldmzmls.collect { k,v -> v.setname }.unique()
-    oldmzmls_fn = Channel.fromPath(params.oldmzmldef).first()
+    oldmzml_sets = oldmzmls.collect { k,v -> v.setname }
+    //oldmzmls_fn = Channel.fromPath(params.oldmzmldef).first()
   } else {
-    oldmzmls_fn = Channel.fromPath("${baseDir}/assets/NO__FILE").first()
+    //oldmzmls_fn = Channel.fromPath("${baseDir}/assets/NO__FILE").first()
     oldmzml_sets = []
   }
 
-  all_setnames = [mzml_list.collect { it.setname }.unique()] + oldmzml_sets
+  all_setnames = (mzml_list.collect { it.setname } + oldmzml_sets).unique()
 
   // parse inputs that combine to form values or are otherwise more complex.
   // Isobaric input example: --isobaric 'set1:tmt10plex:127N:128N set2:tmt16plex:sweep set3:itraq8plex:intensity'
@@ -764,19 +887,22 @@ if (params.sampletable) {
     | map { [it[1], params.strips]  }
     | combine(hiriefpep)
     | peptidePiAnnotation
-    | map { ['target', it] + all_setnames }
+    | map { ['target', it]}
     | set { target_psmtable }
   } else {
     psmtables_ch
     | filter { it[0] == 'target' }
-    | map { it + all_setnames }
     | set { target_psmtable }
   }
   psmtables_ch
   | filter { it[0] == 'decoy' }
-  | map { it + all_setnames }
   | concat(target_psmtable)
+  | map { [it[0], it[1], all_setnames] }
   | splitPSMs
+  | map { it -> [it[0], listify(it[1])] }
+  | map{ it -> [it[0], it[1].collect() { it.baseName.replaceFirst(/\.tsv$/, "") }, it[1]]} // get setname from {setname}.tsv
+  | transpose()
+  | set { splitpsms_ch }
 
   if (params.totalproteomepsms) {
     Channel.fromPath(params.totalproteomepsms)
@@ -784,16 +910,71 @@ if (params.sampletable) {
     | splitTotalProteomePSMs
   }
 
-  splitPSMs.out
-  | map { it -> [it[0], listify(it[1])] }
-  | map{ it -> [it[0], it[1].collect() { it.baseName.replaceFirst(/\.tsv$/, "") }, it[1]]} // get setname from {setname}.tsv
-  | transpose()
+  splitpsms_ch
   | map { it + [it[0] == 'target' ? setisobaric[it[1]] : false, setdenoms[it[1]], params.keepnapsmsquant, params.mediannormalize, do_ms1 && it[0] == 'target']}
   | makePeptides
-  //tuple val(td), val(setname), path('psms'), val(setisobaric), val(denoms), val(keepnapsms_quant), val(normalize_isob), val(do_ms1)
-  //out: tuple val(td), file({setnames.collect() { "${it}.tsv" }}), emit: set_tables optional true
 
 
+
+  acctypes = ['proteins']
+  if (params.onlypeptides) {
+    acctypes = []
+  } else {
+    if (params.ensg) {
+    acctypes = acctypes.plus('ensg')
+    }
+    if (params.genes) {
+    acctypes = acctypes.plus('genes')
+    }
+  }
+
+  if (!params.onlypeptides) {
+    makePeptides.out
+    | groupTuple
+    | filter { it[1].size() == 2 } // T+D required! FIXME? if we can do without that demand this can be dropped
+    | transpose
+    | map { [it[1], it[0], it[2]] }
+    | join(splitpsms_ch, by: [0, 1]) // now it's [td, setname, peptable, psmtable]
+    | branch { t: it[0] == 'target'
+               d: it[0] == 'decoy' }
+    | set { tdpeps }
+
+    tdpeps.t
+    | map { it[1..-1] } // remove td
+    | join(tdpeps.d | map { it[1..-2] }) // also strip dpsms from tdpeps.d
+    | combine(createTargetDecoyFasta.out.bothdbs)
+    | combine(Channel.from(acctypes))
+    | map { it + [do_ms1, setisobaric[it[0]], setdenoms[it[0]], params.keepnapsmsquant, params.mediannormalize]}
+    | proteinGeneSymbolTableFDR
+  }
+
+  if (params.sampletable) {
+    Channel.fromPath(params.sampletable)
+    | map { [it, params.deqms] }
+    | sampleTableCheckClean
+    | set { sampletable_ch }
+  } else {
+    nofile_ch
+    .map { [it, it] }
+    .set { sampletable_ch }
+  }
+
+  makePeptides.out
+  | filter { it[1] == 'target' }
+  | map { [it[0], 'peptides', it[2], it[3]] }
+  | concat(proteinGeneSymbolTableFDR.out.tables)
+  | groupTuple(by: 1)
+  | combine(psmlookups_ch.filter { it[0] == 'target' }.map { it[1] })
+  | combine(sampletable_ch)
+  | map { it + [do_quant && params.isobaric, do_ms1, params.proteinconflvl, !params.onlypeptides, params.deqms] }
+  | proteinPeptideSetMerge
+
+  if (params.deqms) {
+    proteinPeptideSetMerge.out
+    | combine(sampleTableCheckClean.out)
+    | DEqMS
+  }
+  
 
 /*
 
