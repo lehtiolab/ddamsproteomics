@@ -2,6 +2,7 @@
 
 include { msgf_info_map; listify; stripchars_infile } from './modules.nf' 
 include { MSGFPERCO } from './workflows/msgf_perco.nf'
+include { REPORTING } from './workflows/reporting.nf'
 
 /*
 ========================================================================================
@@ -338,8 +339,8 @@ process createPSMTable {
   # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
   cat lookup > $psmlookup
   sed '0,/\\#SpecFile/s//SpectraFile/' -i psms.txt
-# --addmiscleav 
   msstitch psmtable -i psms.txt --dbfile $psmlookup -o ${outpsms} \
+      --addmiscleav \
       ${onlypeptides ? '' : "--fasta \"${td == 'target' ? "${tdb}" : "${ddb}"}\" --genes"} \
       ${do_ms1 ? '--ms1quant' : ''} \
       ${do_isobaric ? "--isobaric --min-precursor-purity ${params.minprecursorpurity}" : ''} \
@@ -576,75 +577,6 @@ process countMS2perFile {
 }
 */
 
-
-process countMS2sPerPlate {
-  container "python:3.12",
-
-// FIXME this could possibly go into the PSM QC code?
-
-  input:
-  tuple val(setnames), file(mzmlfiles), val(platenames), val(fractionation), path(oldmzmls_fn), val(regex_specialchars)
-
-  output:
-  tuple path('amount_spectra_files'), path('scans_per_plate'), emit: counted
-  path('allplates'), emit: allplates
-
-  script:
-  splates = [setnames, platenames].transpose().collect() { "${it[0]}_${it[1]}" }
-  """
-  #!/usr/bin/env python
-  import os
-  import re
-  import sqlite3
-  # FIXME isnt a plate NA?
-  con = sqlite3.Connection("$speclookup")
-  cursor = con.execute("SELECT set_name, mzmlfilename, COUNT(*) FROM mzml JOIN mzmlfiles USING(mzmlfile_id) JOIN biosets USING(set_id) GROUP BY mzmlfile_id")
-  if ${fractionation}:
-      platesets = [\"${splates.join('", "')}\"]
-      plates = [\"${platenames.join('", "')}\"]
-      setnames = [\"${setnames.join('", "')}\"]
-      fileplates = {}
-      for fn, setname, plate in zip([${mzmlfiles.collect() { "'${stripchars_infile(it)[1]}'" }.join(',')}], setnames, plates):
-          try:
-              fileplates[fn][setname] = plate
-          except KeyError:
-              fileplates[fn] = {setname: plate} 
-      if ${complementary_run ? 1 : 0}:
-          with open('$oldmzmls_fn') as oldmzfp:
-              for line in oldmzfp:
-                  if line.strip('\\n').split('\\t')[0] == 'mzmlfile':
-                      continue
-                  fpath, inst, setname, plate, fraction = line.strip('\\n').split('\\t')
-                  # old mzmls also contain files that are no longer used (i.e. removed from set)
-                  # filter by skipping any setname that is in the current new setnames
-                  if setname in setnames:
-                      continue
-                  setplate = '{}_{}'.format(setname, plate)
-                  fn = re.sub('${regex_specialchars.replaceAll("'", "\\\\'")}', '_', os.path.basename(fpath))
-                  if setplate not in platesets:
-                      platesets.append(setplate)
-                  if fn not in fileplates:
-                      fileplates[fn] = {setname: plate}
-                  elif setname not in fileplates[fn]:
-                      fileplates[fn][setname] = plate
-      with open('allplates', 'w') as fp:
-          fp.write('\\n'.join(platesets))
-      platescans = {p: 0 for p in platesets}
-      with open('amount_spectra_files', 'w') as fp:
-          for setname, fn, scans in cursor:
-              setplate = '{}_{}'.format(setname, fileplates[fn][setname])
-              platescans[setplate] += int(scans)
-      with open('scans_per_plate', 'w') as fp:
-          for plate, scans in platescans.items():
-              fp.write('{}\\t{}\\n'.format(plate, scans))
-  else:
-      # make sure there's an empty file for scans_per_plate if not fractionated
-      with open('amount_spectra_files', 'w') as fp, open('scans_per_plate', 'w') as _, open('allplates', 'w') as __:
-          for line in cursor:
-              fp.write('\\t'.join(line))
-              fp.write('\\n')
-  """
-}
 
 
 
@@ -975,15 +907,19 @@ if (params.sampletable) {
     | DEqMS
   }
   
+  REPORTING(mzmlfiles_all_sort,
+    tdspeclookup.map { it[0] },
+    Channel.fromPath(params.input),
+    Channel.fromPath(params.oldmzmldef ?: nofile),
+    fractionation,
+    target_psmtable.map { it[1] }.view()
+    
+  )
+  
 
 /*
 
   // QC for PSMs
-  mzmlfiles_all_sort
-  | combine(tdspeclookup.map { it[0] })
-  | combine(Channel.from(fractionation ? 1 : 0))
-  | combine(oldmzmls_fn)
-  | countMS2sPerPlate
 
   // FIXME allplates could go as file into R QC directly?
   if (fractionation) {
