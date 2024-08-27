@@ -1,126 +1,151 @@
 #!/usr/bin/env Rscript
-library(ggplot2)
-library(reshape2)
+library(plotly)
+library(htmltools)
+library(tidyr)
+library(glue)
+
+# library(reshape2)
 args = commandArgs(trailingOnly=TRUE)
-nrsets = as.numeric(args[1])
-has_fractions = args[2] == TRUE
-oldmzmlfn = args[3]
-oldmzmldef = ifelse(oldmzmlfn == 'nofile', FALSE, TRUE)
-plateids = args[4:length(args)]
+has_fractions = args[1] == TRUE
+oldmzmlfn = args[2]
+oldmzmldef = ifelse(oldmzmlfn == 'NO__FILE', FALSE, TRUE)
+# FIXME can we do without plateids and read from amount_ms2? if complete -> yes
+plateids = args[3:length(args)]
 
 # Fraction needs to be a factor and not numeric, since it can contain strings (e.g. A2)
 # That would be fine but when mixing oldmzmls from a rerun in, the join on Fraction op may fail
 # when there is both the factor 02, and the numeric 2 in different tables
 feats = read.table("psms", colClasses=c('Fraction'='factor'), header=T, sep="\t", comment.char = "", quote = "")
-ycol = 'value'
+
+
+scancol = 'SpecID' # MSGF (sage has scannr)
+miscleavcol = 'missed_cleavage'
+rtcol = 'Retention.time.min' # 'rt'
+precerrcol = 'PrecursorError.ppm.' # precursor_ppm
+scorecol = 'MSGFScore' # 'sage_discriminant_score'
+
+
 if (has_fractions) {
-  width = 4
   xcol ='plateID'
   feats$plateID = paste(feats$Biological.set, feats$Strip, sep='_')
   amount_ms2 = read.table("platescans", sep='\t', header=F)
   feats$Fraction = as.factor(feats$Fraction)
 } else {
-  width = 14
-  xcol ='SpectraFile'
+  xcol ='filename'
   amount_ms2 = read.table("filescans", sep="|", header=F)[,2:3]
 }
 
 
 ##### PSM-scans
-set_amount_psms = aggregate(SpecID~Biological.set, feats, length)
+# Count PSMs per set
+set_amount_psms = aggregate(get(scancol)~Biological.set, feats, length)
 names(set_amount_psms) = c('Set', 'psmcount')
 write.table(set_amount_psms, 'psmtable_summary.txt', row.names=F, quote=F, sep='\t')
 
-amount_psms = aggregate(SpecID~get(xcol), feats, length)
+# Count PSMs per plate
+amount_psms = aggregate(get(scancol)~get(xcol), feats, length)
 mscol = 'MS2 scans'
 psmcol = 'PSMs IDed'
 names(amount_ms2) = c(xcol, mscol)
 names(amount_psms) = c(xcol, psmcol)
 amount_id=merge.data.frame(amount_ms2[c(xcol, mscol)], amount_psms[c(xcol, psmcol)], by.x=xcol, by.y=xcol, all=T)
-amount_id = melt(amount_id, measure.vars=c(mscol, psmcol))
 
-procents = dcast(amount_id, get(xcol)~variable, value.var=ycol)
+procents = data.frame(plateID=amount_id$plateID,  p=amount_id$`PSMs IDed` / amount_id$`MS2 scans`)
+
+#amount_id = melt(amount_id, measure.vars=c(mscol, psmcol))
+amount_id = pivot_longer(amount_id, !plateID, values_to='count')
+amount_id = merge(amount_id, procents[, c(xcol, 'p')], all.x=TRUE)
+####
+amount_id$labeltext = ifelse(amount_id$name == psmcol, paste(round(100 * amount_id$p, 2), '%'), '')
+
 colnames(procents)[1] = xcol
-procents$p= procents$`PSMs IDed` / procents$`MS2 scans`
-amount_id = merge(amount_id, procents[, c(xcol, 'p')])
-amount_id$labeltext = ifelse(amount_id$variable == psmcol, paste(round(100 * amount_id$p, 2), '%'), '')
+ggp = ggplot(amount_id) +
+  geom_bar(aes(x=.data[[xcol]], y=count, fill=name, group=name), stat='identity', position='dodge') + 
+  geom_text(position=position_dodge(width=0.9), aes(y=max(amount_ms2[mscol]) * 2/6, x=.data[[ xcol ]], group=name, label=labeltext), colour="black", size=6) +
+  coord_flip() + 
+  ylab('# spectra') + 
+  theme_bw() + 
+  theme(axis.title.x=element_text(size=15), axis.text=element_text(size=10, angle=90), axis.title.y=element_blank(), legend.text=element_text(size=10), legend.title=element_blank())
+p = ggplotly(ggp, width=400) %>%
+        layout(legend = list(orientation = 'h', x = 0, y = 1.1, xanchor='left', yanchor='bottom'))
+# Work around since plotly does not honor above legend.title=element_blank call
+p$x$layout$legend$title$text = ''
 
-# FIXME move percent to be on tip of bar
-svg('psm-scans', width=width, height=nrsets + 2) 
-print(ggplot(amount_id) +
-  geom_bar(aes(x=!!ensym(xcol), y=value, fill=variable, group=variable), stat='identity', position='dodge') + coord_flip() +
-    ylab('# spectra') + theme_bw() + theme(axis.title.x=element_text(size=15), axis.text=element_text(size=10), axis.title.y=element_blank(), legend.position="top", legend.text=element_text(size=10), legend.title=element_blank()) +
-  geom_text(position=position_dodge(width=0.9), aes(y=value, x=!!ensym(xcol), group=variable, label=labeltext), hjust=0, colour="black", size=6))
-dev.off()
-
+htmlwidgets::saveWidget(p, 'amount_psms.html', selfcontained=F)
 
 # Missing isobaric values
 if (length(grep('plex', names(feats)))) {
   channels = names(feats)[grepl('plex', names(feats))]
-  psm_empty = melt(feats[c(xcol, channels)], id.vars=xcol)
-  psm_empty = psm_empty[psm_empty$value==0,]
+  psm_empty = pivot_longer(feats[c(xcol, channels)], !any_of(xcol), values_to='count')
+  psm_empty = psm_empty[psm_empty$count == 0,]
   if (nrow(psm_empty)) {
     psm_empty$value = 1
-    psm_empty = aggregate(value~get(xcol)+ variable, psm_empty, sum)
-    print('psm empty ready')
+    psm_empty = aggregate(value~get(xcol)+ name, psm_empty, sum)
     names(psm_empty) = c(xcol, 'channels', 'nr_missing_values')
     psm_empty$channels = sub('.*plex_', '', psm_empty$channels)
-    svg('missing-tmt', width=width, height=(nrsets + 2))
-    print(ggplot(psm_empty) + 
-      geom_bar(aes_string(x=xcol, y='nr_missing_values', fill='channels'), stat='identity', position="dodge") + ylab('# PSMs without quant') + coord_flip() + theme_bw() + theme(axis.title.x=element_text(size=15), axis.title.y=element_blank(), axis.text=element_text(size=10), legend.position="top", legend.text=element_text(size=10), legend.title=element_blank()))
-    dev.off()
+    ggp = ggplot(psm_empty, aes(x=.data[[ xcol ]], y=nr_missing_values, fill=channels)) + 
+      geom_bar(stat='identity', position="dodge") + ylab('# PSMs without quant') + coord_flip() + theme_bw() + theme(axis.title.x=element_text(size=15), axis.title.y=element_blank(), axis.text=element_text(size=10), legend.position="top", legend.text=element_text(size=10), legend.title=element_blank())
+    p = ggplotly(ggp, width=400) %>%
+        layout(legend = list(orientation = 'h', x = 0, y = 1.1, xanchor='left', yanchor='bottom'))
+  p$x$layout$legend$title$text = ''
+  htmlwidgets::saveWidget(p, 'iso_missing_vals.html', selfcontained=F)
   }
 }
 
-mcl = aggregate(as.formula(paste('SpecID~', xcol, '+ missed_cleavage')), feats, length)
-mcl$missed_cleavage = as.factor(mcl$missed_cleavage)
+# Missed cleavages
+mcl = aggregate(get(scancol)~get(xcol)+get(miscleavcol), feats, length)
+colnames(mcl) = c(xcol, 'missed_cleavage', 'nrscan')
+#mcl$nrscan = as.factor(mcl$nrscan)
+mcl_am = subset(merge(mcl, amount_psms, by=xcol), missed_cleavage %in% c(0,1,2))
+mcl_am$percent = mcl_am$nrscan / mcl_am$"PSMs IDed" * 100
+# mcl_am$textycoord = ifelse(mcl_am$missed_cleavage!=0, mcl_am$percent, 10)
+mc_text_y = max(mcl_am$percent) * 2/6
 
-mcl_am = subset(merge(mcl, amount_psms, by=xcol), missed_cleavage %in% c(0,1,2,3))
-mcl_am$percent = mcl_am$SpecID / mcl_am$"PSMs IDed" * 100
-mcl_am$textycoord = ifelse(mcl_am$missed_cleavage!=0, mcl_am$percent, 10)
-
-svg('miscleav', width=width, height=(nrsets + 2))
 mcplot = ggplot(mcl_am) +
-    geom_bar(aes(x=!!ensym(xcol), y=percent, fill=missed_cleavage, group=missed_cleavage), position='dodge', stat='identity') +
+    geom_bar(aes(x=.data[[ xcol ]], y=percent, fill=missed_cleavage, group=missed_cleavage), position='dodge', stat='identity') +
     # 0.9 is the default dodge (90% of 1, 1 used bc all same value) but when not spec -> no dodge at all?
-    geom_text(position=position_dodge(width=0.9), aes(x=!!ensym(xcol), y=textycoord+3, group=missed_cleavage, label=paste(SpecID, 'PSMs,', round(percent, 2), '%')), hjust=0, colour="black", size=4, inherit.aes=T) +
+    geom_text(position=position_dodge(width=0.9), aes(x=(xcol), y=mc_text_y, group=missed_cleavage, label=paste(nrscan, 'PSMs,', round(percent, 2), '%')), colour="black", size=4, inherit.aes=T) +
     ylim(c(0, 100)) + ylab('% of PSMs') +
     theme_bw() +
     theme(axis.title.x=element_text(size=15), axis.title.y=element_blank(), axis.text=element_text(size=10), legend.position="top", legend.text=element_text(size=10), legend.title=element_blank()) +
     coord_flip() 
-print(mcplot)
-dev.off()
+p = ggplotly(mcplot, width=400) %>%
+        layout(legend = list(orientation = 'h', x = 0, y = 1.1, xanchor='left', yanchor='bottom'))
+p$x$layout$legend$title$text = ''
+htmlwidgets::saveWidget(p, 'missed_cleavages.html', selfcontained=F)
+
 
 # Now the per-fraction or per-file stats
 if (has_fractions) {
   xcol = 'Fraction'
-  fryield_form = 'SpecID ~ Fraction + plateID'
+  #  + plateID'
   # plateID not necessary because we take subfeats?
 } else { 
-  xcol = 'SpectraFile'
-  fryield_form = 'SpecID ~ SpectraFile'
+  xcol = 'filename'
 }
+fryield_form = glue('{scancol} ~ {xcol}')
 
-allfilefractions = read.table("mzmlfrs", colClasses=c(NA, NA, NA, 'factor'), header=F, sep='\t')
-colnames(allfilefractions) = c('SpectraFile', 'setname', 'strip', 'Fraction')
+allfilefractions = read.table("mzmlfrs", colClasses='character', header=T, sep='\t')
+allfilefractions$Fraction = allfilefractions$fraction
 if (oldmzmldef) {
-  oldmzmls = read.table(oldmzmlfn, colClasses=c(NA, NA, NA, NA, 'factor'), header=F, sep='\t')[,c(1,3,4,5)]
+  oldmzmls = read.table(oldmzmlfn, colClasses='character', header=T, sep='\t')
   # TODO columns maybe added/disappea in future old/mzmldef file
-  colnames(oldmzmls) = c('SpectraFile', 'setname', 'strip', 'Fraction')
+  colnames(oldmzmls) = c('filename', 'setname', 'plate', 'Fraction')
   oldmzmls$setname = trimws(oldmzmls$setname)
   allfilefractions = rbind(allfilefractions, oldmzmls)
 }
-allfilefractions$plateID = paste(allfilefractions$setname, allfilefractions$strip, sep='_')
+allfilefractions$plateID = paste(allfilefractions$setname, allfilefractions$plate, sep='_')
+allfilefractions$filename = basename(allfilefractions$mzmlfile)
 
 ptypes = list(
-  retentiontime=c('Retention.time.min.', 'time(min)'),
-  precerror=c('PrecursorError.ppm.', 'Precursor error (ppm)'),
-  fryield=c('SpecID', '# PSMs'),
-  msgfscore=c('MSGFScore', 'MSGF Score'),
-  fwhm=c('FWHM', 'FWHM'),
-  pif=c('Precursor.ion.fraction', 'Precursor/all in window'))
+  retentiontime=c(rtcol, 'time(min)'),
+  precerror=c(precerrcol, 'Precursor error (ppm)'),
+  fryield=c(scancol, '# PSMs'),
+  score=c(scorecol, 'Search engine score'),
+  pif=c('Precursor.ion.fraction', 'Precursor/all in window')
+)
 
-for (plateid in plateids) {
+for (plateid in amount_ms2$plateID) {
   if (has_fractions) {
     subfeats = subset(feats, plateID==plateid) 
     subfiles = subset(allfilefractions, plateID==plateid)
@@ -138,19 +163,19 @@ for (plateid in plateids) {
       if (ptype == 'fryield' && nrow(subfeats)) {
         yieldcounts = aggregate(as.formula(fryield_form), subfeats, length)
         plotdata = merge(yieldcounts, subfiles[xcol], all.y=T)
-        p = ggplot(plotdata) + geom_bar(aes_string(x=xcol, y=ptypes[[ptype]][1]), stat='identity')
+        p = ggplot(plotdata, aes(x=.data[[ xcol ]], y=.data[[ ptypes[[ptype]][1] ]])) + geom_bar(stat='identity')
       } else {
         plotdata = subfeats
-        p = ggplot(plotdata, aes_string(x=xcol, y=ptypes[[ptype]][1])) + geom_violin(trim=F) 
+        p = ggplot(plotdata, aes(x=.data[[ xcol ]], y=.data[[ ptypes[[ptype]][1] ]])) + geom_violin(trim=F) 
       }
       if (ptype == 'precerror') {
         p = p + geom_hline(yintercept=0, size=2)
       }
-      svg(fn, height=h, width=w)
-      p = p + ylab(ptypes[[ptype]][2]) + theme_bw() + theme(axis.title=element_text(size=15), axis.text=element_text(size=10))
       if(!has_fractions) p = p + xlab('Sample') + coord_flip()
-      print(p)
-      dev.off()
+      ggp = p + ylab(ptypes[[ptype]][2]) + theme_bw() + theme(axis.title=element_text(size=15), axis.text=element_text(size=10))
+
+      p = ggplotly(ggp, width=1300)
+      htmlwidgets::saveWidget(p, glue('PLATE___{plateid}___{ptype}.html'), selfcontained=F)
     }
   }
 }
