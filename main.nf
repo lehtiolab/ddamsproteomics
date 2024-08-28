@@ -2,6 +2,7 @@
 
 include { msgf_info_map; listify; stripchars_infile } from './modules.nf' 
 include { MSGFPERCO } from './workflows/msgf_perco.nf'
+include { PTMANALYSIS } from './workflows/ptms.nf'
 include { REPORTING } from './workflows/reporting.nf'
 
 /*
@@ -236,8 +237,7 @@ process complementSpectraLookupCleanPSMs {
   output:
   tuple path('t_cleaned_psms.txt'), path('d_cleaned_psms.txt'), emit: psms
   tuple path('target_db.sqlite'), path('decoy_db.sqlite'), emit: dbs
-  //path('cleaned_ptmpsms.txt'), emit: ptmpsms optional true
-  //path('ptms_db.sqlite'), emit: ptm_lookup optional true
+  path('cleaned_ptmpsms.txt'), emit: ptmpsms optional true
   //file('all_setnames') into oldnewsets 
   
   script:
@@ -262,7 +262,6 @@ process complementSpectraLookupCleanPSMs {
   
   ${mzmlfiles.collect() { stripchars_infile(it, return_oldfile=true) }.findAll{ it[0] }.collect() { "ln -s '${it[2]}' '${it[1]}'" }.join(' && ')}
   ${mzmlfiles.size() ? "msstitch storespectra --spectra ${mzmlfiles.collect() { "'${it.toString().replaceAll('[&<>\'"]', '_')}'" }.join(' ')} --setnames ${in_setnames.collect() { "'$it'" }.join(' ')} --dbfile target_db.sqlite" : ''}
-  ${params.ptmpsms ? "cp target_db.sqlite ptms_db.sqlite" : ''}
 
   copy_spectra.py target_db.sqlite decoy_db.sqlite ${params.ptmpsms ? 'ptms_db.sqlite' : '0'} ${setnames.join(' ')}
   cat old_setnames <(echo ${setnames.join('\n')}) | sort -u | grep -v '^\$' > all_setnames
@@ -395,7 +394,7 @@ process splitTotalProteomePSMs {
   tuple path('tppsms_in'), val(setnames)
 
   output:
-  path({setnames.collect() { "tppsms/${it}.tsv" }}), emit: totalprotpsms_allsets optional true
+  path({listify(setnames).collect() { "tppsms/${it}.tsv" }}), emit: totalprotpsms_allsets optional true
 
   script:
   """
@@ -666,7 +665,7 @@ if (params.sampletable) {
   }.collectEntries() {
     x-> [x[0], x[1].replaceAll('tmtpro', 'tmt16plex')]
   } : [false: 1]
-  setdenoms = isop ? isop.collect() {
+  setdenoms = !params.noquant && isop ? isop.collect() {
     y -> y.tokenize(':')
   }.collectEntries() {
     x-> [x[0], x[2..-1]]
@@ -705,6 +704,9 @@ if (params.sampletable) {
   do_quant = false
   if (is_rerun) {
     // Do nothing
+    Channel.fromPath(params.ptmpsms, params.targetpsmlookup)
+      .toList()
+      .set { ptmpsms_lookup_ch }
 
   } else if (complementary_run) {
     mzmlfiles_all_sort
@@ -715,12 +717,17 @@ if (params.sampletable) {
     complementSpectraLookupCleanPSMs.out.psms
     | flatMap { [['target', it[0]], ['decoy', it[1]]] }
     | set { oldpsms_ch }
+    complementSpectraLookupCleanPSMs.out.psms
+    | combine(complementSpectraLookupCleanPSMs.out.dbs)
+    | map { [it[0], it[2]] }
+    | set { ptmpsms_lookup_ch }
     do_quant = !params.noquant
 
   } else if (params.quantlookup) {
     // Runs with a premade quant lookup eg from previous search
     Channel
       .fromPath(params.quantlookup)
+      .tap { ptmlookup_ch }
       .flatMap { [['target', it], ['decoy', it]] }
       .set { specquant_lookups }
 
@@ -728,9 +735,10 @@ if (params.sampletable) {
     // Noquant, fresh spectra lookup scenario -> spec lookup ready for PSMs, PTMs
     mzmlfiles_all_sort
     | createNewSpectraLookup
-    | map { [it, it] }
-      .flatMap { [['target', it], ['decoy', it]] }
-      .set { specquant_lookups }
+    | flatMap { [['target', it], ['decoy', it]] }
+    | set { specquant_lookups }
+    createNewSpectraLookup.out
+    .set { ptmlookup_ch }
 
   } else if (!params.quantlookup) {
     // Normal case - no rerun, fresh everything
@@ -739,6 +747,8 @@ if (params.sampletable) {
     | map { [it, it] }
     | set { tdspeclookup }
     do_quant = true
+    createNewSpectraLookup.out
+    .set { ptmlookup_ch }
   }
 
   if (do_quant) {
@@ -840,11 +850,47 @@ if (params.sampletable) {
     Channel.fromPath(params.totalproteomepsms)
     | map { [it] + all_setnames }
     | splitTotalProteomePSMs
+    | map{ it -> [listify(it).collect() { it.baseName.replaceFirst(/\.tsv$/, "") }, it]} // get setname from {setname}.tsv
+    | transpose
+    | set { totalproteome_ch }
+  } else {
+    totalproteome_ch = Channel.empty()
+  }
+println(params.genes)
+println(params.onlypeptides)
+  if (params.genes) {
+    totalprot_col = 'Gene Name'
+  } else if (params.onlypeptides) {
+   // FIXME sage
+    totalprot_col = 'Protein'
+  } else {
+    totalprot_col = 'Master protein(s)'
   }
 
-  splitpsms_ch
-  | map { it + [it[0] == 'target' ? setisobaric[it[1]] : false, setdenoms[it[1]], params.keepnapsmsquant, params.mediannormalize, do_ms1 && it[0] == 'target']}
-  | makePeptides
+  PTMANALYSIS(params.locptms ? params.locptms.tokenize(';') : [],
+    params.ptms ? params.ptms.tokenize(';') : [],
+    params.mods ? params.mods.tokenize(';') : [],
+    setisobaric,
+    mzml_in | map { [it.setname, it.mzmlfile] } | groupTuple,
+    splitpsms_ch | filter { it[0] == 'target' } | map { it[1..-1] },
+    tdb,
+    MSGFPERCO.out.unfiltered,
+mzml_list,
+params.maxpeplen,
+params.maxcharge,
+params.msgfmods,
+params.minpsms_luciphor,
+params.ptm_minscore_high,
+complementary_run ? ptmpsms_lookup_ch : nofile_ch.combine(ptmlookup_ch),
+totalproteome_ch,
+totalprot_col,
+setisobaric,
+setdenoms,
+params.mediannormalize,
+params.keepnapsmsquant,
+  )
+
+
 
 
 

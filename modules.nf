@@ -1,5 +1,14 @@
 def get_regex_specialchars() {
- return '[&<>\'"]'
+  return '[&<>\'"]'
+}
+
+def get_field_nr(fn, fieldname) {
+    return "\$(head -n1 ${fn} | tr '\\t' '\\n' | grep -wn '^${fieldname}\$' | cut -f 1 -d':')"
+}
+
+
+def parse_isotype(isobtype) {
+  return ['tmt16plex', 'tmt18plex'].any { it == isobtype } ? 'tmtpro' : isobtype
 }
 
 def listify(it) {
