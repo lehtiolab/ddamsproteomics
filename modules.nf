@@ -6,6 +6,11 @@ def get_field_nr(fn, fieldname) {
     return "\$(head -n1 ${fn} | tr '\\t' '\\n' | grep -wn '^${fieldname}\$' | cut -f 1 -d':')"
 }
 
+def get_field_nr_multi(fn, fieldnames) {
+    /* return field nrs comma separated like: 1,2,5,9 */
+    return "\$(head -n1 ${fn} | tr '\\t' '\\n' | grep -En '(${fieldnames.join('|')})' | cut -f 1 -d':' | tr '\\n' ',' | sed 's/\\,\$//')"
+}
+
 
 def parse_isotype(isobtype) {
   return ['tmt16plex', 'tmt18plex'].any { it == isobtype } ? 'tmtpro' : isobtype
