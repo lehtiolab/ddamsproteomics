@@ -48,7 +48,7 @@ class PSM:
         self.mods = []
         barepep = ''
         start = 0
-        for x in re.finditer('([A-Z]){0,1}([0-9\.+\-]+)', msgfseq):
+        for x in re.finditer(r'([A-Z]){0,1}([0-9\.+\-]+)', msgfseq):
             if x.group(1) is not None:
                 # mod is on a residue
                 barepep = f'{barepep}{msgfseq[start:x.start()+1]}'
@@ -60,7 +60,7 @@ class PSM:
                 sitenum = -100
             # TODO cterm = 100, ']'
             start = x.end()
-            for mass in re.findall('[\+\-][0-9.]+', x.group(2)):
+            for mass in re.findall(r'[\+\-][0-9.]+', x.group(2)):
                 mod = msgf_mods[float(mass)][0] # only take first, contains enough info
                 self.mods.append(self.get_mod_dict(residue, sitenum, mod, labileptmnames,
                     stableptmnames))
@@ -76,7 +76,7 @@ class PSM:
         self.mods = []
         barepep, start = '', 0
         modpep = luciline['predictedPep1']
-        for x in re.finditer('([A-Z]){0,1}\[([0-9]+)\]', modpep):
+        for x in re.finditer(r'([A-Z]){0,1}\[([0-9]+)\]', modpep):
             if x.group(1) is not None: # check if residue (or protein N-term)
                 barepep += modpep[start:x.start()+1]
             start = x.end()
@@ -203,7 +203,7 @@ def main():
     with open(args.psmfile) as fp, open(args.lucipsms, 'w') as wfp:
         header = next(fp).strip('\n').split('\t')
         pepcol = header.index('Peptide')
-        spfile = header.index('SpectraFile')
+        spfile = header.index('#SpecFile')
         charge = header.index('Charge')
         scan = header.index('ScanNum')
         evalue = header.index('PSM q-value')

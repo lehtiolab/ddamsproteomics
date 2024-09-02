@@ -91,7 +91,7 @@ def main():
                     labileptms, stabileptms)
             if not msgfpsm.has_labileptms():
                 continue
-            psmid = '{}.{}.{}.{}'.format(os.path.splitext(psm['SpectraFile'])[0], psm['ScanNum'], psm['ScanNum'], psm['Charge'])
+            psmid = '{}.{}.{}.{}'.format(os.path.splitext(psm['#SpecFile'])[0], psm['ScanNum'], psm['ScanNum'], psm['Charge'])
             if psmid in lucptms:
                 luciptm = lucptms[psmid]
                 ptm = {

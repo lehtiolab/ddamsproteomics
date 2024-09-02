@@ -1,6 +1,6 @@
 #!/usr/bin/env nextflow
 
-include { msgf_info_map; listify; stripchars_infile } from './modules.nf' 
+include { msgf_info_map; listify; stripchars_infile; get_regex_specialchars } from './modules.nf' 
 include { MSGFPERCO } from './workflows/msgf_perco.nf'
 include { PTMANALYSIS } from './workflows/ptms.nf'
 include { REPORTING } from './workflows/reporting.nf'
@@ -229,6 +229,43 @@ process kronik {
 
 
 
+process PTMClean {
+  // FIXME can be in PTM wf?
+  // In PTMS we need to delete all PSMs since we will rebuild it
+  container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
+    'https://depot.galaxyproject.org/singularity/sqlite:3.33.0' : 'quay.io/biocontainers/sqlite:3.33.0'}"
+
+  input:
+  path('db.sqlite')
+  
+  output:
+  path('ptms_db.sqlite')
+
+  script:
+  """
+  cp db.sqlite ptms_db.sqlite
+  tables=(
+    psms
+    psmrows
+    peptide_sequences
+    fastafn
+    proteins
+    protein_evidence
+    protein_seq
+    prot_desc
+    protein_psm
+    genes
+    associated_ids
+    ensg_proteins
+    genename_proteins
+  )
+  for t in "\${tables[@]}"; do
+    sqlite3 ptms_db.sqlite "DROP TABLE IF EXISTS \${t}" 
+  done
+  """
+}
+
+
 process complementSpectraLookupCleanPSMs {
 
   input:
@@ -237,11 +274,11 @@ process complementSpectraLookupCleanPSMs {
   output:
   tuple path('t_cleaned_psms.txt'), path('d_cleaned_psms.txt'), emit: psms
   tuple path('target_db.sqlite'), path('decoy_db.sqlite'), emit: dbs
-  path('cleaned_ptmpsms.txt'), emit: ptmpsms optional true
-  //file('all_setnames') into oldnewsets 
+  tuple path('cleaned_ptmpsms.txt'), emit: ptm optional true
   
   script:
   setnames = in_setnames.unique(false)
+  ptms = ptmpsms.name != 'NO__FILE'
   """
   # If this is an addition to an old lookup, copy it and extract set names
   cp ${tlup} target_db.sqlite
@@ -253,17 +290,18 @@ process complementSpectraLookupCleanPSMs {
     then
       msstitch deletesets -i ${tpsms} -o t_cleaned_psms.txt --dbfile target_db.sqlite --setnames ${setnames.collect() { "'${it}'" }.join(' ')}
       msstitch deletesets -i ${dpsms} -o d_cleaned_psms.txt --dbfile decoy_db.sqlite --setnames ${setnames.collect() { "'${it}'" }.join(' ')}
-      ${params.ptmpsms ? "msstitch deletesets -i ${ptmpsms} -o cleaned_ptmpsms.txt --setnames ${setnames.collect() {"'${it}'"}.join(' ')}" : ''}
+      ${ptms ? "msstitch deletesets -i ${ptmpsms} -o cleaned_ptmpsms.txt --setnames ${setnames.collect() {"'${it}'"}.join(' ')}" : ''}
     else
+      # In case there is a new set not present in the old data, just move things
       mv ${tpsms} t_cleaned_psms.txt
       mv ${dpsms} d_cleaned_psms.txt
-      ${params.ptmpsms ? "mv ${ptmpsms} cleaned_ptmpsms.txt" : ''}
+      ${ptms ? "mv ${ptmpsms} cleaned_ptmpsms.txt" : ''}
   fi
   
   ${mzmlfiles.collect() { stripchars_infile(it, return_oldfile=true) }.findAll{ it[0] }.collect() { "ln -s '${it[2]}' '${it[1]}'" }.join(' && ')}
   ${mzmlfiles.size() ? "msstitch storespectra --spectra ${mzmlfiles.collect() { "'${it.toString().replaceAll('[&<>\'"]', '_')}'" }.join(' ')} --setnames ${in_setnames.collect() { "'$it'" }.join(' ')} --dbfile target_db.sqlite" : ''}
 
-  copy_spectra.py target_db.sqlite decoy_db.sqlite ${params.ptmpsms ? 'ptms_db.sqlite' : '0'} ${setnames.join(' ')}
+  copy_spectra.py target_db.sqlite decoy_db.sqlite ${setnames.join(' ')}
   cat old_setnames <(echo ${setnames.join('\n')}) | sort -u | grep -v '^\$' > all_setnames
   """
 }
@@ -337,14 +375,14 @@ process createPSMTable {
   msstitch concat -i ${listify(psms).collect() {"$it"}.join(' ')} -o psms.txt
   # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
   cat lookup > $psmlookup
-  sed '0,/\\#SpecFile/s//SpectraFile/' -i psms.txt
   msstitch psmtable -i psms.txt --dbfile $psmlookup -o ${outpsms} \
-      --addmiscleav \
+      ${td == 'target' ? '--addmiscleav' : ''} \
       ${onlypeptides ? '' : "--fasta \"${td == 'target' ? "${tdb}" : "${ddb}"}\" --genes"} \
       ${do_ms1 ? '--ms1quant' : ''} \
       ${do_isobaric ? "--isobaric --min-precursor-purity ${params.minprecursorpurity}" : ''} \
       ${!onlypeptides ? '--proteingroup' : ''} \
       ${complementary_run ? '--oldpsms oldpsms' : ''}
+  #sed '1s/\\#SpecFile/SpectraFile/' -i $outpsms
   """
 }
 
@@ -627,7 +665,7 @@ if (params.sampletable) {
   if (complementary_run) {
     if (params.quantlookup) exit 1, "When specifying a complementary you may not pass --quantlookup"
     prev_results = Channel
-      .fromPath([params.targetpsmlookup, params.decoypsmlookup, params.targetpsms, params.decoypsms, params.ptmpsms ? params.ptmpsms : 'NA'])
+      .fromPath([params.targetpsmlookup, params.decoypsmlookup, params.targetpsms, params.decoypsms, params.ptmpsms ?: nofile])
     def oldpsmheader
     new File("${params.targetpsms}").withReader { oldpsmheader = it.readLine() }
     old_fractionation = oldpsmheader.contains('Fraction')
@@ -664,12 +702,12 @@ if (params.sampletable) {
     y -> y.tokenize(':')
   }.collectEntries() {
     x-> [x[0], x[1].replaceAll('tmtpro', 'tmt16plex')]
-  } : [false: 1]
+  } : [:]
   setdenoms = !params.noquant && isop ? isop.collect() {
     y -> y.tokenize(':')
   }.collectEntries() {
     x-> [x[0], x[2..-1]]
-  } : [false:1]
+  } : [:]
   
   do_ms1 = !params.noquant && !params.noms1quant
   normalize = (!params.noquant && (params.normalize || params.deqms) && params.isobaric)
@@ -703,24 +741,33 @@ if (params.sampletable) {
   // Spec lookup prep if needed
   do_quant = false
   if (is_rerun) {
-    // Do nothing
-    Channel.fromPath(params.ptmpsms, params.targetpsmlookup)
-      .toList()
-      .set { ptmpsms_lookup_ch }
+    Channel.fromPath(params.targetpsmlookup)
+    | PTMClean 
+    | combine(Channel.fromPath(params.ptmpsms))
+    | set { ptmpsms_lookup_ch }
+    // For reporting:
+    Channel.fromPath(params.targetpsmlookup)
+    .map { [it, null] }
+    .set { tdspeclookup }
 
   } else if (complementary_run) {
     mzmlfiles_all_sort
     | combine(prev_results.toList())
     | complementSpectraLookupCleanPSMs
+
+    complementSpectraLookupCleanPSMs.out.dbs
+    | map { it[0] }
+    | PTMClean 
+    | combine(complementSpectraLookupCleanPSMs.out.ptm)
+    | set { ptmpsms_lookup_ch }
+
     complementSpectraLookupCleanPSMs.out.dbs
     | set { tdspeclookup }
+
     complementSpectraLookupCleanPSMs.out.psms
     | flatMap { [['target', it[0]], ['decoy', it[1]]] }
     | set { oldpsms_ch }
-    complementSpectraLookupCleanPSMs.out.psms
-    | combine(complementSpectraLookupCleanPSMs.out.dbs)
-    | map { [it[0], it[2]] }
-    | set { ptmpsms_lookup_ch }
+    
     do_quant = !params.noquant
 
   } else if (params.quantlookup) {
@@ -730,6 +777,10 @@ if (params.sampletable) {
       .tap { ptmlookup_ch }
       .flatMap { [['target', it], ['decoy', it]] }
       .set { specquant_lookups }
+    // For reporting
+    ptmlookup_ch
+    .map { [it, null] }
+    .set { tdspeclookup }
 
   } else if (params.noquant && !params.quantlookup) {
     // Noquant, fresh spectra lookup scenario -> spec lookup ready for PSMs, PTMs
@@ -803,7 +854,7 @@ if (params.sampletable) {
     MSGFPERCO(mzml_in, createTargetDecoyFasta.out.concatdb, setisobaric, fractionation, mzmls)
   
     MSGFPERCO.out.t_tsv
-    | ifEmpty(['target', 'notafile'])
+    | ifEmpty(['target', nofile])
     | concat(MSGFPERCO.out.d_tsv)
     | groupTuple
     | join(specquant_lookups)
@@ -814,7 +865,9 @@ if (params.sampletable) {
     createPSMTable.out.psmtable.set { psmtables_ch }
     createPSMTable.out.lookup.set { psmlookups_ch }
     createPSMTable.out.warnings.set { psmwarnings_ch }
+
   } else {
+    // This is a rerun
     Channel.from([['target', file(params.targetpsmlookup)], ['decoy', file(params.decoypsmlookup)]])
       .set { psmlookups_ch }
     Channel.from([['target', file(params.targetpsms)], ['decoy', file(params.decoypsms)]])
@@ -841,10 +894,11 @@ if (params.sampletable) {
   | concat(target_psmtable)
   | map { [it[0], it[1], all_setnames] }
   | splitPSMs
-  | map { it -> [it[0], listify(it[1])] }
-  | map{ it -> [it[0], it[1].collect() { it.baseName.replaceFirst(/\.tsv$/, "") }, it[1]]} // get setname from {setname}.tsv
-  | transpose()
+  | map{ it -> [it[0], listify(it[1]).collect() { it.baseName.replaceFirst(/\.tsv$/, "") }, it[1]]} // get setname from {setname}.tsv
+  | transpose
   | set { splitpsms_ch }
+
+
 
   if (params.totalproteomepsms) {
     Channel.fromPath(params.totalproteomepsms)
@@ -867,30 +921,38 @@ println(params.onlypeptides)
     totalprot_col = 'Master protein(s)'
   }
 
-  PTMANALYSIS(params.locptms ? params.locptms.tokenize(';') : [],
-    params.ptms ? params.ptms.tokenize(';') : [],
-    params.mods ? params.mods.tokenize(';') : [],
-    setisobaric,
-    mzml_in | map { [it.setname, it.mzmlfile] } | groupTuple,
-    splitpsms_ch | filter { it[0] == 'target' } | map { it[1..-1] },
-    tdb,
-    MSGFPERCO.out.unfiltered,
-    mzml_list,
-    params.maxpeplen,
-    params.maxcharge,
-    params.msgfmods,
-    params.minpsms_luciphor,
-    params.ptm_minscore_high,
-    complementary_run ? ptmpsms_lookup_ch : nofile_ch.combine(ptmlookup_ch),
-    totalproteome_ch,
-    totalprot_col,
-    setisobaric,
-    setdenoms,
-    params.mediannormalize,
-    params.keepnapsmsquant,
-    do_ms1,
-    !params.onlypeptides
-  )
+  if (params.locptms || params.ptms) {
+    PTMANALYSIS(params.locptms ? params.locptms.tokenize(';') : [],
+      params.ptms ? params.ptms.tokenize(';') : [],
+      params.mods ? params.mods.tokenize(';') : [],
+      all_setnames,
+      setisobaric,
+      mzml_in | map { [it.setname, it.mzmlfile] } | groupTuple,
+      splitpsms_ch | filter { it[0] == 'target' } | map { it[1..-1] },
+      tdb,
+      !is_rerun ? MSGFPERCO.out.unfiltered : Channel.empty(),
+      mzml_list,
+      params.maxpeplen,
+      params.maxcharge,
+      params.msgfmods,
+      params.minpsms_luciphor,
+      params.ptm_minscore_high,
+      complementary_run ? ptmpsms_lookup_ch : ptmlookup_ch.combine(nofile_ch),
+      totalproteome_ch,
+      totalprot_col,
+      setisobaric,
+      setdenoms,
+      params.mediannormalize,
+      params.keepnapsmsquant,
+      do_ms1,
+      !params.onlypeptides
+    )
+    ptmpsms_ch = PTMANALYSIS.out.psms
+    ptmpeps_ch = PTMANALYSIS.out.peps
+  } else {
+    ptmpsms_ch = Channel.empty()
+    ptmpeps_ch = Channel.empty()
+  }
 
 
 
