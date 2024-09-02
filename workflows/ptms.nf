@@ -17,7 +17,7 @@ process luciphorPTMLocalizationScoring {
   """
   ${mzmls.collect() { stripchars_infile(it, return_oldfile=true) }.findAll{ it[0] }.collect() { "ln -s '${it[2]}' '${it[1]}'" }.join(' && ')}
   # Split allpsms to get target PSMs
-  sed '0,/\\#SpecFile/s//SpectraFile/' -i "${allpsms}"
+  #sed '0,/\\#SpecFile/s//SpectraFile/' -i "${allpsms}"
   msstitch split -i "${allpsms}" --splitcol TD
   export MZML_PATH=\$(pwd)
   export MINPSMS=${minpsms_luciphor}
@@ -67,7 +67,7 @@ process createPSMTable {
     'quay.io/biocontainers/msstitch:3.16--pyhdfd78af_0'}"
   
   input:
-  tuple val(setnames), path('ptms?'), path('stabileptms*'), path(cleaned_oldptms), path('speclup.sql')
+  tuple val(setnames), path('ptms*'), val(has_newptms), path('speclup.sql'), path(cleaned_oldptms)
 
   output:
   path('ptmlup.sql'), emit: db 
@@ -82,9 +82,8 @@ process createPSMTable {
   # Concat all the PTM PSM tables (labile, stabile, previous) and load into DB
   # PSM peptide sequences include the PTM site
   cat speclup.sql > ptmlup.sql
-  msstitch concat -i stabileptms* ptms* ${oldptms ?: ''} -o concatptmpsms
-  msstitch psmtable -i concatptmpsms --dbfile ptmlup.sql -o ${ptmtable} \
-    --spectracol 1
+  ${has_newptms ? "msstitch concat -i ptms* ${oldptms ?: ''} -o" : "mv ${oldptms}"} concatptmpsms
+  msstitch psmtable -i concatptmpsms --dbfile ptmlup.sql -o ${ptmtable} --spectracol 1
   msstitch split -i ${ptmtable} --splitcol bioset
   ${setnames.collect() { "test -f '${it}.tsv' || echo 'No PTMs found for set ${it}' >> warnings" }.join(' && ') }
   # No PTMs at all overwrites the per-set messages
@@ -228,6 +227,7 @@ workflow PTMANALYSIS {
   locptms
   stab_ptms
   othermods
+  all_setnames
   setisobaric
   mzmls
   psms
@@ -249,75 +249,82 @@ workflow PTMANALYSIS {
   do_ms1
   do_proteingroup
 
-
-main:
-
-Channel.from(locptms)
-| combine(mzmls)
-| map { [it[1], it[0], it[2]] }
-| join(psms)
-| combine(tdb)
-| join(unfiltered_psms)
-| map { it + [ get_non_ptms(it[0], setisobaric, othermods),
-stab_ptms, fparams.find { x -> x.setname == it[0] }.activation, maxpeplen, maxcharge, file(msgfmodfile), minpsms_luci, ptm_minscore_high] }
-| luciphorPTMLocalizationScoring
+  main:
   
-Channel.from(stab_ptms)
-| combine(psms)
-| map { [it[1], it[0], it[2]] }
-| combine(tdb)
-| map { it + [get_non_ptms(it[0], setisobaric, othermods), locptms, file(msgfmodfile)] }
-| stabilePTMPrep
-
-
-luciphorPTMLocalizationScoring.out.ptms
-| join(stabilePTMPrep.out)
-| toList
-| map { it.sort( {a, b -> a[0] <=> b[0]}) } // sort on setname
-| transpose
-| toList
-| combine(ptm_psms_lookup)
-| createPSMTable
-
-totalproteomepsms
-| map { it + [setisobaric[it[0]], setdenoms[it[0]], totalprot_col, normalize, keepnapsms_quant] }
-| prepTotalProteomeInput
-
-
-createPSMTable.out.setptmpsm
-| map { it -> [listify(it).collect() { it.baseName.replaceFirst(/\.tsv$/, "") }, it]} // get setname from {setname}.tsv
-| transpose
-| set { setptmpsm_ch }
-
-setptmpsm_ch
-| map { [it[0], null, null] }
-| concat(prepTotalProteomeInput.out)
-| set { totalprot_and_nofile }
-
-nofile = "${baseDir}/assets/NO__FILE"
-
-setptmpsm_ch
-| combine(totalprot_and_nofile, by:0)
-| map { it[0..1] + (it[2] ? [it[2], it[3]] : [file(nofile), file(nofile)]) + [isobtypes[it[0]],
-  setdenoms ? setdenoms[it[0]] : false,
-  normalize, keepnapsms_quant, do_ms1] }
-| PTMPeptides
-| toList
-| map { it.sort( {a, b -> a[0] <=> b[0]}) } // sort on setname
-| transpose
-| toList
-| transpose
-| groupTuple(by: 1) // group by total proteome normalization boolean
-// FIXME true -> proteingroup
-| combine(createPSMTable.out.db)
-| map { it + [do_ms1, isobtypes] }
-| mergePTMPeps
-
-if (do_proteingroup) {
-  mergePTMPeps.out
-  | combine(createPSMTable.out.allpsms)
-  | addMasterProteinsGenes
-}
+  nofile = "${baseDir}/assets/NO__FILE"
+  
+  Channel.from(locptms)
+  | combine(mzmls)
+  | map { [it[1], it[0], it[2]] }
+  | join(psms)
+  | combine(tdb)
+  | join(unfiltered_psms)
+  | map { it + [ get_non_ptms(it[0], setisobaric, othermods),
+  stab_ptms, fparams.find { x -> x.setname == it[0] }.activation, maxpeplen, maxcharge, file(msgfmodfile), minpsms_luci, ptm_minscore_high] }
+  | luciphorPTMLocalizationScoring
+    
+  Channel.from(stab_ptms)
+  | combine(psms)
+  | map { [it[1], it[0], it[2]] }
+  | combine(tdb)
+  | map { it + [get_non_ptms(it[0], setisobaric, othermods), locptms, file(msgfmodfile)] }
+  | stabilePTMPrep
+  
+  psms
+  | map { it[0] }
+  | unique
+  | toList()
+  | map { listify(it) }
+  | set { setnames }
+  
+  luciphorPTMLocalizationScoring.out.ptms
+  | concat(stabilePTMPrep.out)
+  | toList
+  | map { it.sort( {a, b -> a[0] <=> b[0]}) } // sort on setname
+  | transpose
+  | toList
+  | filter { it[0] } // Empty (reruns) will show up as [] due to toList, filter those out
+  // Dupe removal (there are sets for both stable and labile PSMs), and add true for has_newptms
+  | map { [it[0].unique(), it[1], true] }
+  | ifEmpty([all_setnames, file(nofile), false])
+  | combine(ptm_psms_lookup)
+  | createPSMTable
+  
+  totalproteomepsms
+  | map { it + [setisobaric[it[0]], setdenoms[it[0]], totalprot_col, normalize, keepnapsms_quant] }
+  | prepTotalProteomeInput
+  
+  createPSMTable.out.setptmpsm
+  | map { it -> [listify(it).collect() { it.baseName.replaceFirst(/\.tsv$/, "") }, it]} // get setname from {setname}.tsv
+  | transpose
+  | set { setptmpsm_ch }
+  
+  setptmpsm_ch
+  | map { [it[0], null, null] }
+  | concat(prepTotalProteomeInput.out)
+  | set { totalprot_and_nofile }
+  
+  setptmpsm_ch
+  | combine(totalprot_and_nofile, by:0)
+  | map { it[0..1] + (it[2] ? [it[2], it[3]] : [file(nofile), file(nofile)]) + [isobtypes[it[0]],
+    setdenoms ? setdenoms[it[0]] : false,
+    normalize, keepnapsms_quant, do_ms1] }
+  | PTMPeptides
+  | toList
+  | map { it.sort( {a, b -> a[0] <=> b[0]}) } // sort on setname
+  | transpose
+  | toList
+  | transpose
+  | groupTuple(by: 1) // group by total proteome normalization boolean
+  | combine(createPSMTable.out.db)
+  | map { it + [do_ms1, isobtypes] }
+  | mergePTMPeps
+  
+  if (do_proteingroup) {
+    mergePTMPeps.out
+    | combine(createPSMTable.out.allpsms)
+    | addMasterProteinsGenes
+  }
 
   emit:
   peps = do_proteingroup ? addMasterProteinsGenes.out : mergePTMPeps.out

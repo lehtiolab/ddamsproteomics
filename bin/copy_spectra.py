@@ -10,8 +10,7 @@ import sqlite3
 
 target = sys.argv[1]
 decoy = sys.argv[2]
-ptm = sys.argv[3]
-setnames = sys.argv[4:]
+setnames = sys.argv[3:]
 
 
 if len(setnames):
@@ -34,12 +33,4 @@ if len(setnames):
         maxionrow = con.execute('SELECT MAX(rowid) FROM target.ionmob').fetchone()[0]
         recs = con.execute('SELECT * FROM target.ionmob WHERE rowid>?', (maxionrow,))
         con.executemany('INSERT INTO main.ionmob VALUES(?, ?)', recs)
-    con.commit()
-
-if ptm and ptm != '0':
-    con = sqlite3.Connection(ptm)
-    tables = ['psms', 'psmrows', 'peptide_sequences', 'fastafn', 'proteins', 'protein_evidence',
-            'protein_seq', 'prot_desc', 'protein_psm', 'genes', 'associated_ids', 'ensg_proteins', 'genename_proteins']
-    for table in tables:
-        con.execute('DROP TABLE IF EXISTS {}'.format(table))
     con.commit()
