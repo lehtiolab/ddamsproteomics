@@ -3,6 +3,7 @@
 include { msgf_info_map; listify; stripchars_infile; get_regex_specialchars } from './modules.nf' 
 include { MSGFPERCO } from './workflows/msgf_perco.nf'
 include { PTMANALYSIS } from './workflows/ptms.nf'
+include { MATCH_SEQUENCES } from './workflows/match_sequences.nf'
 include { REPORTING } from './workflows/reporting.nf'
 
 /*
@@ -1037,6 +1038,24 @@ println(params.onlypeptides)
     proteinPeptideSetMerge.out
     | combine(sampleTableCheckClean.out)
     | DEqMS
+    | set { protpepgene_ch }
+  } else {
+    proteinPeptideSetMerge.out
+    | set { protpepgene_ch }
+  }
+
+
+
+  if (params.report_seqmatch) {
+    MATCH_SEQUENCES(
+      protpepgene_ch.filter { it[0] == 'peptides' }.map { it[1] },
+      protpepgene_ch.filter { it[0] != 'peptides' },
+      Channel.from(params.report_seqmatch).flatMap { it.tokenize(';') }.map { file(it) },
+      params.maxmiscleav,
+      params.minpeplen,
+    ).set { feattables_out_ch }
+  } else {
+    protpepgene_ch.set { feattables_out_ch }
   }
   
   REPORTING(mzmlfiles_all_sort,
