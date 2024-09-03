@@ -1,41 +1,83 @@
 include { listify; stripchars_infile; get_field_nr; get_field_nr_multi; parse_isotype } from '../modules.nf' 
 
 
-process luciphorPTMLocalizationScoring {
+process luciphorPrep {
+  container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
+    'https://depot.galaxyproject.org/singularity/msstitch:3.16--pyhdfd78af_0' :
+    'quay.io/biocontainers/msstitch:3.16--pyhdfd78af_0'}"
 
   input:
-  tuple val(setname), val(locptms), path(mzmls), path('psms'), path(tdb), path(allpsms), val(all_non_ptm_mods), val(stab_ptms), val(activation), val(maxpeplen), val(maxcharge), path(msgfmodfile), val(minpsms_luciphor), val(ptm_minscore_high)
+  tuple val(setname), path(allpsms), val(locptms), val(stab_ptms), val(all_non_ptm_mods), path(msgfmodfile)
 
   output:
-  tuple val(setname), path('labileptms.txt'), emit: ptms
-  path 'warnings', emit: warnings optional true
+  tuple val(setname), path('luciphor_config.txt'), path('lucipsms')
 
   script:
   stab_ptms = stab_ptms ? listify(stab_ptms).join(' ') : ''
   lab_ptms = listify(locptms).join(' ')
+  """
+  # Split allpsms to get target PSMs
+  msstitch split -i "${allpsms}" --splitcol TD
+  luciphor_prep.py --psmfile target.tsv --template "$baseDir/assets/luciphor2_input_template.txt" \
+      --labileptms "${lab_ptms}" --mods ${all_non_ptm_mods} ${stab_ptms} \
+      --modfile "${msgfmodfile}" --lucipsms lucipsms
+  """
+}
+
+
+process luciphorPTMLocalizationScoring {
+
+  container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
+    'https://depot.galaxyproject.org/singularity/luciphor2:2020_04_03--hdfd78af_1' :
+    'quay.io/biocontainers/luciphor2:2020_04_03--hdfd78af_1'}"
+
+  input:
+  tuple val(setname),  path(template), path('lucipsms'), path(mzmls), val(activation), val(maxpeplen), val(maxcharge), val(minpsms_luciphor)
+
+  output:
+  tuple val(setname), path('luciphor.out'), path('all_scores.debug'), emit: ptms optional true
+  tuple val(setname), path('warnings'), emit: warnings optional true
+
+  script:
 
   """
   ${mzmls.collect() { stripchars_infile(it, return_oldfile=true) }.findAll{ it[0] }.collect() { "ln -s '${it[2]}' '${it[1]}'" }.join(' && ')}
-  # Split allpsms to get target PSMs
-  #sed '0,/\\#SpecFile/s//SpectraFile/' -i "${allpsms}"
-  msstitch split -i "${allpsms}" --splitcol TD
   export MZML_PATH=\$(pwd)
   export MINPSMS=${minpsms_luciphor}
   export ALGO=${['hcd', 'auto', 'any'].any { it == activation } ? '1' : '0'}
-  export THREAD=task.cpus
+  export THREAD=${task.cpus}
   export MAXPEPLEN=${maxpeplen}
   export MAXCHARGE=${maxcharge}
   export MS2TOLVALUE=0.025
-  export MS2TOLTYPE=Da
-  cat "$baseDir/assets/luciphor2_input_template.txt" | envsubst > lucinput.txt
-  luciphor_prep.py --psmfile target.tsv --template lucinput.txt --modfile "${msgfmodfile}" \
-      --labileptms "${lab_ptms}" --mods ${all_non_ptm_mods} ${stab_ptms} \
-      -o luciphor.out --lucipsms lucipsms
-  luciphor2 -Xmx${task.memory.toGiga()}G luciphor_config.txt 2>&1 | grep 'not have enough PSMs' && echo 'Not enough PSMs for luciphor FLR calculation in set ${setname}' > warnings
+  export MS2TOLTYPE=0 # 0=Da, 1=ppm
+  export OUTFILE=luciphor.out
+  cat "${template}" | envsubst > lucinput.txt
+
+  luciphor2 -Xmx${task.memory.toGiga()}G lucinput.txt 2>&1 | grep 'not have enough PSMs' && echo 'Not enough PSMs for luciphor FLR calculation in set ${setname}' > warnings
+  """
+}
+
+process luciphorParse {
+  // Puts luciphor data back into the PTM PSM table, also adds flanking seqs - if there 
+  // is no luciphor data due to errors, it will put NA for luciphor columns
+
+  container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
+    'https://depot.galaxyproject.org/singularity/msstitch:3.16--pyhdfd78af_0' :
+    'quay.io/biocontainers/msstitch:3.16--pyhdfd78af_0'}"
+
+  input:
+  tuple val(setname), path(luciphor_out), path('all_scores.debug'), path('psms'), val(ptm_minscore_high), path(msgfmodfile), val(lab_ptms), val(stab_ptms), val(all_non_ptm_mods), path(tdb)
+
+  output:
+  tuple val(setname), path('labileptms.txt')
+
+  script:
+  luciphor_file = luciphor_out.name == 'NO__FILE' ? 'fail' : luciphor_out
+  """
   luciphor_parse.py --minscore ${ptm_minscore_high} -o labileptms.txt \
-     --luci_in luciphor.out --luci_scores all_scores.debug --psms psms \
-     --modfile "${msgfmodfile}" --labileptms ${lab_ptms} \
-     ${stab_ptms ? "--stabileptms ${stab_ptms}": ''} --mods ${all_non_ptm_mods} \
+     --luci_in ${luciphor_file} --luci_scores all_scores.debug --psms psms \
+     --modfile "${msgfmodfile}" --labileptms ${lab_ptms.join(' ')} \
+     ${stab_ptms ? "--stabileptms ${stab_ptms.join(' ')}": ''} --mods ${all_non_ptm_mods} \
      --fasta "${tdb}"
   """
 }
@@ -43,6 +85,9 @@ process luciphorPTMLocalizationScoring {
 
 
 process stabilePTMPrep {
+  container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
+    'https://depot.galaxyproject.org/singularity/msstitch:3.16--pyhdfd78af_0' :
+    'quay.io/biocontainers/msstitch:3.16--pyhdfd78af_0'}"
 
   input:
   tuple val(setname), val(ptms), path('psms'), path(tdb), val(non_ptm_mods), val(lab_ptms), path(msgfmods)
@@ -253,32 +298,29 @@ workflow PTMANALYSIS {
   
   nofile = "${baseDir}/assets/NO__FILE"
   
-  Channel.from(locptms)
-  | combine(mzmls)
-  | map { [it[1], it[0], it[2]] }
-  | join(psms)
-  | combine(tdb)
-  | join(unfiltered_psms)
-  | map { it + [ get_non_ptms(it[0], setisobaric, othermods),
-  stab_ptms, fparams.find { x -> x.setname == it[0] }.activation, maxpeplen, maxcharge, file(msgfmodfile), minpsms_luci, ptm_minscore_high] }
+  unfiltered_psms
+  | map { it + [locptms, stab_ptms, get_non_ptms(it[0], setisobaric, othermods), file(msgfmodfile)] }
+  | luciphorPrep
+  | join(mzmls)
+  | map { it + [fparams.find { x -> x.setname == it[0] }.activation, maxpeplen, maxcharge, minpsms_luci] }
   | luciphorPTMLocalizationScoring
     
+  luciphorPTMLocalizationScoring.out.ptms
+  | join(luciphorPTMLocalizationScoring.out.warnings, remainder: true)
+  // setname, null, warnings || setname, psms, scores, null || empty
+  | map { [it[0], it[1] ?: nofile, it[1] ? it[2] : nofile] }
+  | join(psms)
+  | map { it + [ptm_minscore_high, file(msgfmodfile), locptms, stab_ptms, get_non_ptms(it[0], setisobaric, othermods), ]}
+  | combine(tdb)
+  | luciphorParse
+
   Channel.from(stab_ptms)
   | combine(psms)
   | map { [it[1], it[0], it[2]] }
   | combine(tdb)
   | map { it + [get_non_ptms(it[0], setisobaric, othermods), locptms, file(msgfmodfile)] }
   | stabilePTMPrep
-  
-  psms
-  | map { it[0] }
-  | unique
-  | toList()
-  | map { listify(it) }
-  | set { setnames }
-  
-  luciphorPTMLocalizationScoring.out.ptms
-  | concat(stabilePTMPrep.out)
+  | concat(luciphorParse.out)
   | toList
   | map { it.sort( {a, b -> a[0] <=> b[0]}) } // sort on setname
   | transpose
@@ -287,6 +329,7 @@ workflow PTMANALYSIS {
   // Dupe removal (there are sets for both stable and labile PSMs), and add true for has_newptms
   | map { [it[0].unique(), it[1], true] }
   | ifEmpty([all_setnames, file(nofile), false])
+  | filter { it[1] != [null] }
   | combine(ptm_psms_lookup)
   | createPSMTable
   
