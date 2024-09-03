@@ -14,12 +14,12 @@ TSV_HEADER = 1 ## This pertains ONLY to tab-delimited (TSV) input data
                ## 0 = the input file does NOT contain column names as the first row
                ## 1 = the first row of the input file is the column names
 
-MS2_TOL = {{ ms2tol }}      ## MS/MS fragment ion tolerance
-MS2_TOL_UNITS = {{ ms2toltype }} # 1  ## 0 = Daltons, 1 = PPM
+MS2_TOL = ${MS2TOLVALUE}      ## MS/MS fragment ion tolerance
+MS2_TOL_UNITS = ${MS2TOLTYPE} # 1  ## 0 = Daltons, 1 = PPM
 
 MIN_MZ = 50.0 ## do not consider peaks below this value for matching fragment ions
 
-OUTPUT_FILE =  ./{{ outfile }} ## Specify the path to your desired output filename here
+OUTPUT_FILE =  ./${OUTFILE} ## Specify the path to your desired output filename here
                ## A default value will be used if nothing is specified here.
 
 WRITE_MATCHED_PEAKS_FILE = 0 ## Generate a tab-delimited file of all the matched peaks
@@ -27,62 +27,6 @@ WRITE_MATCHED_PEAKS_FILE = 0 ## Generate a tab-delimited file of all the matched
                              ## Useful for plotting spectra
                              ## 0 = no, 1 = yes
 
-## Place here any FIXED modifications that were used in your search
-## This field is ONLY used for tab-delimited input
-## Syntax: FIXED_MOD = <RESIDUE> <MODIFICATION_MASS>
-## For N-terminal modifications use '[' for the residue character
-## For C-terminal modifications use ']' for the residue character
-{% for fixmod in fixedmods %}
-FIXED_MOD = {{ fixmod }}
-{% endfor %}
-#FIXED_MOD = C 57.021464
-#            K 229.162932 ##TMT10plex:229.162932 Da
-#            [ 229.162932 ##TMT10plex:229.162932 Da
-
-## Place here any VARIABLE modifications that might be encountered that you don't
-## want luciphor to score.
-## This field is ONLY used for tab-delimited input
-## Syntax: VAR_MOD = <RESIDUE> <MODIFICATION_MASS>
-## For N-terminal modifications use '[' for the residue character
-## For C-terminal modifications use ']' for the residue character
-{% for varmod in varmods %}
-VAR_MOD = {{ varmod }}
-{% endfor %}
-#VAR_MOD = M 15.994915
-
-## List the amino acids to be searched for and their mass modifications
-## Syntax: TARGET_MOD = <RESIDUE> <MODIFICATION_MASS>
-{% for ptm in ptms %}
-TARGET_MOD = {{ ptm }}
-{% endfor %}
-#TARGET_MOD = S 79.966331
-#TARGET_MOD = T 79.966331
-#TARGET_MOD = Y 79.966331
-
-## List the types of neutral losses that you want to consider
-## The residue field is case sensitive. For example: lower case 'sty' implies
-## that the neutral loss can only occur if the specified modification is present
-## Syntax: NL = <RESDIUES> -<NEUTRAL_LOSS_MOLECULAR_FORMULA> <MASS_LOST>
-#NL = STE -H2O -18.01056    ## a correctly formatted example, (not actually recommended for phospho-searches)
-#NL = RKQN -NH3 -17.026548  ## another correctly formatted example, (again not recommended for phospho-searches)
-#NL = sty -H3PO4 -97.97690
-{% for nl in neutralloss %}
-NL = {{ nl }}
-{% endfor %}
-
-#DECOY_MASS = 79.966331  ## how much to add to an amino acid to make it a decoy
-{% for decoymass in dmasses %}
-DECOY_MASS = {{ decoymass }}
-{% endfor %}
-
-## For handling the neutral loss from a decoy sequence.
-## The syntax for this is identical to that of the normal neutral losses given
-## above except that the residue is always 'X'
-## Syntax: DECOY_NL = X -<NEUTRAL_LOSS_MOLECULAR_FORMULA> <MASS_LOST>
-#DECOY_NL = X -H3PO4 -97.97690
-{% for decoy_nl in decoy_nloss %}
-DECOY_NL = {{ decoy_nl }}
-{% endfor %}
 
 MAX_CHARGE_STATE = ${MAXCHARGE} ## do not consider PSMs with a charge state above this value
 MAX_PEP_LEN = ${MAXPEPLEN} ## restrict scoring to peptides with a length shorter than this value
@@ -114,3 +58,45 @@ DEBUG_MODE = 2 ## 0 = default: turn off debugging
                ## 2 = write the scores of all permutations for each PSM to disk
                ## 3 = write the matched peaks for the top scoring permutation to disk
                ## 4 = write HCD non-parametric models to disk (HCD-mode only option)
+
+######
+
+## Place here any FIXED modifications that were used in your search
+## This field is ONLY used for tab-delimited input
+## Syntax: FIXED_MOD = <RESIDUE> <MODIFICATION_MASS>
+## For N-terminal modifications use '[' for the residue character
+## For C-terminal modifications use ']' for the residue character
+#FIXED_MOD = C 57.021464
+#            K 229.162932 ##TMT10plex:229.162932 Da
+#            [ 229.162932 ##TMT10plex:229.162932 Da
+
+
+## Place here any VARIABLE modifications that might be encountered that you don't
+## want luciphor to score.
+## This field is ONLY used for tab-delimited input
+## Syntax: VAR_MOD = <RESIDUE> <MODIFICATION_MASS>
+## For N-terminal modifications use '[' for the residue character
+## For C-terminal modifications use ']' for the residue character
+#VAR_MOD = M 15.994915
+
+## List the amino acids to be searched for and their mass modifications
+## Syntax: TARGET_MOD = <RESIDUE> <MODIFICATION_MASS>
+#TARGET_MOD = S 79.966331
+#TARGET_MOD = T 79.966331
+#TARGET_MOD = Y 79.966331
+
+## List the types of neutral losses that you want to consider
+## The residue field is case sensitive. For example: lower case 'sty' implies
+## that the neutral loss can only occur if the specified modification is present
+## Syntax: NL = <RESDIUES> -<NEUTRAL_LOSS_MOLECULAR_FORMULA> <MASS_LOST>
+#NL = STE -H2O -18.01056    ## a correctly formatted example, (not actually recommended for phospho-searches)
+#NL = RKQN -NH3 -17.026548  ## another correctly formatted example, (again not recommended for phospho-searches)
+#NL = sty -H3PO4 -97.97690
+
+#DECOY_MASS = 79.966331  ## how much to add to an amino acid to make it a decoy
+## For handling the neutral loss from a decoy sequence.
+## The syntax for this is identical to that of the normal neutral losses given
+## above except that the residue is always 'X'
+## Syntax: DECOY_NL = X -<NEUTRAL_LOSS_MOLECULAR_FORMULA> <MASS_LOST>
+#DECOY_NL = X -H3PO4 -97.97690
+

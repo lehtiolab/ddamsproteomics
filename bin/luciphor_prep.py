@@ -5,7 +5,6 @@ import re
 from os import environ
 import argparse
 
-from jinja2 import Template
 from mods import Mods, aa_weights_monoiso
 
 
@@ -141,7 +140,6 @@ def main():
     parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument('--psmfile')
     parser.add_argument('--template')
-    parser.add_argument('-o', dest='outfile')
     parser.add_argument('--lucipsms', dest='lucipsms')
     parser.add_argument('--modfile')
     parser.add_argument('--labileptms', nargs='+', default=[])
@@ -150,8 +148,6 @@ def main():
 
     labileptms = [x.lower() for x in args.labileptms]
     othermods = [x.lower() for x in args.mods]
-    ms2tol = environ.get('MS2TOLVALUE')
-    ms2toltype = {'ppm': 1, 'Da': 0}[environ.get('MS2TOLTYPE')]
 
     msgfmods = Mods()
     msgfmods.parse_msgf_modfile(args.modfile, [*args.labileptms, *args.mods])
@@ -182,18 +178,19 @@ def main():
             decoy_nloss.append('X -H3PO4 -97.07690')
             
     with open(args.template) as fp, open('luciphor_config.txt', 'w') as wfp:
-        lucitemplate = Template(fp.read())
-        wfp.write(lucitemplate.render(
-            outfile=args.outfile,
-            fixedmods=lucifixed,
-            varmods=lucivar,
-            ptms=target_mods,
-            ms2tol=ms2tol,
-            ms2toltype=ms2toltype,
-            dmasses=decoy_mods,
-            neutralloss=nlosses,
-            decoy_nloss=decoy_nloss
-            ))
+        wfp.write(fp.read())
+        for fixmod in lucifixed:
+            wfp.write(f'\nFIXED_MOD = {fixmod}')
+        for varmod in lucivar:
+            wfp.write(f'\nVAR_MOD = {varmod}')
+        for ptmmod in target_mods:
+            wfp.write(f'\nTARGET_MOD = {ptmmod}')
+        for nloss in nlosses:
+            wfp.write(f'\nNL = {nloss}')
+        for dmass in decoy_mods:
+            wfp.write(f'\nDECOY_MASS = {dmass}')
+        for dnl in decoy_nloss:
+            wfp.write(f'\nDECOY_NL = {dnl}')
 
     # acetyl etc? # FIXME replace double notation 229-187 in PSM table with the actual mass (42)
     # translation table needed...
