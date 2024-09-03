@@ -1,19 +1,17 @@
-include { listify; stripchars_infile } from '../modules.nf'
+include { listify; stripchars_infile; parse_isotype } from '../modules.nf'
 
 process createMods {
   container "python:3.12"
 
   input:
-  tuple val(setname), val(isobtype), val(maxvarmods), path(msgfmods), val(mods), val(ptms), val(locptms)
+  tuple val(setname), val(isobtype), val(maxvarmods), path(msgfmods), val(mods)
 
   output:
   tuple val(setname), path('mods.txt')
 
   script:
-  isobtype_parsed = ['tmt16plex', 'tmt18plex'].any { it == isobtype } ? 'tmtpro' : isobtype
   """
-  #create_modfile.py ${maxvarmods} "${msgfmods}" "${mods}${isobtype ? ";${isobtype_parsed}" : ''}${ptms ? ";${ptms}" : ''}${locptms ? ";${locptms}" : ''}"
-  create_modfile.py $maxvarmods "${msgfmods}" "${mods}${isobtype ? ";${isobtype_parsed}" : ''}${ptms ? ";${ptms}" : ''}${locptms ? ";${locptms}" : ''}"
+  create_modfile.py $maxvarmods "${msgfmods}" "${mods}${isobtype ? ";${parse_isotype(isobtype)}" : ''}"
   """
 }
 
@@ -24,7 +22,7 @@ process msgfPlus {
     'quay.io/biocontainers/msgf_plus:2023.01.1202--hdfd78af_0'}"
 
   input:
-  tuple val(setname), val(sample), path(mzml), val(maxmiscleav), val(fparams), val(mods), val(setisobaric), val(fractionation), path(db), path('mods.txt')
+  tuple val(setname), val(sample), path(mzml), val(maxmiscleav), val(fparams), val(mods), val(setisobaric), val(fractionation), val(minpeplen), val(maxpeplen), val(mincharge), val(maxcharge), path(db), path('mods.txt')
 
   output:
   tuple val(setname), path("${sample}.mzid"), path("${sample}.mzid.tsv")
@@ -49,7 +47,7 @@ process msgfPlus {
   """
   ${is_stripped ? "ln -s ${mzml} '${parsed_infile}'" : ''}
   
-  msgf_plus -Xmx${task.memory.toMega()}M -d $db -s '$parsed_infile' -o "${sample}.mzid" -thread ${threads} -mod "mods.txt" -tda 0 -maxMissedCleavages ${maxmiscleav} -t ${fparams.prectol}  -ti ${fparams.iso_err} -m ${fragmeth} -inst ${msgfinstrument} -e ${enzyme} -protocol ${msgfprotocol} -ntt ${ntt} -minLength ${params.minpeplen} -maxLength ${params.maxpeplen} -minCharge ${params.mincharge} -maxCharge ${params.maxcharge} -n 1 -addFeatures 1
+  msgf_plus -Xmx${task.memory.toMega()}M -d $db -s '$parsed_infile' -o "${sample}.mzid" -thread ${threads} -mod "mods.txt" -tda 0 -maxMissedCleavages ${maxmiscleav} -t ${fparams.prectol}  -ti ${fparams.iso_err} -m ${fragmeth} -inst ${msgfinstrument} -e ${enzyme} -protocol ${msgfprotocol} -ntt ${ntt} -minLength ${minpeplen} -maxLength ${maxpeplen} -minCharge ${mincharge} -maxCharge ${maxcharge} -n 1 -addFeatures 1
   msgf_plus -Xmx3500M edu.ucsd.msjava.ui.MzIDToTsv -i "${sample}.mzid" -o out.tsv
   rm ${db.baseName.replaceFirst(/\.fasta/, "")}.c*
   ${mods.contains('Unknown') ? "sed -i '/unknown modification/s/PSI-MS/UNIMOD/' '${sample}.mzid'" : ''}
@@ -65,7 +63,7 @@ process percolator {
     'quay.io/biocontainers/percolator:3.5--hfd1433f_1'}"
 
   input:
-  tuple val(setname), path(mzids), path(tsvs)
+  tuple val(setname), path(mzids), path(tsvs), val(enzyme)
 
   output:
   tuple val(setname), path('perco.xml')
@@ -73,7 +71,7 @@ process percolator {
   script:
   """
   ${listify(mzids).collect() { "echo $it >> metafile" }.join(' && ')}
-  msgf2pin -o percoin.tsv -e ${params.enzyme} -P "decoy_" metafile
+  msgf2pin -o percoin.tsv -e ${enzyme} -P "decoy_" metafile
   percolator -j percoin.tsv -X perco.xml -N 500000 --decoy-xml-output -Y --num-threads ${task.cpus}
   """
 }
@@ -85,7 +83,7 @@ process percolatorToPsms {
     'quay.io/biocontainers/msstitch:3.16--pyhdfd78af_0'}"
 
   input:
-  tuple val(setname), path(perco), path(mzids), path(tsvs)
+  tuple val(setname), path(perco), path(mzids), path(tsvs), val(psmconf), val(pepconf), val(output_unfiltered)
 
   output:
   tuple val('target'), path("${setname}_target.tsv"), emit: tmzidtsv_perco optional true
@@ -99,14 +97,14 @@ process percolatorToPsms {
   msstitch perco2psm --perco perco.xml -d outtables \
     -i ${listify(tsvs).collect(){"${it}"}.join(' ')} \
     --mzids ${listify(mzids).collect(){"${it}"}.join(' ')} \
-    ${!params.locptms ? "--filtpsm ${params.psmconflvl} --filtpep ${params.pepconflvl}" : ''}
+    ${!output_unfiltered ? "--filtpsm ${psmconf} --filtpep ${pepconf}" : ''}
   msstitch concat -i outtables/* -o allpsms
-  ${params.locptms ? 
-    "msstitch conffilt -i allpsms -o filtpsm --confcolpattern 'PSM q-value' --confidence-lvl ${params.psmconflvl} --confidence-better lower && \
-    msstitch conffilt -i filtpsm -o psms --confcolpattern 'peptide q-value' --confidence-lvl ${params.pepconflvl} --confidence-better lower" : 'cp allpsms psms'}
+  ${output_unfiltered ?
+    "msstitch conffilt -i allpsms -o filtpsm --confcolpattern 'PSM q-value' --confidence-lvl ${psmconf} --confidence-better lower && \
+    msstitch conffilt -i filtpsm -o psms --confcolpattern 'peptide q-value' --confidence-lvl ${pepconf} --confidence-better lower" : 'cp allpsms psms'}
   msstitch split -i psms --splitcol TD
   ${['target', 'decoy'].collect() { 
-    "test -f '${it}.tsv' && mv '${it}.tsv' '${setname}_${it}.tsv' || echo 'No ${it} PSMs found for set ${setname} at PSM FDR ${params.psmconflvl} and peptide FDR ${params.pepconflvl} ${it == 'decoy' ? '(not possible to output protein/gene FDR)' : ''}' >> warnings" }.join(' && ') }
+    "test -f '${it}.tsv' && mv '${it}.tsv' '${setname}_${it}.tsv' || echo 'No ${it} PSMs found for set ${setname} at PSM FDR ${psmconf} and peptide FDR ${pepconf} ${it == 'decoy' ? '(not possible to output protein/gene FDR)' : ''}' >> warnings" }.join(' && ') }
   """
 }
 
@@ -118,16 +116,28 @@ workflow MSGFPERCO {
   setisobaric
   fractionation
   fparam_map
+  maxvarmods
+  msgfmodfile
+  mods
+  psmconflvl
+  pepconflvl
+  output_unfilt_psms
+  maxmiscleav
+  enzyme
+  minpeplen
+  maxpeplen
+  mincharge
+  maxcharge
 
   main:
   mzml_in
   | map { [it.setname]}
   | groupTuple
-  | map { [it[0], setisobaric && setisobaric[it[0]] ? setisobaric[it[0]] : false, params.maxvarmods, file(params.msgfmods), params.mods, params.ptms, params.locptms] }
+  | map { [it[0], setisobaric && setisobaric[it[0]] ? setisobaric[it[0]] : false, maxvarmods, file(msgfmodfile), mods] }
   | createMods
 
   mzml_in
-  | map { [it.setname, it.sample, it.mzmlfile, params.maxmiscleav, fparam_map[it.id], params.mods, setisobaric, fractionation] }
+  | map { [it.setname, it.sample, it.mzmlfile, maxmiscleav, fparam_map[it.id], mods, setisobaric, fractionation, minpeplen, maxpeplen, mincharge, maxcharge] }
   | combine(concatdb)
   | combine(createMods.out, by: 0)
   | msgfPlus
@@ -138,8 +148,10 @@ workflow MSGFPERCO {
   .set { mzid_tsv_2psm }
 
   mzid_tsv_2psm
+  | map {it + [enzyme] }
   | percolator
   | join(mzid_tsv_2psm)
+  | map { it + [psmconflvl, pepconflvl, output_unfilt_psms] }
   | percolatorToPsms
 
   emit:

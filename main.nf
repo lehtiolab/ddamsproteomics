@@ -851,7 +851,29 @@ if (params.sampletable) {
   createTargetDecoyFasta(tdb)
   // bothdbs.into { psmdbs; fdrdbs; ptmdbs }
   if (!is_rerun) {
-    MSGFPERCO(mzml_in, createTargetDecoyFasta.out.concatdb, setisobaric, fractionation, mzmls)
+    search_mods = [params.mods ? params.mods : false,
+      params.ptms ?: false,
+      params.locptms ?: false,
+      ].findAll { it }
+      .join(';')
+    MSGFPERCO(mzml_in,
+      createTargetDecoyFasta.out.concatdb,
+      setisobaric,
+      fractionation,
+      mzmls,
+      params.maxvarmods,
+      params.msgfmods,
+      search_mods,
+      params.psmconflvl,
+      params.pepconflvl,
+      params.locptms,
+      params.maxmiscleav,
+      params.enzyme,
+      params.minpeplen,
+      params.maxpeplen,
+      params.mincharge,
+      params.maxcharge,
+    )
   
     MSGFPERCO.out.t_tsv
     | ifEmpty(['target', nofile])
