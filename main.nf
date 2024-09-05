@@ -451,14 +451,10 @@ process makePeptides {
   tuple val(td), val(setname), path('psms'), val(setisobaric), val(denoms), val(keepnapsms_quant), val(normalize_isob), val(do_ms1)
   
   output:
-  //set val(setname), val(td), file(psms), file("${setname}_peptides") into prepgs_in
-  //set val(setname), val('peptides'), val(td), file("${setname}_peptides"), path(normfactors) optional true into peptides_out
-  tuple val(setname), val(td), path("${setname}_peptides"), path(normfactors)
+  tuple val(setname), val(td), path("${setname}_peptides"), emit: peps
+  tuple val('peptides'), path(normfactors), emit: normfacs optional true
 
   script:
-//  quant = !params.noquant && td == 'target'
-//  isoquant = quant && setisobaric && setisobaric[setname]
-//  denom = isoquant && setdenoms ? setdenoms[setname] : false
   specialdenom = denoms && (denoms[0] == 'sweep' || denoms[0] == 'intensity')
   normfactors = "${setname}_normfacs"
   """
@@ -471,7 +467,7 @@ process makePeptides {
     ${denoms && denoms[0] == 'intensity' ? '--medianintensity' : ''} \
     ${denoms && !specialdenom ? "--logisoquant --denompatterns ${denoms.join(' ')}" : ''} \
     ${normalize_isob ? "--median-normalize" : ''}
-  ${normalize_isob ? "sed 's/^/$setname'\$'\t/' < normalization_factors_psms > '$normfactors'" : "touch '$normfactors'"}
+  ${normalize_isob ? "sed 's/^/$setname'\$'\t/' < normalization_factors_psms > '$normfactors'" : ""}
   """
 }
 
@@ -485,7 +481,8 @@ process proteinGeneSymbolTableFDR {
   tuple val(setname), path('tpeptides'), path('tpsms'), path('dpeptides'), path(tfasta), path(dfasta), val(acctype), val(do_ms1), val(isobaric), val(denom), val(keepnapsms_quant), val(normalize)
 
   output:
-  tuple val(setname), val(acctype), path("${setname}_protfdr"), path(normfactors), emit: tables
+  tuple val(setname), val(acctype), path("${setname}_protfdr"), emit: tables
+  tuple val(acctype), path(normfactors), emit: normfacs optional true
   path('warnings'), emit: warnings optional true
 
   script:
@@ -514,7 +511,7 @@ process proteinGeneSymbolTableFDR {
     ${denom && denom[0] == 'intensity' ? '--medianintensity' : ''} \
     ${denom && !specialdenom ? "--denompatterns ${denom.join(' ')} --logisoquant" : ''} \
     ${normalize ? "--median-normalize" : ''}
-    ${normalize ? "sed 's/^/$setname'\$'\t/' < normalization_factors_tpsms > '$normfactors'" : "touch '$normfactors'"}
+    ${normalize ? "sed 's/^/$setname'\$'\t/' < normalization_factors_tpsms > '$normfactors'" : ""}
   """
 }
 
@@ -549,13 +546,11 @@ process proteinPeptideSetMerge {
     'quay.io/biocontainers/msstitch:3.16--pyhdfd78af_0'}"
 
   input:
-  tuple val(setnames), val(acctype), file(tables), file(normfacs), path(lookup), path(sampletable_with_special_chars), path('sampletable_no_special_chars'), val(do_isobaric), val(do_ms1), val(proteinconflvl), val(do_pgroup), val(do_deqms)
+  tuple val(setnames), val(acctype), path(tables), path(lookup), path(sampletable_with_special_chars), path('sampletable_no_special_chars'), val(do_isobaric), val(do_ms1), val(proteinconflvl), val(do_pgroup), val(do_deqms)
   
   output:
-  tuple val(acctype), path('grouptable')
-  //tuple val(acctype), path('proteintable'), path('clean_sampletable') into featqc_extra_peptide_samples
-  //tuple val(acctype), path('proteintable') into merged_feats
-  //tuple val(acctype), path(normfacs) into normfacs
+  tuple val(acctype), path('grouptable'), emit: with_nogroup
+  tuple val(acctype), path('no_nogrouptable'), emit: nogroup_rm
 
   script:
   sampletable_iso = sampletable_with_special_chars.name != 'NO__FILE' && do_isobaric
@@ -578,6 +573,9 @@ process proteinPeptideSetMerge {
   ${sampletable_iso ?
     'while read line ; do read -a arr <<< $line ; sed -E "s/^${arr[0]}_([a-z0-9]*plex)_${arr[1]}/${arr[4]}_${arr[3]}_${arr[2]}_\\1_${arr[1]}/" <(tail -n1 tmph | tr "\t" "\n") | tr "\n" "\t" | sed $"s/\\t$/\\n/" ; done < <(paste <(cut -f2 $sampletable_with_special_chars) sampletable_no_special_chars) >> tmph' :  ''}
   ${sampletable_iso ? "cat <(tail -n1 tmph) <(tail -n+2 mergedtable) > grouptable" : 'mv mergedtable grouptable'}
+
+  # Remove internal no-group identifier so it isnt output
+  sed '1s/NO__GROUP_//g' < grouptable > no_nogrouptable
   """
 }
 
@@ -589,33 +587,18 @@ process DEqMS {
   tuple val(acctype), path('grouptable'), path('sampletable')
 
   output:
-  tuple val(acctype), path('proteintable')
+  tuple val(acctype), path('proteintable'), emit: with_nogroup
+  tuple val(acctype), path('no_nogrouptable'), emit: nogroup_rm
 
   script:
   """
   # Run DEqMS if needed, use original sample table with NO__GROUP
   numfields=\$(head -n1 grouptable | tr '\t' '\n' | wc -l) && deqms.R && paste <(head -n1 grouptable) <(head -n1 deqms_output | cut -f \$(( numfields+1 ))-\$(head -n1 deqms_output|wc -w)) > tmpheader && cat tmpheader <(tail -n+2 deqms_output) > proteintable
+
+  # Remove internal no-group identifier so it isnt output
+  sed '1s/NO__GROUP_//g' < proteintable > no_nogrouptable
   """
 }
-
-
-/* FIXME remove
-process countMS2perFile {
-
-  input:
-  set val(setnames), file(mzmlfiles), val(platenames), file(speclookup) from specfilein
-
-  output:
-  set val(setnames), file(mzmlfiles), val(platenames), file('amount_spectra_files') into specfilems2
-
-  script:
-  """
-  sqlite3 $speclookup "SELECT set_name, mzmlfilename, COUNT(*) FROM mzml JOIN mzmlfiles USING(mzmlfile_id) JOIN biosets USING(set_id) GROUP BY mzmlfile_id" > amount_spectra_files
-  """
-}
-*/
-
-
 
 
 workflow {
@@ -977,9 +960,9 @@ println(params.onlypeptides)
     ptmpeps_ch = Channel.empty()
   }
 
-
-
-
+  splitpsms_ch
+  | map { it + [it[0] == 'target' ? setisobaric[it[1]] : false, setdenoms[it[1]], params.keepnapsmsquant, it[0] == 'target' && params.mediannormalize, do_ms1 && it[0] == 'target']}
+  | makePeptides
 
   acctypes = ['proteins']
   if (params.onlypeptides) {
@@ -994,7 +977,7 @@ println(params.onlypeptides)
   }
 
   if (!params.onlypeptides) {
-    makePeptides.out
+    makePeptides.out.peps
     | groupTuple
     | filter { it[1].size() == 2 } // T+D required! FIXME? if we can do without that demand this can be dropped
     | transpose
@@ -1024,9 +1007,9 @@ println(params.onlypeptides)
     .set { sampletable_ch }
   }
 
-  makePeptides.out
+  makePeptides.out.peps
   | filter { it[1] == 'target' }
-  | map { [it[0], 'peptides', it[2], it[3]] }
+  | map { [it[0], 'peptides', it[2]] }
   | concat(proteinGeneSymbolTableFDR.out.tables)
   | groupTuple(by: 1)
   | combine(psmlookups_ch.filter { it[0] == 'target' }.map { it[1] })
@@ -1035,7 +1018,7 @@ println(params.onlypeptides)
   | proteinPeptideSetMerge
 
   if (params.deqms) {
-    proteinPeptideSetMerge.out
+    proteinPeptideSetMerge.out.with_nogroup
     | combine(sampleTableCheckClean.out)
     | DEqMS
     | set { protpepgene_ch }
@@ -1044,12 +1027,10 @@ println(params.onlypeptides)
     | set { protpepgene_ch }
   }
 
-
-
   if (params.report_seqmatch) {
     MATCH_SEQUENCES(
-      protpepgene_ch.filter { it[0] == 'peptides' }.map { it[1] },
-      protpepgene_ch.filter { it[0] != 'peptides' },
+      protpepgene_ch.nogroup_rm.filter { it[0] == 'peptides' }.map { it[1] },
+      protpepgene_ch.nogroup_rm.filter { it[0] != 'peptides' },
       Channel.from(params.report_seqmatch).flatMap { it.tokenize(';') }.map { file(it) },
       params.maxmiscleav,
       params.minpeplen,
@@ -1063,8 +1044,13 @@ println(params.onlypeptides)
     Channel.fromPath(params.input),
     Channel.fromPath(params.oldmzmldef ?: nofile),
     fractionation,
-    target_psmtable.map { it[1] }.view()
-    
+    target_psmtable.map { it[1] },
+    protpepgene_ch.with_nogroup,
+    makePeptides.out.normfacs.concat(proteinGeneSymbolTableFDR.out.normfacs),
+    sampletable_ch,
+    params.pepconflvl,
+    params.proteinconflvl,
+    all_setnames,
   )
   
 
