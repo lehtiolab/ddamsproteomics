@@ -1,6 +1,6 @@
 /* Reporting workflow for DDA pipeline */
 
-include { stripchars_infile; get_regex_specialchars } from '../modules.nf' 
+include { listify; stripchars_infile; get_regex_specialchars } from '../modules.nf' 
 
 process countMS2sPerPlate {
   container "python:3.12"
@@ -88,6 +88,30 @@ process PSMQC {
   script:
   """
   qc_psms.R ${fractionation ? 'TRUE' : 'FALSE'} ${oldmzmlfn}
+  """
+}
+
+
+process featQC {
+  container 'lehtiolab/dda_report'
+
+  input:
+  tuple val(acctype), path('feats'), path(normfacs), path(peptable), path('sampletable'), val(setnames), val(has_sampletable), val(conflvl)
+
+  output:
+  //tuple path(platescans), path("psmplothtml")
+
+  script:
+  parse_normfactors = normfacs.name != 'NO__FILE'
+  """
+  ${parse_normfactors ? "cat ${normfacs} > allnormfacs" : ''}
+  # Create QC plots and put them base64 into HTML, R also creates summary.txt
+  qc_protein.R --sets ${listify(setnames).collect() { "'$it'" }.join(' ')} \
+     --feattype ${acctype} --peptable $peptable \
+     ${has_sampletable ? "--sampletable $sampletable" : ''} \
+     --conflvl $conflvl \
+     ${parse_normfactors ? '--normtable allnormfacs' : ''}
+
   mkdir psmplothtml
   mv *.html psmplothtml/
   """
@@ -101,10 +125,17 @@ workflow REPORTING {
   mzmldef
   oldmzmldef
   fractionation
-
   plot_psms
+  pepprotgenes
+  normfacs
+  sampletable
+  pepconflvl
+  prot_gene_conflvl
+  setnames
 
   main:
+  nofile = "${baseDir}/assets/NO__FILE"
+
   sets_mzmls_plates
   | combine(speclookup)
   | combine(oldmzmldef)
@@ -117,5 +148,14 @@ workflow REPORTING {
   | combine(oldmzmldef)
   | map { it + fractionation }
   | PSMQC
+
+  pepprotgenes
+  | join(normfacs.groupTuple(), remainder: true)
+  | map { [it[0], it[1], it[2] ?: nofile] }
+  | combine(pepprotgenes.filter { it[0] == 'peptides' }.map { it[1] })
+  | combine(sampletable.map { it[1] })
+  | combine(setnames)
+  | map { it + [it[4].name != 'NO__FILE', it[0] == 'peptides' ? pepconflvl : prot_gene_conflvl] }
+  | featQC
 
 }
