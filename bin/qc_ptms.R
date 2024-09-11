@@ -1,7 +1,9 @@
 #!/usr/bin/env Rscript
 
-library(ggplot2)
-library(reshape2)
+library(plotly)
+library(htmltools)
+library(tidyr)
+library(glue)
 library(stringr)
 
 args = commandArgs(trailingOnly=TRUE)
@@ -11,7 +13,7 @@ pepfn = args[2]
 psms = read.table(psmfn, header=T, sep="\t", comment.char = "", quote = "")
 peptides = read.table(pepfn, header=T, sep="\t", comment.char="", quote="")
 
-width = 4
+scancol = 'SpecID'
 
 ## Prepare a data frame with all the info for plots
 
@@ -19,7 +21,7 @@ width = 4
 multiptms = strsplit(psms$Top.luciphor.PTM, '_', fixed=T)
 repeater = sapply(multiptms, FUN=length)
 sites = data.frame(sites=unlist(multiptms),
-                   specid=rep(psms$SpecID, repeater),
+                   specid=rep(psms[[ scancol ]], repeater),
                    bioset=rep(psms$Biological.set, repeater),
                    peptide=rep(psms$Peptide, repeater)
 )
@@ -40,6 +42,7 @@ sites = data.frame(site=unlist(multisites),
                    protein_ptms=rep(sites[,4], repeater),
                    ptm=rep(sites[,5], repeater)
                    )
+
 # PSM/peptide summaries, first create filtering and aggregator columns
 sites$ptm_residue = paste(sites$ptm, sub('[0-9]+', '', sites$site))
 num_psm_set = aggregate(specid~bioset + ptm_residue, sites, length)
@@ -101,61 +104,74 @@ if (nrsets > 1) {
     prot_setcount$protsite = paste(prot_setcount$protein, prot_setcount$site)
     site_overlap = merge(site_overlap, aggregate(protsite~bioset+ptm_residue, prot_setcount, length), all=T)
     colnames(site_overlap) = c('nr_sets', 'ptm_residue', 'peplvl', 'protlvl')
-    write.table(site_overlap, 'overlap.txt', row.names=F, quote=F, sep='\t')
+    write.table(site_overlap, 'ptm__overlap.txt', row.names=F, quote=F, sep='\t')
 }
 
 
 # nr PSMs with PTMs
-svg('ptmpsmfeats', width=width, height=nrsets+2)
-  print(ggplot(psm_count) +
+ggp = ggplot(psm_count) +
     geom_bar(aes(bioset, y=specid), stat='identity') +
     coord_flip() + ylab('# PSMs with PTM') + theme_bw() + theme(axis.title=element_text(size=15), axis.text=element_text(size=10), axis.title.y=element_blank(), legend.text=element_text(size=10), legend.title=element_blank(), legend.position='top', plot.title=element_text(size=15))
-  )
-dev.off()
+p = ggplotly(ggp, width=400) %>%
+        layout(legend = list(orientation = 'h', x = 0, y = 1.1, xanchor='left', yanchor='bottom'))
+# Work around since plotly does not honor above legend.title=element_blank call
+p$x$layout$legend$title$text = ''
+htmlwidgets::saveWidget(p, 'ptmpsmfeats.html', selfcontained=F)
+
 
 # nr peptides with PTMs
 # FIXME Helptext - identical sequence with different PTMs counts as different (multiple) peptides in this plot
-svg('ptmpepfeats', width=width, height=nrsets+2)
-  print(ggplot(pep_count) +
+ggp = ggplot(pep_count) +
     geom_bar(aes(bioset, y=peptide), stat='identity') +
     coord_flip() + ylab('# peptides with PTM') + theme_bw() + theme(axis.title=element_text(size=15), axis.text=element_text(size=10), axis.title.y=element_blank(), legend.text=element_text(size=10), legend.title=element_blank(), legend.position='top', plot.title=element_text(size=15))
-  )
-dev.off()
+p = ggplotly(ggp, width=400) %>%
+        layout(legend = list(orientation = 'h', x = 0, y = 1.1, xanchor='left', yanchor='bottom'))
+# Work around since plotly does not honor above legend.title=element_blank call
+p$x$layout$legend$title$text = ''
+htmlwidgets::saveWidget(p, 'ptmpepfeats.html', selfcontained=F)
+
 
 
 # nr. proteins with PTMs
 if ('Master.protein.s.' %in% names(psms)) {
     prot_count = aggregate(protein~bioset, protein_ptms[!duplicated(protein_ptms[c('protein', 'bioset')]),], length)
 
-    svg('ptmprotfeats', width=width, height=nrsets+2)
-      print(ggplot(prot_count) + 
+  ggp = ggplot(prot_count) + 
         geom_bar(aes(bioset, y=protein), stat='identity') +
         coord_flip() + ylab('# proteins with PTM') + theme_bw() + theme(axis.title=element_text(size=15), axis.text=element_text(size=10), axis.title.y=element_blank(), legend.text=element_text(size=10), legend.title=element_blank(), legend.position='top', plot.title=element_text(size=15))
-      )
-    dev.off()
+  p = ggplotly(ggp, width=400) %>%
+          layout(legend = list(orientation = 'h', x = 0, y = 1.1, xanchor='left', yanchor='bottom'))
+  # Work around since plotly does not honor above legend.title=element_blank call
+  p$x$layout$legend$title$text = ''
+  htmlwidgets::saveWidget(p, 'ptmprotfeats.html', selfcontained=F)
 
     colnames(prot_count) = c('bioset', 'ptmprotcount')
     featcount_summ = merge(featcount_summ, prot_count, all=T)
 }
 
 
-svg('psmptmresidues', width=width, height=nrsets+2)
-print(ggplot(summary) +
+ggp = ggplot(summary) +
     geom_bar(aes(bioset, specid, fill=ptm_residue), stat='identity', position='dodge') +
     coord_flip() + ylab('# PTM residues found') + theme_bw() + theme(axis.title=element_text(size=15), axis.text=element_text(size=10), axis.title.y=element_blank(), legend.text=element_text(size=10), legend.title=element_blank(), legend.position='top', plot.title=element_text(size=15))
-)
-dev.off()
+p = ggplotly(ggp, width=400) %>%
+        layout(legend = list(orientation = 'h', x = 0, y = 1.1, xanchor='left', yanchor='bottom'))
+# Work around since plotly does not honor above legend.title=element_blank call
+p$x$layout$legend$title$text = ''
+htmlwidgets::saveWidget(p, 'psmptmresidues.html', selfcontained=F)
 
 
-svg('pepptmresidues', width=width, height=nrsets+2)
-print(ggplot(summary) +
+
+ggp = ggplot(summary) +
     geom_bar(aes(bioset, peptide, fill=ptm_residue), stat='identity', position='dodge') +
     coord_flip() + ylab('# PTM residues found') + theme_bw() + theme(axis.title=element_text(size=15), axis.text=element_text(size=10), axis.title.y=element_blank(), legend.text=element_text(size=10), legend.title=element_blank(), legend.position='top', plot.title=element_text(size=15))
-)
-dev.off()
+p = ggplotly(ggp, width=400) %>%
+        layout(legend = list(orientation = 'h', x = 0, y = 1.1, xanchor='left', yanchor='bottom'))
+# Work around since plotly does not honor above legend.title=element_blank call
+p$x$layout$legend$title$text = ''
+htmlwidgets::saveWidget(p, 'psmpepresidues.html', selfcontained=F)
 
 
 anysetsum$bioset = 'Combined sets'
 summary = merge(summary, anysetsum, all=T)
-write.table(summary, 'summary.txt', row.names=F, quote=F, sep='\t')
-write.table(featcount_summ, 'featcount_summary.txt', row.names=F, quote=F, sep='\t')
+write.table(summary, 'ptm__table.txt', row.names=F, quote=F, sep='\t')
+write.table(featcount_summ, 'ptm__featcount_table.txt', row.names=F, quote=F, sep='\t')
