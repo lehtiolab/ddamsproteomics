@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+
+<html>
+  <head>
+    <title>DDA MS proteomics pipeline report</title>
+    <style type="text/css">
+      <% out << bulma.join('\n')  %>
+    </style>
+          
+    <% out << libs.join('\n')  %>
+
+  </head>
+  <body>
+    <div class="container">
+      <h2 class="title is-2">DDA MS proteomics pipeline report</h2>
+      <h4 class="subtitle is-4">
+          <% out << runname %>
+      </h4>
+
+      <p class="is-size-6">Completed at {{ reportdate }}</p>
+      <div class="is-size-6 tags has-addons">Pipeline version {{ version }} &nbsp;<span class="tag is-dark">DOI</span><span class="tag is-info">{{ doi }}</span></div>
+
+      <div class="mt-5 tabs is-boxed"> 
+        <ul>
+          <li id="resultstab" class="is-active"><a>Results</a></li>
+          <li id="rundatatab"><a>Run data</a></li>
+          <li id="psmqctab"> <a> PSMs </a> </li>
+          <li id="featqctab"> <a>Peptides/proteins/genes </a> </li>
+          <li id="ptmqctab"> <a> PTMs </a> </li>
+          <li id="deqctab"><a>Expression</a> </li>
+        </ul>
+      </div>
+    </div>
+
+    <div id="resultspage" class="mt-5 container">
+
+      <h4 class="title is-4">Identification summary</h4>
+      <table class="table is-striped is-narrow is-hoverable is-size-7">
+        <thead>
+          <th>Experiment set</th>
+          {% for field in summary_fields %}
+          <th>{{ tabletitles[field] }}</th>
+          {% endfor %}
+        </thead>
+        <tbody>
+          {% for setname in summary_table %}
+          <tr>
+            <td> {{ setname }}</td>
+            {% for field in summary_fields %}
+            <td> {{ summary_table[setname][field] }} </td>
+            {% endfor %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+
+      <h4 class="title is-4">Overlap</h4>
+      <div class="columns">
+        {% for fname, ftitle in featnames %}
+        {% if overlap[fname] %}
+        <div class="column">
+          <h5 class="title is-5">{{ ftitle }}</h5>
+          <table class="table is-striped is-narrow is-hoverable is-size-7">
+            <thead>
+              <th>ID in # sets</th>
+              <th>Amount {{ fname }}</th>
+            </thead>
+            <tbody>
+              {% for nr_sets in overlap[fname] %}
+              <tr>
+                <td> {{ nr_sets }} </td>
+                <td> {{ overlap[fname][nr_sets] }} </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% endif %}
+        {% endfor %}
+      </div>
+
+      <h4 class="title is-4">PTMs</h4>
+      <div class="columns">
+        <div class="column">
+          <h5 class="title is-5">Summary</h5>
+          <table class="table is-striped is-narrow is-hoverable is-size-7">
+            <thead>
+              {% for field in ptmtitles.summary %}
+              <th>{{ field }}</th>
+              {% endfor %}
+            </thead>
+            <tbody>
+              {% for row in ptmtables.summary %}
+              <tr>
+                {% for field in ptmtitles.summary %}
+                <td> {{ row[field] }} </td>
+                {% endfor %}
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+
+          {% if ptmtables.overlap %}
+          <h5 class="title is-5">Overlap</h5>
+          <table class="table is-striped is-narrow is-hoverable is-size-7">
+            <thead>
+              {% for field in ptmtitles.overlap %}
+              <th>{{ field }}</th>
+              {% endfor %}
+            </thead>
+            <tbody>
+              {% for row in ptmtables.overlap %}
+              <tr>
+                {% for field in ptmtitles.overlap %}
+                <td> {{ row[field] }} </td>
+                {% endfor %}
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% endif %}
+
+        </div>
+
+        <div class="column">
+          <h5 class="title is-5">Site count</h5>
+          <table class="table is-striped is-narrow is-hoverable is-size-7">
+            <thead>
+              {% for field in ptmtitles.featcount %}
+              <th>{{ field }}</th>
+              {% endfor %}
+            </thead>
+            <tbody>
+              {% for row in ptmtables.featcount %}
+              <tr>
+                {% for field in ptmtitles.featcount %}
+                <td> {{ row[field] }} </td>
+                {% endfor %}
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      
+    </div>
+
+    <div id="rundatapage" class="mt-5 container">
+      <h4 class="title is-4">Software versions</h4>
+      <table class="table">
+        <thead>
+          <th>Software</th>
+          <th>Version</th>
+          <th>Container</th>
+        </thead>
+        <tbody>
+          <% out << sw_versions.collect { "<tr><td>${it[0]}</td> <td>${it[1]}</td> <td>${it[2]}</td> </tr>" }.join("\n") %>
+        </tbody>
+      </table>
+
+      <hr>
+      <h4 class="title is-4">Non-default parameters</h4>
+      <table class="table">
+        <thead>
+          <th>Parameter</th>
+          <th>Value</th>
+        </thead>
+        <tbody>
+          <% out << params.collect { "<tr><td><code>--${it.key}</code></td> <td><code>${it.value}</code></td> </tr>" }.join("\n") %>
+        </tbody>
+      </table>
+
+
+      <hr>
+      <h4 class="title is-4">Input files</h4>
+      <table class="table">
+        <thead>
+          <% out << infiles[0].collect { "<th>${it}</th>" }.join('\n') %>
+        </thead>
+        <tbody>
+          <% out << infiles[1..-1].collect { "<tr> ${it.collect{x -> "<td>${x}</td>" }.join('\n')}</tr>" }.join('\n') %>
+
+        </tbody>
+      </table>
+    </div>
+
+    <div id="psmqcpage" class="mt-5 container">
+      <div class="columns">
+        <div class="column">
+          <h4 class="title is-4"># of PSMs and scans</h4>
+          {{ plots.amount_psms }}
+        </div>
+        <div class="column">
+          <h4 class="title is-4"># of missed cleavages</h4>
+          {{ plots.miscleav }}
+        </div>
+        <div class="column">
+        {% if plots.isomissvals %}
+          <h4 class="title is-4">Isobaric missing values</h4>
+          {{ plots.isomissvals }}
+        {% else %}
+          <h4 class="title is-4">No isobaric or no missing values</h4>
+        {% endif %}
+        </div>
+      </div>
+
+      {% if plateplots.fryield %}
+          <h4 class="title is-4">Fraction yield</h4>
+        {% for p in plates %}
+          {% if plateplots.fryield[p] %}
+          <h5 class="title is-5">Plate: {{ p }}</h4>
+            {{ plateplots.fryield[p] }}
+          {% endif %}
+        {% endfor %}
+      {% endif %}
+
+      {% if plateplots.precerror %}
+          <h4 class="title is-4">Precursor error</h4>
+        {% for p in plates %}
+          {% if plateplots.precerror[p] %}
+          <h5 class="title is-5">Plate: {{ p }}</h4>
+            {{ plateplots.precerror[p] }}
+          {% endif %}
+        {% endfor %}
+      {% endif %}
+
+      {% if plateplots.msgfscore %}
+          <h4 class="title is-4">MSGF score</h4>
+        {% for p in plates %}
+          {% if plateplots.msgfscore[p] %}
+          <h5 class="title is-5">Plate: {{ p }}</h4>
+            {{ plateplots.msgfscore[p] }}
+          {% endif %}
+        {% endfor %}
+      {% endif %}
+
+      {% if plateplots.retentiontime %}
+          <h4 class="title is-4">Retention time</h4>
+        {% for p in plates %}
+          {% if plateplots.retentiontime[p] %}
+          <h5 class="title is-5">Plate: {{ p }}</h4>
+            {{ plateplots.retentiontime[p] }}
+          {% endif %}
+        {% endfor %}
+      {% endif %}
+
+      {% if plateplots.pif %}
+          <h4 class="title is-4">Precursor purity</h4>
+        {% for p in plates %}
+          {% if plateplots.pif[p] %}
+          <h5 class="title is-5">Plate: {{ p }}</h4>
+            {{ plateplots.pif[p] }}
+          {% endif %}
+        {% endfor %}
+      {% endif %}
+    </div>
+
+    <div id="featqcpage" class="mt-5 container">
+      {% for plotname, plottitle in featplotnames %}
+      <h4 class="title is-4">{{ plottitle }}</h4>
+      <div class="columns">
+        {% for fname, ftitle in featnames %}
+        {% if featplots[plotname][fname] %}
+        <div class="column">
+          <h5 class="title is-5">{{ ftitle }}</h5>
+          {{ featplots[plotname][fname] }}
+        </div>
+        {% endif %}
+        {% endfor %}
+      </div>
+      {% endfor %}
+
+    </div>
+
+    <div id="ptmqcpage" class="mt-5 container">
+
+      <h4 class="title is-4">PTM numbers</h3>
+      <div class="columns">
+        {% for ftitle, plot in ptmplots.feats.items() %}
+        <div class="column">
+          <h5 class="title is-5">{{ ftitle }}</h5>
+          {{ plot }}
+        </div>
+        {% endfor %}
+      </div>
+
+      <h4 class="title is-4">PTM residue distributions</h3>
+      <div class="columns">
+        {% for ftitle, plot in ptmplots.residues.items() %}
+        <div class="column">
+          <h5 class="title is-5">{{ ftitle }}</h5>
+          {{ plot }}
+        </div>
+        {% endfor %}
+      </div>
+
+    </div>
+
+    <div id="deqcpage" class="mt-5 container">
+      {% for plotname, plottitle in expplotnames %}
+      <h4 class="title is-4">{{ plottitle }}</h4>
+      <div class="columns">
+        {% for fname, ftitle in featnames %}
+        {% if expplots[plotname][fname] %}
+        <div class="column">
+          <h5 class="title is-5">{{ ftitle }}</h5>
+          {{ expplots[plotname][fname] }}
+        </div>
+        {% endif %}
+        {% endfor %}
+      </div>
+      {% endfor %}
+
+      <h4 class="title is-4">DEqMS<h4>
+      <div class="columns">
+        {% for fname, ftitle in featnames %}
+        {% if deqmsplots[fname] %}
+        <div class="column">
+          <h5 class="title is-5">{{ ftitle }}</h5>
+          {% for comp in deqmscomps %}
+          {% if deqmsplots[fname][comp] %}
+          {{ deqmsplots[fname][comp] }}
+          {% endif %}
+          {% endfor %}
+        </div>
+        {% endif %}
+        {% endfor %}
+      </div>
+
+    </div>
+
+    <script type="text/javascript">
+      let tabs = [
+        ['results', document.getElementById('resultstab'), document.getElementById('resultspage')],
+        ['rundata', document.getElementById('rundatatab'), document.getElementById('rundatapage')],
+        ['psmqc', document.getElementById('psmqctab'), document.getElementById('psmqcpage')],
+        ['featqc', document.getElementById('featqctab'), document.getElementById('featqcpage')],
+        ['ptmqc', document.getElementById('ptmqctab'), document.getElementById('ptmqcpage')],
+        ['deqc', document.getElementById('deqctab'), document.getElementById('deqcpage')],
+      ];
+      tabs.forEach(t => {
+        t[1].addEventListener('click', e => toggleTab(t[0]));
+        t[2].style.display = 'none';
+      });
+
+      function toggleTab(tabname) {
+        tabs.filter(x => x[0] != tabname).forEach(t => {
+          t[1].classList.remove('is-active');
+          t[2].style.display = 'none';
+        });
+        tabs.filter(x => x[0] == tabname).forEach(t => {
+          t[1].classList.add('is-active');
+          t[2].style.display = 'block';
+        });
+      }
+
+      // Show first tab
+      tabs[0][2].style.display = 'block';
+    </script>
+    
+  </body> </html>

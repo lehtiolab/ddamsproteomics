@@ -953,11 +953,9 @@ println(params.onlypeptides)
       do_ms1,
       !params.onlypeptides
     )
-    ptmpsms_ch = PTMANALYSIS.out.psms
-    ptmpeps_ch = PTMANALYSIS.out.peps
+    ptm_ch = PTMANALYSIS.out
   } else {
-    ptmpsms_ch = Channel.empty()
-    ptmpeps_ch = Channel.empty()
+    ptm_ch = Channel.empty()
   }
 
   splitpsms_ch

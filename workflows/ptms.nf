@@ -106,7 +106,7 @@ process stabilePTMPrep {
   """
 }
 
-process createPSMTable {
+process createPTMTable {
   container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
     'https://depot.galaxyproject.org/singularity/msstitch:3.16--pyhdfd78af_0' :
     'quay.io/biocontainers/msstitch:3.16--pyhdfd78af_0'}"
@@ -331,13 +331,13 @@ workflow PTMANALYSIS {
   | ifEmpty([all_setnames, file(nofile), false])
   | filter { it[1] != [null] }
   | combine(ptm_psms_lookup)
-  | createPSMTable
+  | createPTMTable
   
   totalproteomepsms
   | map { it + [setisobaric[it[0]], setdenoms[it[0]], totalprot_col, normalize, keepnapsms_quant] }
   | prepTotalProteomeInput
   
-  createPSMTable.out.setptmpsm
+  createPTMTable.out.setptmpsm
   | map { it -> [listify(it).collect() { it.baseName.replaceFirst(/\.tsv$/, "") }, it]} // get setname from {setname}.tsv
   | transpose
   | set { setptmpsm_ch }
@@ -359,19 +359,19 @@ workflow PTMANALYSIS {
   | toList
   | transpose
   | groupTuple(by: 1) // group by total proteome normalization boolean
-  | combine(createPSMTable.out.db)
+  | combine(createPTMTable.out.db)
   | map { it + [do_ms1, isobtypes] }
   | mergePTMPeps
   
   if (do_proteingroup) {
     mergePTMPeps.out
-    | combine(createPSMTable.out.allpsms)
+    | combine(createPTMTable.out.allpsms)
     | addMasterProteinsGenes
   }
 
   emit:
-  peps = do_proteingroup ? addMasterProteinsGenes.out : mergePTMPeps.out
-  psms = createPSMTable.out.allpsms
+  createPTMTable.out.allpsms
+  | combine(do_proteingroup ? addMasterProteinsGenes.out : mergePTMPeps.out)
 }
 
   
