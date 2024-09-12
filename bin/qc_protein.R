@@ -17,6 +17,8 @@ parser$add_argument('--conflvl', type='double')
 opt = parser$parse_args()
 
 nrsets = length(opt$sets)
+vert_height = 100 * nrsets + 100
+vert_height_iso = 300 * nrsets + 150
 setnames = opt$sets
 setnames = gsub('[^a-zA-Z0-9_]', '.', setnames)
 setnames = sub('^([0-9])', 'X\\1', setnames)
@@ -34,8 +36,8 @@ qvals_long = pivot_longer(feats, any_of(qcols), names_to='Set', values_to='qval'
 qvals_long$Set = sub('_q.value', '', qvals_long$Set)
 feats_nrsets = aggregate(qval~get(featcol), qvals_long, length)
 colnames(feats_nrsets) = c('feat', 'nrsets')
-feat_set_overlap = aggregate(nrsets~nrsets, feats_nrsets, length)
-write.table(feat_set_overlap, 'overlap', row.names=F, quote=F, sep='\t')
+feat_set_overlap = aggregate(feat~nrsets, feats_nrsets, length)
+write.table(feat_set_overlap, glue('{feattype}__overlap'), row.names=F, quote=F, sep='\t')
 
 
 is_isobaric = length(grep('plex', names(feats)))
@@ -52,19 +54,20 @@ if (is_isobaric) {
   colnames(summary_psms) = c('Set', paste('no_psm_', feattype, sep=''))
   nrpsms = aggregate(psmcount~get(featcol)+Set, nrpsms, max)
   nrpsms = transform(nrpsms, setrank=ave(psmcount, Set, FUN = function(x) rank(x, ties.method = "random")))
+  nrpsms$Set = sub('^X([^a-zA-Z])', '\\1', nrpsms$Set)
   ggp = ggplot(nrpsms, aes(y=psmcount, x=setrank)) +
     geom_step(aes(color=Set), size=2) + scale_y_log10() + xlab('Rank') + ylab('# PSMs quanted') +
     theme_bw() + 
     theme(axis.title=element_text(size=15), axis.text=element_text(size=10), legend.position="top", legend.text=element_text(size=10), legend.title=element_blank()) +
     scale_x_reverse()
   p = ggplotly(ggp, width=400) %>%
-          layout(legend = list(orientation = 'h', x = 0, y = 1.1, xanchor='left', yanchor='bottom'))
+          layout(legend = list(title='', orientation = 'h', x = 0, y = 1.1, xanchor='left', yanchor='bottom'))
   htmlwidgets::saveWidget(p, 'iso_nrpsms.html', selfcontained=F)
 }
 
 # Amount of features
 overlap = na.exclude(feats[qcols])
-overlap = dim(overlap[apply(overlap, 1, function(x) any(x<conflvl)),])[1]
+overlap = length(overlap[apply(overlap, 1, function(x) any(x<conflvl)),])
 if (feattype == 'peptides') {
   qvals_long$nrprots = lengths(regmatches(qvals_long$Protein.s., gregexpr(';', qvals_long$Protein.s.))) + 1
 } else {
@@ -88,14 +91,16 @@ if (feattype == 'peptides') {
   missing_df = data.frame(Set=missing, All=missingvals, nonshared=missingvals)
   names(missing_df) = c('Set', 'All', 'Non-shared (unique)')
   am_prots = rbind(am_prots, missing_df)
-  write.table(am_prots[,c(1,3)], 'summary.txt', row.names=F, quote=F, sep='\t')
+  am_prots$Set = sub('^X([^a-zA-Z])', '\\1', am_prots$Set)
+  write.table(am_prots[,c(1,3)], glue('{feattype}__summary.txt'), row.names=F, quote=F, sep='\t')
   am_prots = pivot_longer(am_prots, !Set, names_to='peptype', values_to='pepcount')
+
   ggp = ggplot(am_prots) +
     coord_flip() + ylab('# identified') + theme_bw() + theme(axis.title=element_text(size=15), axis.text=element_text(size=10), axis.title.y=element_blank(), legend.text=element_text(size=10), legend.title=element_blank(), legend.position='top', plot.title=element_text(size=15)) +
     geom_bar(aes(Set, y=pepcount, fill=peptype), stat='identity', position='dodge') +
     geom_text(data=subset(am_prots, peptype=='All'), aes(Set, pepcount/2, label=pepcount), colour="white", size=7, nudge_x=-0.25) + 
-    geom_text(data=subset(am_prots, peptype=='Non-shared (unique)'), aes(Set, pepcount/2, label=pepcount), colour="white", size=7, nudge_x=+0.25) + 
-	ggtitle(paste('Overlap for all sets: ', overlap, '\nTotal uniques: ', totalunique))
+    geom_text(data=subset(am_prots, peptype=='Non-shared (unique)'), aes(Set, pepcount/2, label=pepcount), colour="white", size=7, nudge_x=+0.25)
+    writeLines(c(glue('Overlap for all sets: {overlap}'), glue('Total uniques: {totalunique}')), 'nrfeats__text.html')
 
 } else {
   am_prots = aggregate(get(featcol) ~ Set, am_prots, length)
@@ -121,15 +126,18 @@ if (feattype == 'peptides') {
     colnames(summary)[ncol(summary)] = paste('nr_', feattype, sep='')
   }
   summary[is.na(summary)] = 0
-  write.table(summary, 'summary.txt', row.names=F, quote=F, sep='\t')
+  summary$Set = sub('^X([^a-zA-Z])', '\\1', summary$Set)
+  am_prots$Set = sub('^X([^a-zA-Z])', '\\1', am_prots$Set)
+  write.table(summary, glue('{feattype}__summary.txt'), row.names=F, quote=F, sep='\t')
   ggp = ggplot(am_prots) +
     coord_flip() + ylab('# identified') + theme_bw() + theme(axis.title=element_text(size=15), axis.text=element_text(size=10), axis.title.y=element_blank(), plot.title=element_text(size=15)) +
     geom_bar(aes(Set, y=accession), stat='identity') +
-    geom_text(aes(Set, accession/2, label=accession), colour="white", size=10) + ggtitle(paste('Overlap for all sets: ', overlap, '\nTotal identified: ', nrow(feats)))
+    geom_text(aes(Set, accession/2, label=accession), colour="white", size=10) 
+  writeLines(c(glue('Overlap for all sets: {overlap}'), glue('Total identified: {nrow(feats)}')), 'nrfeats__text.html')
 }
 
-p = ggplotly(ggp, width=400) %>%
-          layout(legend = list(orientation = 'h', x = 0, y = 1.1, xanchor='left', yanchor='bottom'))
+p = ggplotly(ggp, width=400, height=vert_height) %>%
+          layout(title='', legend = list(orientation = 'h', x = 0, y = 1.1, xanchor='left', yanchor='bottom'))
 htmlwidgets::saveWidget(p, 'nrfeats.html', selfcontained=F)
 
 
@@ -140,10 +148,9 @@ if (feattype == 'proteins') {
   ggp = ggplot(feats) + geom_histogram(aes(Coverage), bins=50) + theme_bw()
   # Two steps so ggplot_build can return something
   ggp = ggp + geom_text(x=max(feats$Coverage) * 0.75, y=max(ggplot_build(ggp)$data[[1]]$count)*0.75, label=sprintf('Median: %.3f', covmed))
+  p = ggplotly(ggp, width=400)
+  htmlwidgets::saveWidget(p, 'coverage.html', selfcontained=F)
 }
-p = ggplotly(ggp, width=400) %>%
-    layout(legend = list(orientation = 'h', x = 0, y = 1.1, xanchor='left', yanchor='bottom'))
-htmlwidgets::saveWidget(p, 'coverage.html', selfcontained=F)
 
 #isobaric
 # first get a fullsamplename to set lookup, if we have a sampletable
@@ -163,21 +170,26 @@ if (is_isobaric) {
   # First produce the boxplots
   overlap = na.exclude(feats[c(tmtcols, qcols)])
   overlap = dim(overlap[apply(overlap[qcols], 1, function(x) any(x<conflvl)),])[1]
-  tmt = pivot_longer(feats, any_of(tmtcols), names_to='Set', values_to='value')
+  tmt = pivot_longer(feats, any_of(tmtcols), names_to='channelset', values_to='value')
   if (use_sampletable) {
-    tmt$Set = apply(tmt, 1, function(x) { key = sub('_[a-z0-9]*plex', '', x[['Set']]); return (setlookup[[key]]) })
+    tmt$Set = apply(tmt, 1, function(x) { key = sub('_[a-z0-9]*plex', '', x[['channelset']]); return (setlookup[[key]]) })
   } else { 
-    tmt$Set = sub('_[a-z0-9]*plex.*', '', tmt$Set)
+    tmt$Set = sub('_[a-z0-9]*plex.*', '', tmt$channelset)
   }
-  tmt$Set = sub('.*_[a-z].*[0-9]*plex_', '', tmt$Set)
-  ggp = ggplot(na.exclude(tmt[c('Set', 'value')])) + geom_boxplot(aes(Set, value, fill=Set), position=position_dodge(width=1)) +
-    coord_flip() + ylab('Fold change') + xlab('Channels') + theme_bw() + 
-    theme(axis.title=element_text(size=20), axis.text=element_text(size=15), plot.title=element_text(size=20) ) + 
-    theme(legend.text=element_text(size=15), legend.position="top", legend.title=element_blank()) +
-    ggtitle(paste('Overlap with values in \nall ', length(tmtcols), 'channels: ', overlap))
+  tmt$channel = sub('.*_[a-z].*[0-9]*plex_', '', tmt$channelset)
+  ggp = ggplot(na.exclude(tmt[c('Set', 'value', 'channel')]), aes(x=Set, y=value, fill=channel)) +
+	  geom_boxplot(position=position_dodge(width=1), linewidth=0.3) +
+    coord_flip() + ylab('Fold change') +
+    xlab('Channels') + theme_bw() + 
+    theme(axis.title=element_text(size=10), axis.text=element_text(size=10)) + 
+    theme(legend.text=element_text(2), legend.title=element_blank()) +
   if (min(na.exclude(tmt$value)) >= 0) { ggp = ggp + scale_y_log10() }
-  p = ggplotly(ggp, width=400) %>%
-          layout(legend = list(orientation = 'h', x = 0, y = 1.1, xanchor='left', yanchor='bottom'))
+  p = ggplotly(ggp, width=400, height=vert_height_iso) %>%
+    layout(boxmode='group',
+      legend = list(title='', orientation = 'h', x = 0, y = 1.1, xanchor='left', yanchor='bottom'
+      )
+    )
+  writeLines(c(glue('Overlap with values in all {length(tmtcols)} channels: {overlap}')), 'isobaric__text.html')
   htmlwidgets::saveWidget(p, 'isobaric.html', selfcontained=F)
 
   # Also produce normalization factor plot
@@ -187,11 +199,11 @@ if (is_isobaric) {
     norms$variable = sub('[a-z].*[0-9]*plex_', '', norms$variable)
     ggp = ggplot(norms, aes(Set, value, group=variable)) + 
       geom_col(aes(fill=variable), position=position_dodge(width=1)) +
-      geom_text(aes(y=min(norms$value), label=round(value, 4)), position=position_dodge(width=1), colour="gray20", size=3, hjust=0) +
+      geom_text(aes(y=min(value), label=round(value, 4)), position=position_dodge(width=1), colour="gray20", size=3, hjust=0) +
       coord_flip() + ylab('Normalizing factor') + xlab('Channels') + theme_bw() + 
       theme(axis.title=element_text(size=15), axis.text=element_text(size=10)) + 
       theme(legend.text=element_text(size=10), legend.position="top", legend.title=element_blank())
-    p = ggplotly(ggp, width=400) %>%
+    p = ggplotly(ggp, width=400, height=vert_height_iso) %>%
             layout(legend = list(orientation = 'h', x = 0, y = 1.1, xanchor='left', yanchor='bottom'))
     htmlwidgets::saveWidget(p, 'normfactors.html', selfcontained=F)
   }
@@ -209,8 +221,9 @@ if (is_isobaric) {
       agg_nrpsms = aggregate(psmcount~get(featcol)+Set, nrpsms, max)
     }
     agg_nrpsms = transform(agg_nrpsms, setrank=ave(psmcount, Set, FUN = function(x) rank(x, ties.method = "random")))
+    agg_nrpsms$Set = sub('^X([^a-zA-Z])', '\\1', agg_nrpsms$Set)
     ggp = ggplot(agg_nrpsms, aes(y=psmcount, x=setrank)) +
-      geom_step(aes(color=Set), size=2) + scale_y_log10() + xlab('Rank') + ylab('# PSMs quanted') +
+      geom_step(aes(color=Set), linewidth=2) + scale_y_log10() + xlab('Rank') + ylab('# PSMs quanted') +
       theme_bw() + 
       theme(axis.title=element_text(size=15), axis.text=element_text(size=10), legend.position="top", legend.text=element_text(size=10), legend.title=element_blank()) +
       scale_x_reverse()
@@ -223,13 +236,14 @@ if (is_isobaric) {
   if (nrow(overlap) > 0) {
     feats_in_set = aggregate(psmcount~Set, data=nrpsms, length) 
     feats_in_set$percent_single = aggregate(psmcount~Set, data=nrpsms, function(x) length(grep('[^01]', x)))$psmcount / feats_in_set$psmcount * 100
+    feats_in_set$Set = sub('^X([^a-zA-Z])', '\\1', feats_in_set$Set)
     ggp = ggplot(feats_in_set, aes(Set, percent_single)) +
       geom_col(aes(fill=Set)) + theme_bw() + ylab('% of identifications') +
       theme(axis.title=element_text(size=15), axis.text=element_text(size=10), legend.position="top", legend.text=element_text(size=10), legend.title=element_blank())
-  }
     p = ggplotly(ggp, width=400) %>%
             layout(legend = list(orientation = 'h', x = 0, y = 1.1, xanchor='left', yanchor='bottom'))
     htmlwidgets::saveWidget(p, 'percentage_onepsm.html', selfcontained=F)
+  }
 }
 
 
@@ -243,15 +257,16 @@ if (feattype != 'peptides') {
   #, na.rm=T)
     if (nrow(na.exclude(nrpep_set['ms1']))) {
       nrpep_set$Set = sub('_MS1.area.*', '', nrpep_set$Set)
+      nrpep_set$Set = sub('^X([^a-zA-Z])', '\\1', nrpep_set$Set)
       nrpep_set = aggregate(ms1~Protein.s.+Set, nrpep_set, length) 
       nrpep_set = transform(nrpep_set, setrank=ave(ms1, Set, FUN = function(x) rank(x, ties.method = "random")))
       ggp = ggplot(nrpep_set, aes(y=ms1, x=setrank)) +
-        geom_step(aes(color=Set), size=2) + scale_y_log10() + xlab('Rank') + ylab('# peptides with MS1') +
+        geom_step(aes(color=Set), linewidth=2) + scale_y_log10() + xlab('Rank') + ylab('# peptides with MS1') +
         theme_bw() + 
         theme(axis.title=element_text(size=15), axis.text=element_text(size=10), legend.position="top", legend.text=element_text(size=10), legend.title=element_blank()) +
         scale_x_reverse()
       p = ggplotly(ggp, width=400) %>%
-              layout(legend = list(orientation = 'h', x = 0, y = 1.1, xanchor='left', yanchor='bottom'))
+              layout(legend = list(title='', orientation = 'h', x = 0, y = 1.1, xanchor='left', yanchor='bottom'))
       htmlwidgets::saveWidget(p, 'ms1nrpeps.html', selfcontained=F)
     }
   }
@@ -263,6 +278,7 @@ if (length(precursorcols) > 1) {
     if (nrow(feats[complete.cases(feats[precursorcols]), ])) {
       parea = pivot_longer(feats, any_of(precursorcols[2:length(precursorcols)]), names_to='Set', values_to='ms1')
       parea$Set = sub('_MS1.*', '', parea$Set)
+      parea$Set = sub('^X([^a-zA-Z])', '\\1', parea$Set)
       parea = parea[complete.cases(parea$ms1), ]
       print(head(parea[c('Set', 'ms1')]))
       ggp = ggplot(parea) + 
@@ -271,8 +287,8 @@ if (length(precursorcols) > 1) {
       ggp = ggplot(data.frame()) + geom_point() + xlim(0, 10) + ylim(0, 100) + theme_bw() +
             geom_text(aes(5, 50, label=sprintf('No MS1 found in %s', feattype)))
     }
-    p = ggplotly(ggp, width=400) %>%
-            layout(legend = list(orientation = 'h', x = 0, y = 1.1, xanchor='left', yanchor='bottom'))
+    p = ggplotly(ggp, width=400, height=vert_height) %>%
+            layout(legend = list(title='', orientation = 'h', x = 0, y = 1.1, xanchor='left', yanchor='bottom'))
     htmlwidgets::saveWidget(p, 'precursorarea.html', selfcontained=F)
 }
 
@@ -294,7 +310,7 @@ if (length(deqpval_cols)) {
       feats[, logpname] = -log10(feats[, sprintf('%s_sca.P.Value', comparison)])
       ggp = ggplot(feats, aes(x=get(sprintf('%s_logFC', comparison)), y=get(logpname), label=feat)) +
         geom_point(size=0.5 )+ theme_bw(base_size = 16) + # change theme
-        theme(axis.title=element_text(size=25), axis.text=element_text(size=20)) +
+        theme(axis.title=element_text(size=15), axis.text=element_text(size=10)) +
         xlab(sprintf("log2 FC(%s)", compnice)) + # x-axis label
         ylab('-log10 P-value') + # y-axis label
         geom_vline(xintercept = c(-1,1), colour = "red") + # Add fold change cutoffs
@@ -304,7 +320,7 @@ if (length(deqpval_cols)) {
 	    topfeats = feats[order(feats[,logpname], decreasing=TRUE)[1:10], ]
         ggp = ggp + geom_text(data=topfeats)
       p = ggplotly(ggp, width=400) %>%
-              layout(legend = list(orientation = 'h', x = 0, y = 1.1, xanchor='left', yanchor='bottom'))
+              layout(legend = list(title='', orientation = 'h', x = 0, y = 1.1, xanchor='left', yanchor='bottom'))
       htmlwidgets::saveWidget(p, glue('deqms_volcano_{comparison}.html'), selfcontained=F)
       }
     }
@@ -331,10 +347,10 @@ if (is_isobaric && use_sampletable) {
     contributions$pc = sub('PC', '', rownames(contributions))
     ggp = ggplot(data=contributions, aes(x=reorder(pc, -contrib), y=contrib)) +
       geom_bar(stat='identity') +
-      theme_bw() + theme(axis.title=element_text(size=15), axis.text=element_text(size=5)) +
+      theme_bw() + theme(axis.title=element_text(size=15), axis.text=element_text(size=10)) +
       ylab("Contribution (%)") + xlab('PC (ranked by contribution)')
     p = ggplotly(ggp, width=400) %>%
-            layout(legend = list(orientation = 'h', x = 0, y = 1.1, xanchor='left', yanchor='bottom'))
+            layout(legend = list(title='', orientation = 'h', x = 0, y = 1.1, xanchor='left', yanchor='bottom'))
     htmlwidgets::saveWidget(p, glue('scree.html'), selfcontained=F)
 
     # PCA plot
@@ -346,7 +362,7 @@ if (is_isobaric && use_sampletable) {
   		       legend.position="top", legend.text=element_text(size=10), legend.title=element_blank()) +
       xlab(sprintf("PC1 (%s%%)", contributions$contrib[1])) + ylab(sprintf("PC2 (%s%%)", contributions$contrib[2]))
     p = ggplotly(ggp, width=400) %>%
-            layout(legend = list(orientation = 'h', x = 0, y = 1.1, xanchor='left', yanchor='bottom'))
+            layout(legend = list(title='', orientation = 'h', x = 0, y = 1.1, xanchor='left', yanchor='bottom'))
     htmlwidgets::saveWidget(p, glue('pca.html'), selfcontained=F)
   }
 }

@@ -116,7 +116,7 @@ p = ggplotly(ggp, width=400) %>%
         layout(legend = list(orientation = 'h', x = 0, y = 1.1, xanchor='left', yanchor='bottom'))
 # Work around since plotly does not honor above legend.title=element_blank call
 p$x$layout$legend$title$text = ''
-htmlwidgets::saveWidget(p, 'ptmpsmfeats.html', selfcontained=F)
+htmlwidgets::saveWidget(p, 'psm__ptms.html', selfcontained=F)
 
 
 # nr peptides with PTMs
@@ -128,7 +128,7 @@ p = ggplotly(ggp, width=400) %>%
         layout(legend = list(orientation = 'h', x = 0, y = 1.1, xanchor='left', yanchor='bottom'))
 # Work around since plotly does not honor above legend.title=element_blank call
 p$x$layout$legend$title$text = ''
-htmlwidgets::saveWidget(p, 'ptmpepfeats.html', selfcontained=F)
+htmlwidgets::saveWidget(p, 'peptide__ptms.html', selfcontained=F)
 
 
 
@@ -143,7 +143,7 @@ if ('Master.protein.s.' %in% names(psms)) {
           layout(legend = list(orientation = 'h', x = 0, y = 1.1, xanchor='left', yanchor='bottom'))
   # Work around since plotly does not honor above legend.title=element_blank call
   p$x$layout$legend$title$text = ''
-  htmlwidgets::saveWidget(p, 'ptmprotfeats.html', selfcontained=F)
+  htmlwidgets::saveWidget(p, 'protein__ptms.html', selfcontained=F)
 
     colnames(prot_count) = c('bioset', 'ptmprotcount')
     featcount_summ = merge(featcount_summ, prot_count, all=T)
@@ -157,7 +157,7 @@ p = ggplotly(ggp, width=400) %>%
         layout(legend = list(orientation = 'h', x = 0, y = 1.1, xanchor='left', yanchor='bottom'))
 # Work around since plotly does not honor above legend.title=element_blank call
 p$x$layout$legend$title$text = ''
-htmlwidgets::saveWidget(p, 'psmptmresidues.html', selfcontained=F)
+htmlwidgets::saveWidget(p, 'psm__residues.html', selfcontained=F)
 
 
 
@@ -168,7 +168,7 @@ p = ggplotly(ggp, width=400) %>%
         layout(legend = list(orientation = 'h', x = 0, y = 1.1, xanchor='left', yanchor='bottom'))
 # Work around since plotly does not honor above legend.title=element_blank call
 p$x$layout$legend$title$text = ''
-htmlwidgets::saveWidget(p, 'psmpepresidues.html', selfcontained=F)
+htmlwidgets::saveWidget(p, 'peptide__residues.html', selfcontained=F)
 
 
 anysetsum$bioset = 'Combined sets'

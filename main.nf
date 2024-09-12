@@ -1049,6 +1049,7 @@ println(params.onlypeptides)
     params.pepconflvl,
     params.proteinconflvl,
     all_setnames,
+    ptm_ch,
   )
   
 
@@ -1139,6 +1140,8 @@ if (!params.quantlookup) {
   target_psmtable.map { it[1] }
   .concat(psmtables_ch | filter { it[0] == 'decoy' } | map { it[1] })
   .concat(psmlookups_ch | map { it[1] })
+  .concat(ptm_ch.flatten())
+  .concat(REPORTING.out.flatten())
   .subscribe { it.copyTo("${params.outdir}/${it.baseName}.${it.extension}") }
 }
 

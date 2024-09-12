@@ -83,23 +83,26 @@ featplotnames = [('nrfeats', 'Identifications'),
           ]
 
 featplotfns = {
-        'coverage': 'coverage.html',
-        'ms1nrpeps': 'ms1nrpeps.html',
-        'precursorarea': 'precursorarea.html',
-        'nrfeats': 'nrfeats.html',
-        'nrpsms': 'iso_nrpsms.html',
-        'nrpsmsoverlapping': 'nrpsmsoverlapping.html',
-        'percentage_onepsm': 'percentage_onepsm.html',
-        'isobaric': 'isobaric.html',
-        'normfactors': 'normfactors.html',
+        'coverage': ('coverage.html', False),
+        'ms1nrpeps': ('ms1nrpeps.html', False),
+        'precursorarea': ('precursorarea.html', False),
+        'nrfeats': ('nrfeats.html', 'nrfeats__text.html'),
+        'nrpsms': ('iso_nrpsms.html', False),
+        'nrpsmsoverlapping': ('nrpsmsoverlapping.html', False),
+        'percentage_onepsm': ('percentage_onepsm.html', False),
+        'isobaric': ('isobaric.html', 'isobaric__text.html'),
+        'normfactors': ('normfactors.html', False),
         }
 featplots = defaultdict(defaultdict)
-for plotname, pfn in featplotfns.items():
+for plotname, (pfn, textfn) in featplotfns.items():
     for featname, feattitle in featnames:
         pdir = f'{featname}__plothtml'
         pfile = os.path.join(pdir, pfn)
         if os.path.exists(pfile):
             featplots[plotname][featname] = get_plotly_html(pfile)
+            if textfn:
+                with open(os.path.join(pdir, textfn)) as fp:
+                    featplots[plotname][f'{featname}__text'] = fp.read().strip().split('\n')
         else:
             featplots[plotname][featname] = False
     if all(x is False for x in featplots[plotname].values()):
