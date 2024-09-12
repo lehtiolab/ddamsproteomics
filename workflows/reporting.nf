@@ -58,17 +58,17 @@ process countMS2sPerPlate {
       platescans = {p: 0 for p in platesets}
       with open('amount_spectra_files', 'w') as fp:
           for setname, fn, scans in cursor:
-              setplate = '{}_{}'.format(setname, fileplates[fn][setname])
+              fp.write(f'{setname}\\t{fn}\\t{scans}\\n')
+              setplate = f'{setname}_{fileplates[fn][setname]}'
               platescans[setplate] += int(scans)
       with open('scans_per_plate', 'w') as fp:
           for plate, scans in platescans.items():
-              fp.write('{}\\t{}\\n'.format(plate, scans))
+              fp.write(f'{plate}\\t{scans}\\n')
   else:
       # make sure there's an empty file for scans_per_plate if not fractionated
       with open('amount_spectra_files', 'w') as fp, open('scans_per_plate', 'w') as _, open('allplates', 'w') as __:
-          for line in cursor:
-              fp.write('\\t'.join(line))
-              fp.write('\\n')
+          for setname, fn, scans in cursor:
+              fp.write(f'{setname}\\t{fn}\\t{scans}\\n')
   """
 }
 
@@ -80,14 +80,19 @@ process PSMQC {
   container 'lehtiolab/dda_report'
 
   input:
-  tuple path('psms'), path('filescans'), path('platescans'), path('mzmlfrs'), path(oldmzmlfn), val(fractionation)
+  tuple path('psms'), path('filescans'), path('platescans'), path('mzmldef'), path('oldmzmlfn'), val(fractionation), val(has_newmzmls), val(has_oldmzmls)
 
   output:
-  tuple path(platescans), path("psmplothtml")
+  tuple path('platescans'), path('amount_psms_files'), path("psmplothtml"), path('psmtable_summary.txt')
 
   script:
+  newmzmls = has_newmzmls ? 'mzmldef' : 'FALSE'
+  oldmzmls = has_oldmzmls ? 'oldmzmlfn' : 'FALSE'
   """
-  qc_psms.R ${fractionation ? 'TRUE' : 'FALSE'} ${oldmzmlfn}
+  sed '1s/\\#SpecFile/SpectraFile/' < psms > psms_clean
+  qc_psms.R ${fractionation ? 'TRUE' : 'FALSE'} ${newmzmls} ${oldmzmls}
+  mkdir psmplothtml
+  mv *.html psmplothtml/
   """
 }
 
@@ -113,6 +118,9 @@ process featQC {
      --conflvl $conflvl \
      ${parse_normfactors ? '--normtable allnormfacs' : ''}
 
+  mkdir ${htmldir}
+  mv *.html ${htmldir}/
+  """
 }
 
 

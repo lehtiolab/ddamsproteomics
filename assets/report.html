@@ -26,8 +26,12 @@
           <li id="rundatatab"><a>Run data</a></li>
           <li id="psmqctab"> <a> PSMs </a> </li>
           <li id="featqctab"> <a>Peptides/proteins/genes </a> </li>
+          {% if ptmtables.summary %}
           <li id="ptmqctab"> <a> PTMs </a> </li>
+          {% endif %}
+          {% if expplots.pca %}
           <li id="deqctab"><a>Expression</a> </li>
+          {% endif %}
         </ul>
       </div>
     </div>
@@ -80,6 +84,7 @@
         {% endfor %}
       </div>
 
+      {% if ptmtables.summary %}
       <h4 class="title is-4">PTMs</h4>
       <div class="columns">
         <div class="column">
@@ -143,6 +148,7 @@
           </table>
         </div>
       </div>
+      {% endif %}
       
     </div>
 
@@ -195,14 +201,12 @@
           <h4 class="title is-4"># of missed cleavages</h4>
           {{ plots.miscleav }}
         </div>
-        <div class="column">
         {% if plots.isomissvals %}
+        <div class="column">
           <h4 class="title is-4">Isobaric missing values</h4>
           {{ plots.isomissvals }}
-        {% else %}
-          <h4 class="title is-4">No isobaric or no missing values</h4>
-        {% endif %}
         </div>
+        {% endif %}
       </div>
 
       {% if plateplots.fryield %}
@@ -258,21 +262,29 @@
 
     <div id="featqcpage" class="mt-5 container">
       {% for plotname, plottitle in featplotnames %}
-      <h4 class="title is-4">{{ plottitle }}</h4>
-      <div class="columns">
-        {% for fname, ftitle in featnames %}
-        {% if featplots[plotname][fname] %}
-        <div class="column">
-          <h5 class="title is-5">{{ ftitle }}</h5>
-          {{ featplots[plotname][fname] }}
+      {% if featplots[plotname] %}
+      <div class="container">
+        <h4 class="title is-4">{{ plottitle }}</h4>
+        <div class="columns">
+          {% for fname, ftitle in featnames %}
+          {% if featplots[plotname][fname] %}
+          <div class="column">
+            <h5 class="title is-5">{{ ftitle }}</h5>
+            {% for line in featplots[plotname][fname + '__text'] %}
+            <p>{{ line }}</p>
+            {% endfor %}
+            {{ featplots[plotname][fname] }}
+          </div>
+          {% endif %}
+          {% endfor %}
         </div>
-        {% endif %}
-        {% endfor %}
       </div>
+      {% endif %}
       {% endfor %}
 
     </div>
 
+    {% if ptmtables.summary %}
     <div id="ptmqcpage" class="mt-5 container">
 
       <h4 class="title is-4">PTM numbers</h3>
@@ -296,7 +308,9 @@
       </div>
 
     </div>
+    {% endif %}
 
+    {% if expplots.pca %}
     <div id="deqcpage" class="mt-5 container">
       {% for plotname, plottitle in expplotnames %}
       <h4 class="title is-4">{{ plottitle }}</h4>
@@ -312,6 +326,7 @@
       </div>
       {% endfor %}
 
+      {% if deqmsplots %}
       <h4 class="title is-4">DEqMS<h4>
       <div class="columns">
         {% for fname, ftitle in featnames %}
@@ -327,8 +342,10 @@
         {% endif %}
         {% endfor %}
       </div>
+      {% endif %}
 
     </div>
+    {% endif %}
 
     <script type="text/javascript">
       let tabs = [
@@ -336,8 +353,12 @@
         ['rundata', document.getElementById('rundatatab'), document.getElementById('rundatapage')],
         ['psmqc', document.getElementById('psmqctab'), document.getElementById('psmqcpage')],
         ['featqc', document.getElementById('featqctab'), document.getElementById('featqcpage')],
+        {% if ptmtables.summary %}
         ['ptmqc', document.getElementById('ptmqctab'), document.getElementById('ptmqcpage')],
+        {% endif %}
+        {% if expplots.pca %}
         ['deqc', document.getElementById('deqctab'), document.getElementById('deqcpage')],
+        {% endif %}
       ];
       tabs.forEach(t => {
         t[1].addEventListener('click', e => toggleTab(t[0]));
