@@ -2,9 +2,8 @@ include { listify; stripchars_infile; get_field_nr; get_field_nr_multi; parse_is
 
 
 process luciphorPrep {
-  container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-    'https://depot.galaxyproject.org/singularity/msstitch:3.16--pyhdfd78af_0' :
-    'quay.io/biocontainers/msstitch:3.16--pyhdfd78af_0'}"
+
+  label 'msstitch'
 
   input:
   tuple val(setname), path(allpsms), val(locptms), val(stab_ptms), val(all_non_ptm_mods), path(msgfmodfile)
@@ -26,10 +25,6 @@ process luciphorPrep {
 
 
 process luciphorPTMLocalizationScoring {
-
-  container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-    'https://depot.galaxyproject.org/singularity/luciphor2:2020_04_03--hdfd78af_1' :
-    'quay.io/biocontainers/luciphor2:2020_04_03--hdfd78af_1'}"
 
   input:
   tuple val(setname),  path(template), path('lucipsms'), path(mzmls), val(activation), val(maxpeplen), val(maxcharge), val(minpsms_luciphor)
@@ -53,17 +48,19 @@ process luciphorPTMLocalizationScoring {
   export OUTFILE=luciphor.out
   cat "${template}" | envsubst > lucinput.txt
 
-  luciphor2 -Xmx${task.memory.toGiga()}G lucinput.txt 2>&1 | grep 'not have enough PSMs' && echo 'Not enough PSMs for luciphor FLR calculation in set ${setname}' > warnings
+  if luciphor2 -Xmx${task.memory.toGiga()}G lucinput.txt 2>&1 | grep 'not have enough PSMs'
+  then
+    echo 'Not enough PSMs for luciphor FLR calculation in set ${setname}' > warnings
+  fi
   """
 }
 
 process luciphorParse {
+
+  label 'msstitch'
+
   // Puts luciphor data back into the PTM PSM table, also adds flanking seqs - if there 
   // is no luciphor data due to errors, it will put NA for luciphor columns
-
-  container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-    'https://depot.galaxyproject.org/singularity/msstitch:3.16--pyhdfd78af_0' :
-    'quay.io/biocontainers/msstitch:3.16--pyhdfd78af_0'}"
 
   input:
   tuple val(setname), path(luciphor_out), path('all_scores.debug'), path('psms'), val(ptm_minscore_high), path(msgfmodfile), val(lab_ptms), val(stab_ptms), val(all_non_ptm_mods), path(tdb)
@@ -85,9 +82,8 @@ process luciphorParse {
 
 
 process stabilePTMPrep {
-  container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-    'https://depot.galaxyproject.org/singularity/msstitch:3.16--pyhdfd78af_0' :
-    'quay.io/biocontainers/msstitch:3.16--pyhdfd78af_0'}"
+
+  label 'msstitch'
 
   input:
   tuple val(setname), val(ptms), path('psms'), path(tdb), val(non_ptm_mods), val(lab_ptms), path(msgfmods)
@@ -107,10 +103,9 @@ process stabilePTMPrep {
 }
 
 process createPTMTable {
-  container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-    'https://depot.galaxyproject.org/singularity/msstitch:3.16--pyhdfd78af_0' :
-    'quay.io/biocontainers/msstitch:3.16--pyhdfd78af_0'}"
   
+  label 'msstitch'
+
   input:
   tuple val(setnames), path('ptms*'), val(has_newptms), path('speclup.sql'), path(cleaned_oldptms)
 
@@ -140,9 +135,8 @@ process createPTMTable {
 }
 
 process prepTotalProteomeInput {
-  container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-    'https://depot.galaxyproject.org/singularity/msstitch:3.16--pyhdfd78af_0' :
-    'quay.io/biocontainers/msstitch:3.16--pyhdfd78af_0'}"
+
+  label 'msstitch'
 
   input:
   tuple val(setname), path(tppsms), val(isobtype), val(denom), val(dividebycol), val(normalize), val(keepnapsms_quant)
@@ -182,9 +176,8 @@ process prepTotalProteomeInput {
 
 
 process PTMPeptides {
-  container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-    'https://depot.galaxyproject.org/singularity/msstitch:3.16--pyhdfd78af_0' :
-    'quay.io/biocontainers/msstitch:3.16--pyhdfd78af_0'}"
+
+  label 'msstitch'
 
   input:
   tuple val(setname), path('ptms.txt'), path(tp_accessions), path('normalize_factors'),  val(isobtype), val(denom), val(normalize), val(keepnapsms_quant), val(do_ms1)
@@ -211,9 +204,8 @@ process PTMPeptides {
 
 
 process mergePTMPeps {
-  container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-    'https://depot.galaxyproject.org/singularity/msstitch:3.16--pyhdfd78af_0' :
-    'quay.io/biocontainers/msstitch:3.16--pyhdfd78af_0'}"
+
+  label 'msstitch'
  
   input:
   tuple val(setnames), val(tpnormalized), path(peptides), path('ptmlup.sql'), val(do_ms1), val(do_isobaric)
@@ -234,7 +226,9 @@ process mergePTMPeps {
 
 
 process addMasterProteinsGenes {
-  container "python:3.12" // Python container has join and we already use it
+
+  // Runs no python but that container has the tools needed
+  label 'python'
 
   input:
   tuple path(peptides), path('ptmpsms')

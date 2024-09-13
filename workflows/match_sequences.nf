@@ -3,9 +3,8 @@ include { get_field_nr; listify; get_regex_specialchars} from '../modules.nf'
 process createTrypticMatchDB {
   /* Create a sequence match SQLite database to be used for filtering
   PSM tables and percolator */
-  container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-    'https://depot.galaxyproject.org/singularity/msstitch:3.16--pyhdfd78af_0' :
-    'quay.io/biocontainers/msstitch:3.16--pyhdfd78af_0'}"
+
+  label 'msstitch'
 
   input:
   tuple path(sequences), val(maxmiscleav), val(minpeplen)
@@ -26,16 +25,13 @@ process createTrypticMatchDB {
 
 
 process markPeptidesPresentInDB {
-  container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-    'https://depot.galaxyproject.org/singularity/msstitch:3.16--pyhdfd78af_0' :
-    'quay.io/biocontainers/msstitch:3.16--pyhdfd78af_0'}"
+
+  label 'msstitch'
+
   /* Match peptide sequences to user-provided sequences in a storeseq SQLite DB.
   Mark peptides that match with a 1, else 0 in a new column.
   Field name for column will be user-provided 
   */
-  container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-    'https://depot.galaxyproject.org/singularity/msstitch:3.16--pyhdfd78af_0' :
-    'quay.io/biocontainers/msstitch:3.16--pyhdfd78af_0'}"
 
   input:
   tuple path(peptides), path(seqdbs)
@@ -63,9 +59,8 @@ process markPeptidesPresentInDB {
 
 
 process joinAnnotatedSeqmatchPeptides {
-  container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-    'https://depot.galaxyproject.org/singularity/sqlite:3.33.0' :
-    'quay.io/biocontainers/sqlite:3.33.0'}"
+
+  label 'sqlite'
 
   input:
   tuple val(acctype), path('feats'), path('peptides'), path(seqdbs)

@@ -3,7 +3,7 @@
 include { listify; stripchars_infile; get_regex_specialchars } from '../modules.nf' 
 
 process countMS2sPerPlate {
-  container "python:3.12"
+  label 'python'
 
 // FIXME this could possibly go into the PSM QC R code?
 
@@ -77,7 +77,8 @@ process PSMQC {
     /* Need plotly from conda install 4.10.4, to get right libs and glue
     not available in biocontainers, so using own container.
     */
-  container 'lehtiolab/dda_report'
+ 
+  container params.report_container
 
   input:
   tuple path('psms'), path('filescans'), path('platescans'), path('mzmldef'), path('oldmzmlfn'), val(fractionation), val(has_newmzmls), val(has_oldmzmls)
@@ -98,7 +99,8 @@ process PSMQC {
 
 
 process featQC {
-  container 'lehtiolab/dda_report'
+
+  container params.report_container
 
   input:
   tuple val(acctype), path('feats'), path(normfacs), path(peptable), path('sampletable'), val(setnames), val(has_sampletable), val(conflvl)
@@ -125,7 +127,8 @@ process featQC {
 
 
 process PTMQC {
-  container 'lehtiolab/dda_report'
+  
+  container params.report_container
 
   input:
   tuple path(ptmpsms), path(peptable)
@@ -144,7 +147,8 @@ process PTMQC {
 
 
 process summaryReport {
-  container 'lehtiolab/dda_report'
+  
+  container params.report_container
 
   input:
   tuple path('platescans'), path(plotlibs), path('psmplots'), path(psm_summary), path(featplots), path(feat_summaries), path(feat_overlaps), path('ptmplots'), path(ptmfiles)
