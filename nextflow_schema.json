@@ -1,0 +1,299 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema",
+  "$id": "https://raw.githubusercontent.com/lehtiolab/ddamsproteomics/master/nextflow_schema.json",
+  "title": "lehtiolab/ddamsproteomics pipeline parameters",
+  "description": "Quantitative DDA MS proteomics pipeline",
+  "type": "object",
+  "definitions": {
+    "input_output_options": {
+      "title": "Input/output options",
+      "type": "object",
+      "fa_icon": "fas fa-terminal",
+      "description": "Define where the pipeline should find input data and save output data.",
+      "required": ["input", "outdir"],
+      "properties": {
+        "input": {
+          "type": "string",
+          "format": "file-path",
+          "exists": true,
+          "schema": "assets/schema_input.json",
+          "mimetype": "text/csv",
+          "pattern": "^\\S+\\.csv$",
+          "description": "Path to comma-separated file containing information about the samples in the experiment.",
+          "help_text": "You will need to create a design file with information about the samples in your experiment before running the pipeline. Use this parameter to specify its location. It has to be a comma-separated file with 3 columns, and a header row.",
+          "fa_icon": "fas fa-file-csv"
+        },
+        "outdir": {
+          "type": "string",
+          "format": "directory-path",
+          "description": "The output directory where the results will be saved. You have to use absolute paths to storage on Cloud infrastructure.",
+          "fa_icon": "fas fa-folder-open",
+          "default": "./results"
+        }
+      }
+    },
+    "max_job_request_options": {
+      "title": "Max job request options",
+      "type": "object",
+      "fa_icon": "fab fa-acquisitions-incorporated",
+      "description": "Set the top limit for requested resources for any single job.",
+      "help_text": "If you are running on a smaller system, a pipeline step requesting more resources than are available may cause the Nextflow to stop the run with an error. These options allow you to cap the maximum resources requested by any single job so that the pipeline will run on your system.\n\nNote that you can not _increase_ the resources requested by any job using these options. For that you will need your own configuration file. See [the nf-core website](https://nf-co.re/usage/configuration) for details.",
+      "properties": {
+        "max_cpus": {
+          "type": "integer",
+          "description": "Maximum number of CPUs that can be requested for any single job.",
+          "default": 16,
+          "fa_icon": "fas fa-microchip",
+          "hidden": true,
+          "help_text": "Use to set an upper-limit for the CPU requirement for each process. Should be an integer e.g. `--max_cpus 1`"
+        },
+        "max_memory": {
+          "type": "string",
+          "description": "Maximum amount of memory that can be requested for any single job.",
+          "default": "128 GB",
+          "fa_icon": "fas fa-memory",
+          "pattern": "^\\d+(\\.\\d+)?\\.?\\s*(K|M|G|T)?B$",
+          "hidden": true,
+          "help_text": "Use to set an upper-limit for the memory requirement for each process. Should be a string in the format integer-unit e.g. `--max_memory '8.GB'`"
+        },
+        "max_time": {
+          "type": "string",
+          "description": "Maximum amount of time that can be requested for any single job.",
+          "default": "10d",
+          "fa_icon": "far fa-clock",
+          "pattern": "^(\\d+\\.?\\s*(s|m|h|d|day)\\s*)+$",
+          "hidden": true,
+          "help_text": "Use to set an upper-limit for the time requirement for each process. Should be a string in the format integer-unit e.g. `--max_time '2.h'`"
+        }
+      }
+    },
+    "generic_options": {
+      "title": "Generic options",
+      "type": "object",
+      "fa_icon": "fas fa-file-import",
+      "description": "Less common options for the pipeline, typically set in a config file.",
+      "help_text": "These options are common to all nf-core pipelines and allow you to customise some of the core preferences for how the pipeline runs.\n\nTypically these options would be set in a Nextflow config file loaded for all pipeline runs, such as `~/.nextflow/config`.",
+      "properties": {
+        "help": {
+          "type": "boolean",
+          "description": "Display help text.",
+          "fa_icon": "fas fa-question-circle",
+          "hidden": true
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "$ref": "#/definitions/input_output_options"
+    },
+    {
+      "$ref": "#/definitions/max_job_request_options"
+    },
+    {
+      "$ref": "#/definitions/generic_options"
+    }
+  ],
+  "properties": {
+    "tracedir": {
+      "type": "string",
+      "default": "./results/pipeline_info"
+    },
+    "clusterOptions": {
+      "type": "boolean"
+    },
+    "external_config_version": {
+      "type": "string",
+      "default": "master"
+    },
+    "name": {
+      "type": "boolean"
+    },
+    "tdb": {
+      "type": "boolean"
+    },
+    "mods": {
+      "type": "boolean"
+    },
+    "locptms": {
+      "type": "boolean"
+    },
+    "ptms": {
+      "type": "boolean"
+    },
+    "totalproteomepsms": {
+      "type": "boolean"
+    },
+    "ptm_minscore_high": {
+      "type": "integer",
+      "default": 50
+    },
+    "phospho": {
+      "type": "boolean"
+    },
+    "maxvarmods": {
+      "type": "integer",
+      "default": 2
+    },
+    "isobaric": {
+      "type": "boolean"
+    },
+    "instrument": {
+      "type": "string",
+      "default": "qe"
+    },
+    "prectol": {
+      "type": "string",
+      "default": "10.0ppm"
+    },
+    "iso_err": {
+      "type": "string",
+      "default": "-1,2"
+    },
+    "frag": {
+      "type": "string",
+      "default": "auto"
+    },
+    "enzyme": {
+      "type": "string",
+      "default": "trypsin"
+    },
+    "plate": {
+      "type": "string"
+    },
+    "fraction": {
+      "type": "string"
+    },
+    "terminicleaved": {
+      "type": "string",
+      "default": "full"
+    },
+    "maxmiscleav": {
+      "type": "integer",
+      "default": -1
+    },
+    "minpeplen": {
+      "type": "integer",
+      "default": 7
+    },
+    "maxpeplen": {
+      "type": "integer",
+      "default": 50
+    },
+    "mincharge": {
+      "type": "integer",
+      "default": 2
+    },
+    "maxcharge": {
+      "type": "integer",
+      "default": 6
+    },
+    "psmconflvl": {
+      "type": "number",
+      "default": 0.01
+    },
+    "pepconflvl": {
+      "type": "number",
+      "default": 0.01
+    },
+    "proteinconflvl": {
+      "type": "number",
+      "default": 0.01
+    },
+    "activation": {
+      "type": "string",
+      "default": "auto"
+    },
+    "mediannormalize": {
+      "type": "boolean"
+    },
+    "minprecursorpurity": {
+      "type": "integer",
+      "default": 0
+    },
+    "ms1qmztol": {
+      "type": "integer",
+      "default": 5
+    },
+    "ms1qrttol": {
+      "type": "integer",
+      "default": 18
+    },
+    "genes": {
+      "type": "boolean"
+    },
+    "ensg": {
+      "type": "boolean"
+    },
+    "fastadelim": {
+      "type": "boolean"
+    },
+    "genefield": {
+      "type": "boolean"
+    },
+    "quantlookup": {
+      "type": "boolean"
+    },
+    "hirief": {
+      "type": "boolean"
+    },
+    "onlypeptides": {
+      "type": "boolean"
+    },
+    "noquant": {
+      "type": "boolean"
+    },
+    "noms1quant": {
+      "type": "boolean"
+    },
+    "hardklor": {
+      "type": "boolean"
+    },
+    "keepnapsmsquant": {
+      "type": "boolean"
+    },
+    "report_seqmatch": {
+      "type": "boolean"
+    },
+    "sampletable": {
+      "type": "boolean"
+    },
+    "deqms": {
+      "type": "boolean"
+    },
+    "targetpsmlookup": {
+      "type": "boolean"
+    },
+    "decoypsmlookup": {
+      "type": "boolean"
+    },
+    "targetpsms": {
+      "type": "boolean"
+    },
+    "decoypsms": {
+      "type": "boolean"
+    },
+    "ptmpsms": {
+      "type": "boolean"
+    },
+    "oldmzmldef": {
+      "type": "boolean"
+    },
+    "strips": {
+      "type": "string",
+      "default": "['3-10':[intercept:3.5478, fr_width:0.0676, tolerance:0.11, fr_amount:72, reverse:false], '3.7-4.9':[intercept:3.5959, fr_width:0.0174, tolerance:0.08, fr_amount:72, reverse:false], '11-6':[intercept:10.3936, fr_width:-0.0762, tolerance:0.11, fr_amount:60, reverse:true], '6-9':[intercept:6.1159, fr_width:0.0336, pi_tolerance:0.11, fr_amount:72, reverse:false], '3.4-4.8':['1-21':[intercept:3.4395, fr_width:0.0221, tolerance:0.08, fr_amount:21, reverse:false], '22-64':[intercept:3.6374, fr_width:0.0128, tolerance:0.08, fr_amount:43, reverse:false], '65-72':[intercept:1.7364, fr_width:0.0424, tolerance:0.08, fr_amount:8, reverse:false]]]"
+    },
+    "minpsms_luciphor": {
+      "type": "integer",
+      "default": 50
+    },
+    "msgfmods": {
+      "type": "string",
+      "default": "/home/jorrit/repos/ddamsproteomics/assets/msgfmods.txt"
+    },
+    "overbook_cpus_factor": {
+      "type": "integer",
+      "default": 1
+    }
+  }
+}

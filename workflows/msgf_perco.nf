@@ -1,7 +1,7 @@
 include { listify; stripchars_infile; parse_isotype } from '../modules.nf'
 
 process createMods {
-  container "python:3.12"
+  label 'python'
 
   input:
   tuple val(setname), val(isobtype), val(maxvarmods), path(msgfmods), val(mods)
@@ -17,9 +17,6 @@ process createMods {
 
 
 process msgfPlus {
-  container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-    'https://depot.galaxyproject.org/singularity/msgf_plus:2023.01.1202--hdfd78af_0' :
-    'quay.io/biocontainers/msgf_plus:2023.01.1202--hdfd78af_0'}"
 
   input:
   tuple val(setname), val(sample), path(mzml), val(maxmiscleav), val(fparams), val(mods), val(setisobaric), val(fractionation), val(minpeplen), val(maxpeplen), val(mincharge), val(maxcharge), path(db), path('mods.txt')
@@ -58,9 +55,6 @@ process msgfPlus {
 
 
 process percolator {
-  container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-    'https://depot.galaxyproject.org/singularity/percolator:3.5--hfd1433f_1' :
-    'quay.io/biocontainers/percolator:3.5--hfd1433f_1'}"
 
   input:
   tuple val(setname), path(mzids), path(tsvs), val(enzyme)
@@ -78,9 +72,8 @@ process percolator {
 
 
 process percolatorToPsms {
-  container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-    'https://depot.galaxyproject.org/singularity/msstitch:3.16--pyhdfd78af_0' :
-    'quay.io/biocontainers/msstitch:3.16--pyhdfd78af_0'}"
+
+  label 'msstitch'
 
   input:
   tuple val(setname), path(perco), path(mzids), path(tsvs), val(psmconf), val(pepconf), val(output_unfiltered)

@@ -1,6 +1,9 @@
 #!/usr/bin/env nextflow
 
-include { msgf_info_map; listify; stripchars_infile; get_regex_specialchars } from './modules.nf' 
+import groovy.json.JsonSlurper
+include { paramsSummaryMap } from 'plugin/nf-validation'
+
+include { msgf_info_map; listify; stripchars_infile; get_regex_specialchars; read_header } from './modules.nf' 
 include { MSGFPERCO } from './workflows/msgf_perco.nf'
 include { PTMANALYSIS } from './workflows/ptms.nf'
 include { MATCH_SEQUENCES } from './workflows/match_sequences.nf'
@@ -80,9 +83,7 @@ process get_software_versions {
 
 
 process createTargetDecoyFasta {
-  container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-    'https://depot.galaxyproject.org/singularity/msstitch:3.15--pyhdfd78af_0' :
-    'quay.io/biocontainers/msstitch:3.15--pyhdfd78af_0'}"
+  label 'msstitch'
  
   input:
   path(tdb)
@@ -125,7 +126,6 @@ def plate_or_no(it, length) {
 
 
 process centroidMS1 {
-  container 'chambm/pwiz-skyline-i-agree-to-the-vendor-licenses:3.0.20066-729ef9c41'
 
   input:
   tuple val(setname), path(infile), val(instr)
@@ -144,9 +144,6 @@ process centroidMS1 {
 
 
 process isobaricQuant {
-  container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-    'https://depot.galaxyproject.org/singularity/openms:2.9.1--h135471a_1' :
-    'quay.io/biocontainers/openms:2.9.1--h135471a_1'}"
 
   input:
   tuple val(setname), val(parsed_infile), path(infile), val(instr), val(isobtype)
@@ -192,9 +189,6 @@ container 'lehtiolab/ddamsproteomics:2.18'
 
 
 process hardklor {
-  container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-    'https://depot.galaxyproject.org/singularity/hardklor:2.3.2--he1b5a44_0' :
-    'quay.io/biocontainers/hardklor:2.3.2--he1b5a44_0'}"
 
   input:
   tuple val(sample), path(infile), path(hkconf)
@@ -213,9 +207,7 @@ process hardklor {
 
 
 process kronik {
-  container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-    'https://depot.galaxyproject.org/singularity/kronik:2.20--h4ac6f70_6' :
-    'quay.io/biocontainers/kronik:2.20--h4ac6f70_6'}"
+
   input:
   tuple val(sample), val(parsed_infile), path('hardklor.out')
   
@@ -229,12 +221,10 @@ process kronik {
 }
 
 
-
 process PTMClean {
+  label 'sqlite'
   // FIXME can be in PTM wf?
   // In PTMS we need to delete all PSMs since we will rebuild it
-  container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-    'https://depot.galaxyproject.org/singularity/sqlite:3.33.0' : 'quay.io/biocontainers/sqlite:3.33.0'}"
 
   input:
   path('db.sqlite')
@@ -268,6 +258,7 @@ process PTMClean {
 
 
 process complementSpectraLookupCleanPSMs {
+  label 'msstitch'
 
   input:
   tuple val(in_setnames), path(mzmlfiles), val(platenames), path(tlup), path(dlup), path(tpsms), path(dpsms), path(ptmpsms)
@@ -284,7 +275,7 @@ process complementSpectraLookupCleanPSMs {
   # If this is an addition to an old lookup, copy it and extract set names
   cp ${tlup} target_db.sqlite
   cp ${dlup} decoy_db.sqlite
-  sqlite3 target_db.sqlite "SELECT set_name FROM biosets" > old_setnames
+  python3 -c "exec(\\"import sqlite3;c=sqlite3.Connection('${tlup}');x=c.execute('SELECT set_name FROM biosets').fetchall();print('\\\\\\n'.join([y[0] for y in x]))\\")" > old_setnames
   # If adding to old lookup: grep new setnames in old and run msstitch deletesets if they match
   # use -x for grep since old_setnames must grep whole word
   if grep -xf old_setnames <(echo ${setnames.join('\n')} )
@@ -309,9 +300,8 @@ process complementSpectraLookupCleanPSMs {
 
 
 process createNewSpectraLookup {
-  container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-    'https://depot.galaxyproject.org/singularity/msstitch:3.15--pyhdfd78af_0' :
-    'quay.io/biocontainers/msstitch:3.15--pyhdfd78af_0'}"
+
+  label 'msstitch'
 
   input:
   tuple val(setnames), file(mzmlfiles), val(platenames)
@@ -329,11 +319,8 @@ process createNewSpectraLookup {
 
 
 process quantLookup {
-  container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-    'https://depot.galaxyproject.org/singularity/msstitch:3.15--pyhdfd78af_0' :
-    'quay.io/biocontainers/msstitch:3.15--pyhdfd78af_0'}"
-
-  // FIXME publishDir "${params.outdir}", mode: 'copy', overwrite: true, saveAs: {it == 'target.sqlite' ? 'quant_lookup.sql' : null }
+  
+  label 'msstitch'
 
   input:
   tuple val(mzmlnames), path(isofns), path(ms1fns), path(tlookup)
@@ -353,9 +340,8 @@ process quantLookup {
 
 
 process createPSMTable {
-  container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-    'https://depot.galaxyproject.org/singularity/msstitch:3.16--pyhdfd78af_0' :
-    'quay.io/biocontainers/msstitch:3.16--pyhdfd78af_0'}"
+
+  label 'msstitch'
 
   input:
   tuple val(td), path(psms), path('lookup'), path(tdb), path(ddb), path('oldpsms'), val(complementary_run), val(do_ms1), val(do_isobaric), val(onlypeptides)
@@ -389,7 +375,8 @@ process createPSMTable {
 
 
 process peptidePiAnnotation {
-  container "python:3.12"
+
+  label 'python'
 
   input:
   tuple path('psms'), val(strips), path('hirief_training_pep')
@@ -407,9 +394,8 @@ process peptidePiAnnotation {
 
 
 process splitPSMs {
-  container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-    'https://depot.galaxyproject.org/singularity/msstitch:3.16--pyhdfd78af_0' :
-    'quay.io/biocontainers/msstitch:3.16--pyhdfd78af_0'}"
+
+  label 'msstitch'
 
   input:
   tuple val(td), path('psms'), val(setnames)
@@ -425,9 +411,8 @@ process splitPSMs {
 
 
 process splitTotalProteomePSMs {
-  container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-    'https://depot.galaxyproject.org/singularity/msstitch:3.16--pyhdfd78af_0' :
-    'quay.io/biocontainers/msstitch:3.16--pyhdfd78af_0'}"
+
+  label 'msstitch'
 
   input:
   tuple path('tppsms_in'), val(setnames)
@@ -443,9 +428,8 @@ process splitTotalProteomePSMs {
 
 
 process makePeptides {
-  container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-    'https://depot.galaxyproject.org/singularity/msstitch:3.16--pyhdfd78af_0' :
-    'quay.io/biocontainers/msstitch:3.16--pyhdfd78af_0'}"
+
+  label 'msstitch'
 
   input:
   tuple val(td), val(setname), path('psms'), val(setisobaric), val(denoms), val(keepnapsms_quant), val(normalize_isob), val(do_ms1)
@@ -473,9 +457,8 @@ process makePeptides {
 
 
 process proteinGeneSymbolTableFDR {
-  container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-    'https://depot.galaxyproject.org/singularity/msstitch:3.16--pyhdfd78af_0' :
-    'quay.io/biocontainers/msstitch:3.16--pyhdfd78af_0'}"
+ 
+  label 'msstitch'
  
   input:
   tuple val(setname), path('tpeptides'), path('tpsms'), path('dpeptides'), path(tfasta), path(dfasta), val(acctype), val(do_ms1), val(isobaric), val(denom), val(keepnapsms_quant), val(normalize)
@@ -517,6 +500,10 @@ process proteinGeneSymbolTableFDR {
 
 
 process sampleTableCheckClean {
+
+  // Runs no python but that container has the tools needed
+  label 'python'
+ 
   input:
   tuple path('sampletable'), val(do_deqms)
 
@@ -541,9 +528,7 @@ process sampleTableCheckClean {
 
 process proteinPeptideSetMerge {
 
-  container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-    'https://depot.galaxyproject.org/singularity/msstitch:3.16--pyhdfd78af_0' :
-    'quay.io/biocontainers/msstitch:3.16--pyhdfd78af_0'}"
+  label 'msstitch'
 
   input:
   tuple val(setnames), val(acctype), path(tables), path(lookup), path(sampletable_with_special_chars), path('sampletable_no_special_chars'), val(do_isobaric), val(do_ms1), val(proteinconflvl), val(do_pgroup), val(do_deqms)
@@ -581,8 +566,6 @@ process proteinPeptideSetMerge {
 
 
 process DEqMS {
-  container 'lehtiolab/deqms'
-  
   input:
   tuple val(acctype), path('grouptable'), path('sampletable')
 
@@ -600,6 +583,9 @@ process DEqMS {
   """
 }
 
+
+def mzml_list = []
+def header = []
 
 workflow {
 
@@ -1145,3 +1131,60 @@ if (!params.quantlookup) {
   .subscribe { it.copyTo("${params.outdir}/${it.baseName}.${it.extension}") }
 }
 
+
+workflow.onComplete {
+  if (workflow.success) {
+    def libfile = file("${params.outdir}/libs.js")
+    def libs = libfile.readLines()
+    def bulma = file("${baseDir}/assets/bulma.js").readLines()
+    def psmap = paramsSummaryMap(workflow)
+    def files_header = read_header(params.input)
+    files_header[0] = 'filename'
+    files_header.remove('mzmlfile')
+    infiles = mzml_list.collect { fn -> files_header.collect { fn[it] }}
+    infiles.add(0, files_header)
+
+    // Parse containers file to get software versions
+    def jsonslurp = new JsonSlurper()
+    def containers_versions = jsonslurp.parseText(new File("${baseDir}/containers.json").text)
+      .collectEntries { k, v -> [v[workflow.containerEngine], [k, v.version]] }
+
+    // Get processes used from trace to output the software versions used in pipeline
+    def label_containers = psmap['Core Nextflow options']['container']
+      .findAll { it.key.contains('withLabel:') }
+      .collect { it.value }
+      .collect { [containers_versions[it][0], containers_versions[it][1], it] }
+    def sw_versions = label_containers + file("${params.outdir}/pipeline_info/execution_trace.txt").readLines()[1..-1]
+      .collect { it.tokenize('\t')[3]
+          .replaceFirst(~/^.+:/, '')
+          .replaceFirst(~/\s\([0-9]+\)$/, '')
+      }.unique()
+      .collect { psmap['Core Nextflow options']['container'][it] }
+      .findAll { it } // remove null in case process is not defined in container-config
+      .unique()
+      .collect { [containers_versions[it][0], containers_versions[it][1], it] }
+      
+    // Set name
+    // if not wf.runName (-name or auto) is like "crazy_euler" or other "{adjective}_{scientist}"
+    if (!params.name && !(workflow.runName ==~ /[a-z]+_[a-z]+/) ) {
+      runname = workflow.runName
+    } else if (!params.name) {
+      runname = 'untitled'
+    } else {
+      runname = params.name
+    }
+    def fields = [runname: runname,
+        sw_versions: sw_versions,
+        params: psmap['Other parameters'],
+        infiles: infiles,
+        libs: libs, bulma: bulma]
+    def rf = new File("${params.outdir}/report_groovy_template.html")
+    def temp_engine = new groovy.text.StreamingTemplateEngine()
+    def report_template = temp_engine.createTemplate(rf).make(fields)
+    def report_html = report_template.toString()
+    def output_rf = new File( params.outdir, "report.html" )
+    output_rf.withWriter { w -> w << report_html }
+    rf.delete()
+    libfile.delete()
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "msstitch": {
+    "version": "3.16",
+    "singularity": "https://depot.galaxyproject.org/singularity/msstitch:3.16--pyhdfd78af_0",
+    "docker": "quay.io/biocontainers/msstitch:3.16--pyhdfd78af_0"
+  },
+  "python": {
+    "version": "3.12",
+    "docker": "python:3.12",
+    "singularity": "docker://python:3.12"
+  },
+  "proteowizard": {
+      "version": "3.0.24172",
+      "docker": "proteowizard/pwiz-skyline-i-agree-to-the-vendor-licenses:3.0.24172-63d00b1",
+      "singularity": "docker://proteowizard/pwiz-skyline-i-agree-to-the-vendor-licenses:3.0.24172-63d00b1"
+  },
+  "openms": {
+      "version": "3.1.0",
+      "docker": "quay.io/biocontainers/openms:3.1.0--h191ead1_4",
+      "singularity": "https://depot.galaxyproject.org/singularity/openms:3.1.0--h191ead1_4"
+  },
+  "dinosaur": {
+      "version": "1.0",
+      "docker": "lehtiolab/ddamsproteomics:2.18",
+      "singularity": "docker://"
+  },
+  "hardklor": {
+      "version": "2.3.2",
+      "docker": "quay.io/biocontainers/hardklor:2.3.2--he1b5a44_0",
+      "singularity": "https://depot.galaxyproject.org/singularity/hardklor:2.3.2--he1b5a44_0"
+  },
+  "kronik": {
+      "version": "2.20",
+      "docker": "quay.io/biocontainers/kronik:2.20--h4ac6f70_6",
+      "singularity": "https://depot.galaxyproject.org/singularity/kronik:2.20--h4ac6f70_6"
+  },
+  "sqlite": {
+      "version": "3.33.0",
+      "docker": "quay.io/biocontainers/sqlite:3.33.0",
+      "singularity": "https://depot.galaxyproject.org/singularity/sqlite:3.33.0"
+  },
+  "deqms": {
+      "version": "1.18.0",
+      "docker": "lehtiolab/deqms",
+      "singularity": "docker://lehtiolab/deqms"
+  },
+  "msgfplus": {
+      "version": "2023.01.1202",
+      "docker": "quay.io/biocontainers/msgf_plus:2023.01.1202--hdfd78af_0",
+      "singularity": "https://depot.galaxyproject.org/singularity/msgf_plus:2023.01.1202--hdfd78af_0"
+  },
+  "percolator": {
+      "version": "3.5",
+      "docker": "quay.io/biocontainers/percolator:3.5--hfd1433f_1",
+      "singularity": "https://depot.galaxyproject.org/singularity/percolator:3.5--hfd1433f_1"
+  },
+  "luciphor2": {
+      "version": "2020_04_03",
+      "docker": "quay.io/biocontainers/luciphor2:2020_04_03--hdfd78af_1",
+      "singularity": "https://depot.galaxyproject.org/singularity/luciphor2:2020_04_03--hdfd78af_1"
+  }
+}
