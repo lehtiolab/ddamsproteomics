@@ -7,10 +7,12 @@ echo TMT18 phos, no MS1 found somehow
 #DEqMS w denominator, implicit normalizing (deqms forces normalize)
 # Warning: not enough q-values/linear model q-values for gene FDR -> using svm
 # Also no MS1 values matching PSMs, which is not specified
+# Also no PTMs calculated in luciphor - warning but still plots, just no FLR
 name=tmt18phos
 baseresults=test_output/${name}
+cat "${testdir}/tmt18_mzmls.txt" | envsubst > test_output/mzmldef
 nextflow run -resume -profile test ${repodir}/main.nf --name ${name} --outdir ${baseresults} \
-    --input <(cat "${testdir}/tmt18_mzmls.txt" | envsubst) \
+    --input test_output/mzmldef \
     --sampletable "${testdir}/tmt18_samples.txt" \
     --hardklor --isobaric '0set-A:tmt18plex:126:131N' \
     --tdb "${testdata}/tmt18_fa.fa" \
@@ -27,8 +29,9 @@ name=tmt18phos_addset
 mkdir -p test_output/${name}
 ln -fs "${testdata}/tmt18_fr06_1000.mzML" "${testdata}/linked_tmt18_fr06_1000.mzML"
 cat "${testdir}/tmt18_mzmls.txt" | envsubst > test_output/${name}/oldmzmls
+sed 's/tmt18_fr/linked_tmt18_fr/;s/0set-A/20set-A/' "${testdir}/tmt18_mzmls.txt" | envsubst > test_output/mzmldef
 nextflow run -resume -profile test ${repodir}/main.nf --name ${name} --outdir test_output/${name} \
-    --input <(sed 's/tmt18_fr/linked_tmt18_fr/;s/0set-A/20set-A/' "${testdir}/tmt18_mzmls.txt" | envsubst) \
+    --input test_output/mzmldef \
     --sampletable "${testdir}/tmt18_setAB_samples.txt" \
     --hardklor --isobaric '0set-A:tmt18plex:sweep 20set-A:tmt18plex:sweep' \
     --tdb "${testdata}/tmt18_fa.fa" \
