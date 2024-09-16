@@ -273,10 +273,10 @@ if (feattype != 'peptides') {
 }
 
 # precursorarea
-precursorcols = c(featcol, colnames(feats)[grep('area', colnames(feats))])
-if (length(precursorcols) > 1) {
-    if (nrow(feats[complete.cases(feats[precursorcols]), ])) {
-      parea = pivot_longer(feats, any_of(precursorcols[2:length(precursorcols)]), names_to='Set', values_to='ms1')
+precursorcols = colnames(feats)[grep('area', colnames(feats))]
+if (length(precursorcols)) {
+    if (nrow(feats[precursorcols] %>% filter(if_any(everything(), ~ !is.na(.))))) {
+      parea = pivot_longer(feats, any_of(precursorcols), names_to='Set', values_to='ms1')
       parea$Set = sub('_MS1.*', '', parea$Set)
       parea$Set = sub('^X([^a-zA-Z])', '\\1', parea$Set)
       parea = parea[complete.cases(parea$ms1), ]
