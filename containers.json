@@ -20,9 +20,9 @@
       "singularity": "https://depot.galaxyproject.org/singularity/openms:3.1.0--h191ead1_4"
   },
   "dinosaur": {
-      "version": "1.0",
-      "docker": "lehtiolab/ddamsproteomics:2.18",
-      "singularity": "docker://"
+      "version": "1.2.0",
+      "docker": "ghcr.io/lehtiolab/ddamsproteomics:main",
+      "singularity": "docker://ghcr.io/lehtiolab/ddamsproteomics:main"
   },
   "hardklor": {
       "version": "2.3.2",
@@ -41,8 +41,8 @@
   },
   "deqms": {
       "version": "1.18.0",
-      "docker": "lehtiolab/deqms",
-      "singularity": "docker://lehtiolab/deqms"
+      "docker": "ghcr.io/lehtiolab/ddamsproteomics:main",
+      "singularity": "docker://ghcr.io/lehtiolab/ddamsproteomics:main"
   },
   "msgfplus": {
       "version": "2023.01.1202",

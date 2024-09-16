@@ -1,0 +1,22 @@
+name: run-tests
+run-name: Run pipeline tests
+on:
+    push:
+        branches:
+            - main
+    pull_request:
+        branches:
+            - main
+jobs:
+    integration-tests:
+        runs-on: ubuntu-latest
+        steps:
+          - name: Checkout repo
+            uses: actions/checkout@v4
+
+          - name: Setup nextflow
+            uses: nf-core/setup-nextflow@v1
+
+          - name: Run tests
+            run: bash run_test.sh
+
