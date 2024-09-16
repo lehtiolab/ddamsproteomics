@@ -20,6 +20,7 @@ else
 fi
 
 [ -e test_output ] && rm -r test_output
+mkdir test_output
 
 declare -A results
 

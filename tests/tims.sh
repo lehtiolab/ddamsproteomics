@@ -6,10 +6,11 @@ echo TIMS TMT16, noms1quant
 
 name=tims_tmt16
 baseresults=test_output/${name}
+cat "${testdir}/tims_mzmls.txt" | envsubst > test_output/mzmldef
 nextflow run -resume -profile test ${repodir}/main.nf --name ${name} --outdir ${baseresults} \
     --sampletable "${testdir}/tmt16_samples.txt" \
     --noms1quant \
-    --input <(cat "${testdir}/tims_mzmls.txt" | envsubst) \
+    --input test_output/mzmldef \
     --genes \
     --isobaric '0set-A:tmtpro:126:131C' \
     --tdb "${testdata}/tims_fa.fa" \
