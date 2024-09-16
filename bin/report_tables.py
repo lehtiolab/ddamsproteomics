@@ -4,7 +4,6 @@ import re
 import os
 import sys
 import shutil
-import tomllib
 import argparse
 from glob import glob
 from collections import defaultdict
@@ -271,6 +270,15 @@ for feattype, _ft in featnames:
         overlap[feattype] = False
 
 
+warnings = []
+for fn in glob('warnings*'):
+    if os.path.exists(fn):
+        with open(fn) as fp:
+            for line in fp:
+                if warn := line.strip():
+                    warnings.append(warn)
+
+
 # Write to template
 with open('report_groovy_template.html', 'w') as fp:
     fp.write(template.render(reportdate=date,
@@ -293,4 +301,5 @@ with open('report_groovy_template.html', 'w') as fp:
         ptmplots=ptmplots,
         ptmtables=ptmtables,
         ptmtitles=ptm_headers,
+        warnings=warnings,
         ))

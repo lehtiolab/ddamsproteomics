@@ -31,7 +31,7 @@ process luciphorPTMLocalizationScoring {
 
   output:
   tuple val(setname), path('luciphor.out'), path('all_scores.debug'), emit: ptms optional true
-  tuple val(setname), path('warnings'), emit: warnings optional true
+  path('warnings'), emit: warnings optional true
 
   script:
 
@@ -300,8 +300,7 @@ workflow PTMANALYSIS {
   | luciphorPTMLocalizationScoring
     
   luciphorPTMLocalizationScoring.out.ptms
-  | join(luciphorPTMLocalizationScoring.out.warnings, remainder: true)
-  // setname, null, warnings || setname, psms, scores, null || empty
+  // setname, psms, scores || empty
   | map { [it[0], it[1] ?: nofile, it[1] ? it[2] : nofile] }
   | join(psms)
   | map { it + [ptm_minscore_high, file(msgfmodfile), locptms, stab_ptms, get_non_ptms(it[0], setisobaric, othermods), ]}
@@ -364,9 +363,10 @@ workflow PTMANALYSIS {
   }
 
   emit:
-  createPTMTable.out.allpsms
+  ptms = createPTMTable.out.allpsms
   | combine(do_proteingroup ? addMasterProteinsGenes.out : mergePTMPeps.out)
-}
+  warnings = luciphorPTMLocalizationScoring.out.warnings
+  | concat(createPTMTable.out.warnings)
 
   
 

@@ -151,18 +151,18 @@ process summaryReport {
   container params.report_container
 
   input:
-  tuple path('platescans'), path(plotlibs), path('psmplots'), path(psm_summary), path(featplots), path(feat_summaries), path(feat_overlaps), path('ptmplots'), path(ptmfiles)
+  tuple path(platescans), path(plotlibs), path('psmplots'), path(psm_summary), path(featplots), path(feat_summaries), path(feat_overlaps), path('ptmplots'), path(ptmfiles), path('warnings*')
   
   output:
   tuple path('report_groovy_template.html'), path('libs.js')
   
   script:
+  has_plates = platescans.size()
   """
   # xargs removes trailing whitespace
-  plates=\$(cut -f1 platescans | sort -u | tr '\n' ' ' | xargs)
   report_tables.py --version "${workflow.manifest.version}" --doi "${workflow.manifest.doi}" \
       --templatedir "$baseDir/assets" \
-      --plates \$plates
+      ${has_plates ? "--plates \$(cut -f1 $platescans | sort -u | tr '\n' ' ' | xargs)" :''}
   """
 }
 
@@ -182,6 +182,7 @@ workflow REPORTING {
   prot_gene_conflvl
   setnames
   ptms
+  warnings
 
   main:
   nofile = "${baseDir}/assets/NO__FILE"
@@ -214,7 +215,6 @@ workflow REPORTING {
   // Only pick one PTM table for reporting nr of sites etc
   ptms
   | filter { it[1].name.contains('_not_adjusted') }
-|view()
   | PTMQC
   | ifEmpty([nofile, nofile])
   | set { ptmqc }
@@ -222,6 +222,7 @@ workflow REPORTING {
   PSMQC.out
   | combine(feat_qc_ch)
   | combine(ptmqc)
+  | combine(warnings)
   | summaryReport
   
   emit:

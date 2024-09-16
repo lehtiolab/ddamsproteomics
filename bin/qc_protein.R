@@ -280,7 +280,6 @@ if (length(precursorcols) > 1) {
       parea$Set = sub('_MS1.*', '', parea$Set)
       parea$Set = sub('^X([^a-zA-Z])', '\\1', parea$Set)
       parea = parea[complete.cases(parea$ms1), ]
-      print(head(parea[c('Set', 'ms1')]))
       ggp = ggplot(parea) + 
         geom_boxplot(aes(Set, ms1)) + scale_y_log10() + coord_flip() + ylab("Intensity") + theme_bw() + theme(axis.title=element_text(size=15), axis.text=element_text(size=10), axis.title.y=element_blank())
     } else {

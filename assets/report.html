@@ -150,6 +150,17 @@
       </div>
       {% endif %}
       
+      {% if warnings|length %}
+      <h4 class="title is-4">Warnings</h4>
+      <div class="notification is-danger">
+        <ul>
+          {% for warn in warnings %}
+          <li>&bull; {{ warn }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+
     </div>
 
     <div id="rundatapage" class="mt-5 container">
