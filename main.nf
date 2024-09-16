@@ -945,7 +945,7 @@ if (params.sampletable) {
     all_setnames,
     ptm_ch,
     psmwarnings_ch
-      .concat(MSGFPERCO.out.warnings)
+      .concat(!is_rerun ? MSGFPERCO.out.warnings: Channel.empty())
       .concat(ptmwarn_ch)
       .toList().toList()
       .filter { it[0] }
