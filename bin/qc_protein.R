@@ -246,8 +246,6 @@ if (is_isobaric) {
   }
 }
 
-
-# FIXME not working yet! possibly nrow not firing
 # ranked step plot MS1 peptide per protein
 if (feattype != 'peptides') {
   peps = read.table(peptable, header=T, sep='\t', comment.char='', quote='')

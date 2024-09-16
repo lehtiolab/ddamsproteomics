@@ -372,11 +372,7 @@ workflow PTMANALYSIS {
   warnings = luciphorPTMLocalizationScoring.out.warnings.map { it[1] }
   | concat(createPTMTable.out.warnings)
 
+}
   
-
-
 // FIXME currently not storing the PTMs in SQL or similar, would be good to keep this state
 // between runs for complement/rerun etc ?
-
-if (params.ptmpsms && !(params.locptms || params.ptms)) exit 1, "In a rerun with --ptmpsms you  must specify which PTMs you have used with --locptms or --ptms"
-*/

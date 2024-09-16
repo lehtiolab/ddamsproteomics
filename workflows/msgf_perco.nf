@@ -36,10 +36,6 @@ process msgfPlus {
   enzyme = [unspecific:0, trypsin:1, chymotrypsin: 2, lysc: 3, lysn: 4, gluc: 5, argc: 6, aspn:7, no_enzyme:9][enzyme]
   ntt = [full: 2, semi: 1, non: 0][fparams.terminicleaved]
 
-  // the string in "scriptinfile" does not have NF escaping characters like & (e.g. in FAIMS 35&65),
-  // which NF does to "infile". That would work fine but not if the files are quoted in the 
-  // script, then they cant be found when there is \&.
-  // Replace those characters anyway since they cause trouble in percolator XML output downstream
   (is_stripped, parsed_infile) = stripchars_infile(mzml)
   """
   ${is_stripped ? "ln -s ${mzml} '${parsed_infile}'" : ''}

@@ -18,8 +18,10 @@ scancol = 'SpecID'
 ## Prepare a data frame with all the info for plots
 
 # first split the sites into multi sites (e.g. GG and Phos, sep by _)
+# FIXME dyn col SpecID / scannr
 multiptms = strsplit(psms$Top.luciphor.PTM, '_', fixed=T)
 repeater = sapply(multiptms, FUN=length)
+
 sites = data.frame(sites=unlist(multiptms),
                    specid=rep(psms[[ scancol ]], repeater),
                    bioset=rep(psms$Biological.set, repeater),

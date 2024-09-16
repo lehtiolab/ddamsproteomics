@@ -38,13 +38,6 @@ process createTargetDecoyFasta {
   """
 }
 
-def fr_or_file(it, length) {
-  // returns either fraction number or file from line
-  // file name is used in QC plots where no frac is available and fraction plot is enforced,
-  // e.g. when mixing fractions and non-fractions
-  return it.size() > length ? it[length] : "${file(it[0]).baseName}.${file(it[0]).extension}"
-}
-
 
 // Parse mzML input to get files and sample names etc
 // get setname, sample name (baseName), input mzML file. 
@@ -293,7 +286,6 @@ process createPSMTable {
       ${do_isobaric ? "--isobaric --min-precursor-purity ${params.minprecursorpurity}" : ''} \
       ${!onlypeptides ? '--proteingroup' : ''} \
       ${complementary_run ? '--oldpsms oldpsms' : ''}
-  #sed '1s/\\#SpecFile/SpectraFile/' -i $outpsms
   """
 }
 
@@ -309,7 +301,6 @@ process peptidePiAnnotation {
   path('target_psmtable.txt')
 
   script:
-    // ${do_hirief && td == 'target' ? 
   """
   echo '${groovy.json.JsonOutput.toJson(strips)}' >> strip.json
   peptide_pi_annotator.py -i hirief_training_pep -p psms --out target_psmtable.txt --stripcolpattern Strip --pepcolpattern Peptide --fraccolpattern Fraction --stripdef strip.json --ignoremods '*'
@@ -490,6 +481,7 @@ process proteinPeptideSetMerge {
 
 
 process DEqMS {
+
   input:
   tuple val(acctype), path('grouptable'), path('sampletable')
 
@@ -605,10 +597,7 @@ if (params.sampletable) {
   } : [:]
   
   do_ms1 = !params.noquant && !params.noms1quant
-  normalize = (!params.noquant && (params.normalize || params.deqms) && params.isobaric)
-
-    //.tap { mzmlfiles_counter; mzmlfiles_qlup_sets } // for counting-> timelimits; getting sets from supplied lookup
-    // .map { it -> [it[2].replaceAll('[ ]+$', '').replaceAll('^[ ]+', ''), file(it[0]).baseName.replaceAll(regex_specialchars, '_'), file(it[0]), it[1], plate_or_no(it, 3), fr_or_file(it, 4)] }
+  normalize = (!params.noquant && (params.mediannormalize || params.deqms) && params.isobaric)
 
   mzml_in
     // Prepare mzml files (sort, collect) for processes that need all of them
@@ -999,7 +988,7 @@ workflow.onComplete {
       .unique()
       .collect { [containers_versions[it][0], containers_versions[it][1], it] }
       
-    // Set name
+    // Set the name of the workflow
     // if not wf.runName (-name or auto) is like "crazy_euler" or other "{adjective}_{scientist}"
     if (!params.name && !(workflow.runName ==~ /[a-z]+_[a-z]+/) ) {
       runname = workflow.runName
