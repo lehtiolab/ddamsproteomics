@@ -278,8 +278,8 @@ process createPSMTable {
   script:
   psmlookup = "${td}_psmlookup.sql"
   outpsms = "${td}_psmtable.txt"
-  no_target = td == 'target' && psms.size() == 0
-  no_decoy = td == 'decoy' && psms.size() == 0
+  no_target = td == 'target' && !psms.find { it.name != 'NO__FILE' }
+  no_decoy = td == 'decoy' && !psms.find{ it.name != 'NO__FILE' }
   """
   ${no_target ? "echo 'No target PSMs made the combined PSM / peptide FDR cutoff' && exit 1" : ''}
   ${no_decoy ? "echo 'No decoy PSMs in any set at FDR cutoff, will not produce protein/gene tables' > warnings && touch ${outpsms} && touch ${psmlookup} && exit 0" : ''}
@@ -472,7 +472,7 @@ process proteinPeptideSetMerge {
     ${acctype == 'peptides' ? "--pepcolpattern 'peptide PEP'" : ''} \
     ${do_ms1 ? "--ms1quantcolpattern area" : ''} \
     ${do_isobaric ? "--isobquantcolpattern plex" : ''} \
-    ${do_pgroup ? "--no-group-annotation" : ''}
+    ${!do_pgroup ? "--no-group-annotation" : ''}
    
   # Put annotation on header, use normal setname for finding, replace with clean name
   # "sed '0,/{RE}//{substitute}/..."  for only first line (0,/{RE} = read from 0 until RE,
@@ -536,6 +536,7 @@ if (params.sampletable) {
     mzml_in = Channel.empty()
     mzml_list = []
     mzmls = []
+    if (params.ptmpsms && !(params.locptms || params.ptms)) exit 1, "In a rerun with --ptmpsms you  must specify which PTMs you have used with --locptms or --ptms"
   } else {
     mzmls = msgf_info_map(params.input)
     mzml_list = mzmls.collect { k,v -> v}
@@ -933,7 +934,7 @@ if (params.sampletable) {
   
   REPORTING(mzmlfiles_all_sort,
     tdspeclookup.map { it[0] },
-    Channel.fromPath(params.input),
+    Channel.fromPath(params.input ?: nofile),
     Channel.fromPath(params.oldmzmldef ?: nofile),
     fractionation,
     target_psmtable.map { it[1] },
@@ -967,11 +968,16 @@ workflow.onComplete {
     def libs = libfile.readLines()
     def bulma = file("${baseDir}/assets/bulma.js").readLines()
     def psmap = paramsSummaryMap(workflow)
-    def files_header = read_header(params.input)
-    files_header[0] = 'filename'
-    files_header.remove('mzmlfile')
-    infiles = mzml_list.collect { fn -> files_header.collect { fn[it] }}
-    infiles.add(0, files_header)
+
+    if (params.input && file(params.input).exists()) {
+      def files_header = read_header(params.input)
+      files_header[0] = 'filename'
+      files_header.remove('mzmlfile')
+      infiles = mzml_list.collect { fn -> files_header.collect { fn[it] }}
+      infiles.add(0, files_header)
+    } else {
+      infiles = [[]]
+    }
 
     // Parse containers file to get software versions
     def jsonslurp = new JsonSlurper()

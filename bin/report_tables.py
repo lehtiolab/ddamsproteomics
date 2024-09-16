@@ -20,7 +20,7 @@ parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
 parser.add_argument('--version', dest='version', help='WF version')
 parser.add_argument('--doi', dest='doi', help='WF DOI') 
 parser.add_argument('--templatedir', dest='templatedir', help='dir with template report')
-parser.add_argument('--plates', dest='plates', nargs='+', help='platenames')
+parser.add_argument('--plates', dest='plates', nargs='+', default=[], help='platenames')
 args = parser.parse_args(sys.argv[1:])
 
 # Get template
