@@ -241,7 +241,7 @@ process addMasterProteinsGenes {
   """
   mv $peptides no_genes # same output file name as input file!
   # Add master/genes/gene count to peptide table, cant store in SQL because cant protein group on small PTM table
-  sed \$'1s/Peptide sequence/${gene_fields_extra.join('\\t')}/' < no_genes > '${peptides}'
+  head -n1 no_genes | sed \$'1s/Peptide sequence/${gene_fields_extra.join('\\t')}/' > '${peptides}'
   tail -n+2 ptmpsms | cut -f${get_field_nr_multi('ptmpsms', psm_gene_fields)} | sort -uk1b,1 > geneprots
   join -j1 -o auto -t '\t' <(paste geneprots <(cut -f3 geneprots | tr -dc ';\\n'| awk '{print length+1}')) <(tail -n+2 no_genes | sort -k1b,1) >> ${peptides}
   """
