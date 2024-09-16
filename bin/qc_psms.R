@@ -5,7 +5,6 @@ library(tidyr)
 library(glue)
 library(stringr)
 
-# library(reshape2)
 args = commandArgs(trailingOnly=TRUE)
 has_fractions = args[1] == TRUE
 newmzmlfn = ifelse(args[2] == 'FALSE', '', args[2])
@@ -96,10 +95,8 @@ if (length(grep('plex', names(feats)))) {
 # Missed cleavages
 mcl = aggregate(get(scancol)~get(xcol)+get(miscleavcol), feats, length)
 colnames(mcl) = c(xcol, 'missed_cleavage', 'nrscan')
-#mcl$nrscan = as.factor(mcl$nrscan)
 mcl_am = subset(merge(mcl, amount_psms, by=xcol), missed_cleavage %in% c(0,1,2))
 mcl_am$percent = mcl_am$nrscan / mcl_am$"PSMs IDed" * 100
-# mcl_am$textycoord = ifelse(mcl_am$missed_cleavage!=0, mcl_am$percent, 10)
 mc_text_y = max(mcl_am$percent) * 2/6
 mcl_am$missed_cleavage = as.factor(mcl_am$missed_cleavage)
 
@@ -120,8 +117,6 @@ htmlwidgets::saveWidget(p, 'missed_cleavages.html', selfcontained=F)
 # Now the per-fraction or per-file stats
 if (has_fractions) {
   xcol = 'Fraction'
-  #  + plateID'
-  # plateID not necessary because we take subfeats?
 } else { 
   xcol = filenamecol
 }

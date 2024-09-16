@@ -19,69 +19,6 @@ include { REPORTING } from './workflows/reporting.nf'
 ----------------------------------------------------------------------------------------
 */
 
-
-def multifile_format(fileparam) {
-    if (!fileparam) {
-        return false
-    }
-    sum_fn = file(fileparam)
-    if (!(sum_fn instanceof List)) {
-      sum_fn = [sum_fn]
-    }
-    return sum_fn.join(', ')
-}
-
-
-def create_workflow_summary(summary) {
-
-    def yaml_file = workDir.resolve('workflow_summary_mqc.yaml')
-    yaml_file.text  = """
-    id: 'lehtiolab-ddamsproteomics-summary'
-    description: " - this information is collected when the pipeline is started."
-    section_name: 'lehtiolab/ddamsproteomics Workflow Summary'
-    section_href: 'https://github.com/lehtiolab/ddamsproteomics'
-    plot_type: 'html'
-    data: |
-        <dl class=\"dl-horizontal\">
-${summary.collect { k,v -> "            <dt>$k</dt><dd><samp>${v ?: '<span style=\"color:#999999;\">N/A</a>'}</samp></dd>" }.join("\n")}
-        </dl>
-    """.stripIndent()
-
-   return yaml_file
-}
-
-
-/*
- * Parse software version numbers
- */
-process get_software_versions {
-
-    publishDir "${params.outdir}", mode: 'copy', overwrite: true
-
-    output:
-    file 'software_versions.yaml' into software_versions_qc
-
-    script:
-    noms1 = params.noms1quant || params.noquant
-    """
-    echo $workflow.manifest.version > v_pipeline.txt
-    echo $workflow.nextflow.version > v_nextflow.txt
-    echo 2023.01.1202 > v_msgf.txt
-    ${!noms1 && !params.hardklor ? 'dinosaur | head -n2 | grep Dinosaur > v_dino.txt || true' : ''}
-    ${!noms1 && params.hardklor ? 'hardklor | head -n1 > v_hk.txt || true' : ''}
-    kronik | head -n2 | tr -cd '[:digit:],\\.' > v_kr.txt || true
-    #luciphor2 |& grep Version > v_luci.txt # incorrect version from binary (2014), echo below
-    echo Version: 2020_04_03 > v_luci.txt # deprecate when binary is correct
-    echo 3.5 > v_perco.txt
-    msstitch --version > v_mss.txt
-    echo 2.9.1 > v_openms.txt
-    Rscript <(echo "packageVersion('DEqMS')") > v_deqms.txt
-    scrape_software_versions.py > software_versions.yaml
-    """
-}
-
-
-
 process createTargetDecoyFasta {
   label 'msstitch'
  
@@ -107,12 +44,6 @@ def fr_or_file(it, length) {
   // e.g. when mixing fractions and non-fractions
   return it.size() > length ? it[length] : "${file(it[0]).baseName}.${file(it[0]).extension}"
 }
-
-def plate_or_no(it, length) {
-  return it.size() > 3 ? it[3] : "no_plate"
-}
-
-
 
 
 // Parse mzML input to get files and sample names etc
@@ -156,7 +87,6 @@ process isobaricQuant {
   activationtype = [auto: 'auto', any: 'any', hcd:'beam-type collision-induced dissociation', cid:'Collision-induced dissociation', etd:'Electron transfer dissociation'][params.activation]
   plextype = isobtype ? isobtype.replaceFirst(/[0-9]+plex/, "") : 'false'
   massshift = [tmt:0.0013, itraq:0.00125, false:0][plextype]
-  //(is_stripped, parsed_infile) = stripchars_infile(infile)
   """
   ${isobtype ? "IsobaricAnalyzer -type $isobtype -in \"${infile}\" -out \"${infile.baseName}.consensusXML\" -extraction:select_activation \"$activationtype\" -extraction:reporter_mass_shift $massshift -extraction:min_precursor_intensity 1.0 -extraction:keep_unannotated_precursor true -quantification:isotope_correction true" : ''}
   """
@@ -165,12 +95,6 @@ process isobaricQuant {
 
 
 process dinosaur {
-container 'lehtiolab/ddamsproteomics:2.18'
-// Biocontainers arent working with dinosaur tests, FIXME create auto build of it
-
-//  container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-//    'https://depot.galaxyproject.org/singularity/dinosaur:1.2.0--0' :
-//    'quay.io/biocontainers/dinosaur:1.2.0--0'}"
 
   input:
   tuple val(sample), path(infile)
@@ -686,27 +610,12 @@ if (params.sampletable) {
     // .map { it -> [it[2].replaceAll('[ ]+$', '').replaceAll('^[ ]+', ''), file(it[0]).baseName.replaceAll(regex_specialchars, '_'), file(it[0]), it[1], plate_or_no(it, 3), fr_or_file(it, 4)] }
 
   mzml_in
-// FIXME clean out
     // Prepare mzml files (sort, collect) for processes that need all of them
     .toList()
     .map { it.sort( {a, b -> a.sample <=> b.sample}) } // sort on sample for consistent .sh script in -resume
     .map { it -> [it.collect() { it.setname }, it.collect() { it.mzmlfile }, it.collect() { it.plate }, it.collect() { it.fraction } ] } // lists: [sets], [mzmlfiles], [plates], [fractions]
-    //.tap { mzmlfiles_psmqc } // FIXME this prevents completion of the pipeline somehow
     .map { it -> it[0..2] } // remove basenames, fractions
     .set { mzmlfiles_all_sort }
-
-
-/*
-// FIXME this needed still?
-  if (!is_rerun) {
-    mzml_in 
-      .count()
-      .subscribe { println "$it mzML files in analysis" }
-      .into { mzmlcount_psm; mzmlcount_percolator }
-  } else {
-    Channel.value(0).into { mzmlcount_psm; mzmlcount_percolator }
-  }
-*/
 
   // Spec lookup prep if needed
   do_quant = false
@@ -816,10 +725,9 @@ if (params.sampletable) {
     | set { specquant_lookups }
   }
 
-
   tdb = Channel.fromPath(params.tdb)
   createTargetDecoyFasta(tdb)
-  // bothdbs.into { psmdbs; fdrdbs; ptmdbs }
+
   if (!is_rerun) {
     search_mods = [params.mods ? params.mods : false,
       params.ptms ?: false,
@@ -902,8 +810,6 @@ if (params.sampletable) {
   } else {
     totalproteome_ch = Channel.empty()
   }
-println(params.genes)
-println(params.onlypeptides)
   if (params.genes) {
     totalprot_col = 'Gene Name'
   } else if (params.onlypeptides) {
@@ -939,9 +845,11 @@ println(params.onlypeptides)
       do_ms1,
       !params.onlypeptides
     )
-    ptm_ch = PTMANALYSIS.out
+    ptm_ch = PTMANALYSIS.out.ptms
+    ptmwarn_ch = PTMANALYSIS.out.warnings
   } else {
     ptm_ch = Channel.empty()
+    ptmwarn_ch = Channel.empty()
   }
 
   splitpsms_ch
@@ -1036,92 +944,13 @@ println(params.onlypeptides)
     params.proteinconflvl,
     all_setnames,
     ptm_ch,
+    psmwarnings_ch
+      .concat(MSGFPERCO.out.warnings)
+      .concat(ptmwarn_ch)
+      .toList().toList()
+      .filter { it[0] }
+      .ifEmpty(nofile),
   )
-  
-
-/*
-
-  // QC for PSMs
-
-  // FIXME allplates could go as file into R QC directly?
-  if (fractionation) {
-    countMS2sPerPlate.out.allplates
-      .splitText()
-      .map { it -> it.trim() }
-      .toList()
-      .map { it -> [it] }
-      .set { allplates_split }
-    countMS2sPerPlate.out.counted
-      .combine(allplates_split)
-      .set { scans_result }
-  } else {
-    countMS2sPerPlate.out.counted
-    | map { it -> [it[0], 'NA', ['noplates']] }
-    | set { scans_result }
-    //| into { scans_platecount; scans_result }
-  }
-  psm_result // From createPSMTable
-    .filter { it[0] == 'target' }
-    .combine(scans_result)
-    .map { it -> [it[0], it[1], it[2], it[3], it[4].unique()] }
-    .set { targetpsm_result }
-
-
-
-
-mzmlfiles_all_count
-// Count lookup can be spectra if needed quant
-  .merge(countlookup)
-  .set { specfilein }
-
-
-process countMS2perFile {
-
-  input:
-  set val(setnames), file(mzmlfiles), val(platenames), file(speclookup) from specfilein
-
-/// The following is maybe OK?
-
-if (complementary_run) {
-  oldnewsets
-    .splitText()
-    .map { it -> it.trim() }
-    .toList()
-    .set { allsetnames }
-  cleaned_psms
-    .flatMap { it -> [['target', it[0]], ['decoy', it[1]]] }
-    .set { td_oldpsms }
-} else {
-  mzml_in
-    .map { it -> it[2] } 
-    .unique()
-    .toList()
-    .set { allsetnames }
-
-  // if not using this youll have a combine on an open channel without
-  // anything from complement cleaner. Will not run createPTMLookup then
-  cleaned_ptmpsms = Channel.value('NA')
-}
-
-/// until here - we can investigate later
-
-// Set names are first item in input lists, collect them for PSM tables and QC purposes
-// FIXME just reuse channels
-allsetnames 
-  .into { setnames_featqc; setnames_psms; setnames_psmqc; setnames_ptms }
-
-
-
-if (!params.quantlookup) {
-  ptm_lookup_old
-    .concat(ptm_lookup_new)
-// PTM lookup needs not to have quant, can be spectra
-    .set { ptm_lookup_in }
-}
-
-*/
-  
-//  publishDir "${params.outdir}", mode: 'copy', overwrite: true, saveAs: {["target_psmlookup.sql", "decoy_psmlookup.sql", "target_psmtable.txt", "decoy_psmtable.txt"].contains(it) && (is_rerun || !no_psms) ? it : null}
 
   target_psmtable.map { it[1] }
   .concat(psmtables_ch | filter { it[0] == 'decoy' } | map { it[1] })
