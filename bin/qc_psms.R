@@ -18,6 +18,7 @@ feats = read.table("psms_clean", colClasses=c('Fraction'='factor'), header=T, se
 scancol = 'SpecID' # MSGF (sage has scannr)
 miscleavcol = 'missed_cleavage'
 rtcol = 'Retention.time.min.' # 'rt'
+ioncol = 'Ion.injection.time.ms.' # ?
 precerrcol = 'PrecursorError.ppm.' # precursor_ppm
 scorecol = 'MSGFScore' # 'sage_discriminant_score'
 filenamecol = 'SpectraFile' # 'filename'
@@ -138,11 +139,13 @@ allfilefractions$Fraction = allfilefractions$fraction
 allfilefractions$plateID = paste(allfilefractions$setname, allfilefractions$plate, sep='_')
 allfilefractions$filename = basename(allfilefractions$mzmlfile)
 
+# List of plot names and their axis label:
 ptypes = list(
   retentiontime=c(rtcol, 'time(min)'),
+  ioninjtime=c(ioncol, 'time(ms)'),
   precerror=c(precerrcol, 'Precursor error (ppm)'),
   fryield=c(scancol, '# PSMs'),
-  score=c(scorecol, 'Search engine score'),
+  score=c(scorecol, scorecol), # Diff score name for diff SE
   pif=c('Precursor.ion.fraction', 'Precursor/all in window')
 )
 

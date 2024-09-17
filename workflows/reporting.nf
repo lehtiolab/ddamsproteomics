@@ -122,6 +122,7 @@ process featQC {
 
   mkdir ${htmldir}
   mv *.html ${htmldir}/
+  ${parse_normfactors ? "mv allnormfacs ${htmldir}" : ''}
   """
 }
 
