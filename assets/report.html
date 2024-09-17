@@ -38,6 +38,17 @@
 
     <div id="resultspage" class="mt-5 container">
 
+      {% if warnings|length %}
+      <h4 class="title is-4">Warnings</h4>
+      <div class="notification is-danger">
+        <ul>
+          {% for warn in warnings %}
+          <li>&bull; {{ warn }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+
       <h4 class="title is-4">Identification summary</h4>
       <table class="table is-striped is-narrow is-hoverable is-size-7">
         <thead>
@@ -149,18 +160,36 @@
         </div>
       </div>
       {% endif %}
-      
-      {% if warnings|length %}
-      <h4 class="title is-4">Warnings</h4>
-      <div class="notification is-danger">
-        <ul>
-          {% for warn in warnings %}
-          <li>&bull; {{ warn }}</li>
-          {% endfor %}
-        </ul>
+
+      {% if normfacs %}
+      <h5 class="title is-5">Median centered isobaric normalization factors</h5>
+      <div class="columns">
+        {% for fname, ftitle in featnames %}
+        {% if normfacs[fname] %}
+        <div class="column">
+          <h5 class="title is-5">{{ ftitle }}</h5>
+          <table class="table is-striped is-narrow is-hoverable is-size-7">
+            <thead>
+              <th>Experiment set</th>
+              <th>Channel</th>
+              <th>Norm. factor</th>
+            </thead>
+            <tbody>
+              {% for setn, ch, nf in normfacs[fname] %}
+              <tr>
+                <td> {{ setn }} </td>
+                <td> {{ ch }} </td>
+                <td> {{ nf }} </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% endif %}
+        {% endfor %}
       </div>
       {% endif %}
-
+      
     </div>
 
     <div id="rundatapage" class="mt-5 container">
@@ -240,12 +269,12 @@
         {% endfor %}
       {% endif %}
 
-      {% if plateplots.msgfscore %}
-          <h4 class="title is-4">MSGF score</h4>
+      {% if plateplots.score %}
+          <h4 class="title is-4">Search engine score</h4>
         {% for p in plates %}
-          {% if plateplots.msgfscore[p] %}
+          {% if plateplots.score[p] %}
           <h5 class="title is-5">Plate: {{ p }}</h4>
-            {{ plateplots.msgfscore[p] }}
+            {{ plateplots.score[p] }}
           {% endif %}
         {% endfor %}
       {% endif %}
@@ -256,6 +285,16 @@
           {% if plateplots.retentiontime[p] %}
           <h5 class="title is-5">Plate: {{ p }}</h4>
             {{ plateplots.retentiontime[p] }}
+          {% endif %}
+        {% endfor %}
+      {% endif %}
+
+      {% if plateplots.ioninjtime %}
+          <h4 class="title is-4">Ion injection time</h4>
+        {% for p in plates %}
+          {% if plateplots.ioninjtime[p] %}
+          <h5 class="title is-5">Plate: {{ p }}</h4>
+            {{ plateplots.ioninjtime[p] }}
           {% endif %}
         {% endfor %}
       {% endif %}

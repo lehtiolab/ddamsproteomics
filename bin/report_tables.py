@@ -44,7 +44,7 @@ psmplots = {
         'miscleav': 'missed_cleavages.html',
         'isomissvals': 'iso_missing_vals.html',
         }
-plateplotnames = ['fryield', 'score', 'pif', 'retentiontime', 'precerror', 'fwhm']
+plateplotnames = ['fryield', 'score', 'pif', 'retentiontime', 'precerror', 'fwhm', 'ioninjtime']
 plots = defaultdict(dict)
 
 plateplots = defaultdict(defaultdict)
@@ -269,7 +269,18 @@ for feattype, _ft in featnames:
     else:
         overlap[feattype] = False
 
+# Isobaric normalization factors
+normfactable = defaultdict(list)
+for feattype, _ft in featnames:
+    pdir = f'{feattype}__plothtml'
+    fn = os.path.join(pdir, 'allnormfacs')
+    if os.path.exists(fn):
+        with open(fn) as fp:
+            for line in fp:
+                normfactable[feattype].append(line.strip().split('\t'))
 
+
+# Warning box
 warnings = []
 for fn in glob('warnings*'):
     if os.path.exists(fn):
@@ -301,5 +312,6 @@ with open('report_groovy_template.html', 'w') as fp:
         ptmplots=ptmplots,
         ptmtables=ptmtables,
         ptmtitles=ptm_headers,
+        normfacs=normfactable,
         warnings=warnings,
         ))
