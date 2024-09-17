@@ -32,8 +32,8 @@ nextflow run -resume -profile test ${repodir}/main.nf --name ${name} \
     --decoypsms ${lfphos_dir}/decoy_psmtable.txt \
     --targetpsmlookup ${lfphos_dir}/target_psmlookup.sql \
     --decoypsmlookup ${lfphos_dir}/decoy_psmlookup.sql \
-    #--ptmpsms ${lfphos_dir}/ptm_psmtable.txt \
-    #--locptms 'Phospho'
+    --ptmpsms ${lfphos_dir}/ptm_psmtable.txt \
+    --locptms 'Phospho'
 
 # FIXME why are lookup outputs different between these two?
 

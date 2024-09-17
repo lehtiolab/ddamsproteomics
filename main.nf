@@ -597,7 +597,7 @@ if (params.sampletable) {
   } : [:]
   
   do_ms1 = !params.noquant && !params.noms1quant
-  normalize = (!params.noquant && (params.mediannormalize || params.deqms) && params.isobaric)
+  do_normalize = (!params.noquant && (params.mediannormalize || params.deqms) && params.isobaric)
 
   mzml_in
     // Prepare mzml files (sort, collect) for processes that need all of them
@@ -830,7 +830,7 @@ if (params.sampletable) {
       totalprot_col,
       setisobaric,
       setdenoms,
-      params.mediannormalize,
+      do_normalize,
       params.keepnapsmsquant,
       do_ms1,
       !params.onlypeptides
@@ -843,7 +843,7 @@ if (params.sampletable) {
   }
 
   splitpsms_ch
-  | map { it + [it[0] == 'target' ? setisobaric[it[1]] : false, setdenoms[it[1]], params.keepnapsmsquant, it[0] == 'target' && params.mediannormalize, do_ms1 && it[0] == 'target']}
+  | map { it + [it[0] == 'target' ? setisobaric[it[1]] : false, setdenoms[it[1]], params.keepnapsmsquant, do_normalize && it[0] == 'target', do_ms1 && it[0] == 'target']}
   | makePeptides
 
   acctypes = ['proteins']
@@ -874,7 +874,7 @@ if (params.sampletable) {
     | join(tdpeps.d | map { it[1..-2] }) // also strip dpsms from tdpeps.d
     | combine(createTargetDecoyFasta.out.bothdbs)
     | combine(Channel.from(acctypes))
-    | map { it + [do_ms1, setisobaric[it[0]], setdenoms[it[0]], params.keepnapsmsquant, params.mediannormalize]}
+    | map { it + [do_ms1, setisobaric[it[0]], setdenoms[it[0]], params.keepnapsmsquant, do_normalize]}
     | proteinGeneSymbolTableFDR
   }
 
@@ -896,7 +896,7 @@ if (params.sampletable) {
   | groupTuple(by: 1)
   | combine(psmlookups_ch.filter { it[0] == 'target' }.map { it[1] })
   | combine(sampletable_ch)
-  | map { it + [do_quant && params.isobaric, do_ms1, params.proteinconflvl, !params.onlypeptides, params.deqms] }
+  | map { it + [setdenoms, do_ms1, params.proteinconflvl, !params.onlypeptides, params.deqms] }
   | proteinPeptideSetMerge
 
   if (params.deqms) {
@@ -965,7 +965,7 @@ workflow.onComplete {
       infiles = mzml_list.collect { fn -> files_header.collect { fn[it] }}
       infiles.add(0, files_header)
     } else {
-      infiles = [[]]
+      infiles = [[], []]
     }
 
     // Parse containers file to get software versions
