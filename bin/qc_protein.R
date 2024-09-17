@@ -316,10 +316,10 @@ if (length(deqpval_cols)) {
       if (feattype != 'peptides' && nrow(na.omit(feats[logpname]))) {
 	    topfeats = feats[order(feats[,logpname], decreasing=TRUE)[1:10], ]
         ggp = ggp + geom_text(data=topfeats)
+      }
       p = ggplotly(ggp, width=400) %>%
               layout(legend = list(title='', orientation = 'h', x = 0, y = 1.1, xanchor='left', yanchor='bottom'))
       htmlwidgets::saveWidget(p, glue('deqms_volcano_{comparison}.html'), selfcontained=F)
-      }
     }
   }
 }

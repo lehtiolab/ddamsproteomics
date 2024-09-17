@@ -84,7 +84,7 @@ process PSMQC {
   tuple path('psms'), path('filescans'), path('platescans'), path('mzmldef'), path('oldmzmlfn'), val(fractionation), val(has_newmzmls), val(has_oldmzmls)
 
   output:
-  tuple path('platescans'), path('amount_psms_files'), path("psmplothtml"), path('psmtable_summary.txt')
+  tuple path('platescans'), path('amount_psms_files'), path("psmplothtml"), path('psmtable__summary.txt')
 
   script:
   newmzmls = has_newmzmls ? 'mzmldef' : 'FALSE'

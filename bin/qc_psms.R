@@ -41,7 +41,7 @@ vert_height = 200 * nr_verts + 200
 set_amount_psms = aggregate(get(scancol)~Biological.set, feats, length)
 names(set_amount_psms) = c('Set', 'psmcount')
 set_amount_psms$Set = gsub('[^A-Za-z0-9_]', '.', set_amount_psms$Set)
-write.table(set_amount_psms, 'psmtable_summary.txt', row.names=F, quote=F, sep='\t')
+write.table(set_amount_psms, 'psmtable__summary.txt', row.names=F, quote=F, sep='\t')
 
 # Count PSMs per plate
 amount_psms = aggregate(get(scancol)~get(xcol), feats, length)
