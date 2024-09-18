@@ -8,7 +8,7 @@ process countMS2sPerPlate {
 // FIXME this could possibly go into the PSM QC R code?
 
   input:
-  tuple val(setnames), file(mzmlfiles), val(platenames), path(speclookup), path(oldmzmls_fn), val(fractionation), val(regex_specialchars)
+  tuple val(setnames), path(mzmlfiles), val(platenames), path(speclookup), val(oldmzmls), val(fractionation)
 
   output:
   tuple path('amount_spectra_files'), path('scans_per_plate'), emit: counted
@@ -16,13 +16,12 @@ process countMS2sPerPlate {
 
   script:
   splates = [setnames, platenames].transpose().collect() { "${it[0]}_${it[1]}" }
+  py_oldmzml = oldmzmls.size() ? "[${oldmzmls.collect { "[${it.collect{ x -> "'${x}'" }.join(',')}]" }.join(',')}]" : "[]"
   """
   #!/usr/bin/env python
   import os
   import re
   import sqlite3
-  # FIXME isnt a plate NA?
-  # FIXME easier to just parse the --input file?
   con = sqlite3.Connection("$speclookup")
   cursor = con.execute("SELECT set_name, mzmlfilename, COUNT(*) FROM mzml JOIN mzmlfiles USING(mzmlfile_id) JOIN biosets USING(set_id) GROUP BY mzmlfile_id")
   if ${fractionation ? '1' : '0'}:
@@ -35,24 +34,18 @@ process countMS2sPerPlate {
               fileplates[fn][setname] = plate
           except KeyError:
               fileplates[fn] = {setname: plate} 
-      if ${oldmzmls_fn.name != 'NO__FILE' ? 1 : 0}:
-          with open('$oldmzmls_fn') as oldmzfp:
-              for line in oldmzfp:
-                  if line.strip('\\n').split('\\t')[0] == 'mzmlfile':
-                      continue
-                  fpath, inst, setname, plate, fraction = line.strip('\\n').split('\\t')
-                  # old mzmls also contain files that are no longer used (i.e. removed from set)
-                  # filter by skipping any setname that is in the current new setnames
-                  if setname in setnames:
-                      continue
-                  setplate = '{}_{}'.format(setname, plate)
-                  fn = re.sub('${regex_specialchars.replaceAll("'", "\\\\'")}', '_', os.path.basename(fpath))
-                  if setplate not in platesets:
-                      platesets.append(setplate)
-                  if fn not in fileplates:
-                      fileplates[fn] = {setname: plate}
-                  elif setname not in fileplates[fn]:
-                      fileplates[fn][setname] = plate
+      for setname, fn, plate in ${py_oldmzml}:
+          # old mzmls also contain files that are no longer used (i.e. removed from set)
+          # filter by skipping any setname that is in the current new setnames
+          if setname in setnames:
+              continue
+          setplate = '{}_{}'.format(setname, plate)
+          if setplate not in platesets:
+              platesets.append(setplate)
+          if fn not in fileplates:
+              fileplates[fn] = {setname: plate}
+          elif setname not in fileplates[fn]:
+              fileplates[fn][setname] = plate
       with open('allplates', 'w') as fp:
           fp.write('\\n'.join(platesets))
       platescans = {p: 0 for p in platesets}
@@ -81,17 +74,16 @@ process PSMQC {
   container params.report_container
 
   input:
-  tuple path('psms'), path('filescans'), path('platescans'), path('mzmldef'), path('oldmzmlfn'), val(fractionation), val(has_newmzmls), val(has_oldmzmls)
+  tuple path('psms'), path('filescans'), path('platescans'), val(mzmls), val(fractionation), val(has_newmzmls), val(has_oldmzmls)
 
   output:
   tuple path('platescans'), path('amount_psms_files'), path("psmplothtml"), path('psmtable__summary.txt')
 
   script:
-  newmzmls = has_newmzmls ? 'mzmldef' : 'FALSE'
-  oldmzmls = has_oldmzmls ? 'oldmzmlfn' : 'FALSE'
   """
+  ${mzmls.collect { "echo \$'${it.join('\t')}' >> mzmls"  }.join('\n')}
   sed '1s/\\#SpecFile/SpectraFile/' < psms > psms_clean
-  qc_psms.R ${fractionation ? 'TRUE' : 'FALSE'} ${newmzmls} ${oldmzmls}
+  qc_psms.R ${fractionation ? 'TRUE' : 'FALSE'}
   mkdir psmplothtml
   mv *.html psmplothtml/
   """
@@ -170,10 +162,9 @@ process summaryReport {
 
 workflow REPORTING {
   take:
-  sets_mzmls_plates
+  mzmls
   speclookup
-  mzmldef
-  oldmzmldef
+  oldmzmls
   fractionation
   plot_psms
   pepprotgenes
@@ -188,17 +179,41 @@ workflow REPORTING {
   main:
   nofile = "${baseDir}/assets/NO__FILE"
 
-  sets_mzmls_plates
+  Channel.fromList(oldmzmls)
+  .toList()
+  .filter { it.size() }
+  .map { it.sort( {a, b -> a.sample <=> b.sample}) } // sort on sample for -resume
+  .set { oldmzmls_sorted }
+
+  oldmzmls_sorted
+  .map { it.collect { x -> [x.setname, x.fn_normalized_chars, x.plate] } }
+  .ifEmpty([])
+  .toList()
+  .set{ oldmzmls_for_ms2count }
+
+  mzmls
+  .map { [it.fn_normalized_chars, it.setname, it.plate, it.fraction] }
+  .set { new_mzmls_for_psmqc }
+
+  oldmzmls_sorted
+  .map { [it.fn_normalized_chars, it.setname, it.plate, it.fraction] }
+  .concat(new_mzmls_for_psmqc)
+  .transpose()
+  .toList()
+  .toList()
+  .set { all_mzmls_for_psmqc }
+
+  mzmls
+  | map { [it.setname, it.mzmlfile, it.plate] }
   | combine(speclookup)
-  | combine(oldmzmldef)
-  | map { it + [fractionation, get_regex_specialchars()] }
+  | combine(oldmzmls_for_ms2count)
+  | map { it + [fractionation] }
   | countMS2sPerPlate
   
   plot_psms
   | combine(countMS2sPerPlate.out.counted)
-  | combine(mzmldef)
-  | combine(oldmzmldef)
-  | map { it + [fractionation, it[3].name != 'NO__FILE', it[4].name != 'NO__FILE'] }
+  | combine(all_mzmls_for_psmqc)
+  | map { it + [fractionation, 1,1] }
   | PSMQC
 
   pepprotgenes

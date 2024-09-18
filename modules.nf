@@ -79,9 +79,9 @@ def create_info_map(info_fn, possible_params) {
     info_map[ix].id = ix
     info_map[ix].mzmlfile = file(info_map[ix].mzmlfile)
     info_map[ix].filename = "${info_map[ix].mzmlfile.baseName}.${info_map[ix].mzmlfile.extension}"
+    info_map[ix].fn_normalized_chars = info_map[ix].filename.replaceAll(get_regex_specialchars(), '_')
     info_map[ix].setname = info_map[ix].setname.replaceAll('[ ]+$', '').replaceAll('^[ ]+', '')
     info_map[ix].sample = info_map[ix].mzmlfile.baseName.replaceAll(get_regex_specialchars(), '_')
-//file(it[0]), it[1], plate_or_no(it, 3), fr_or_file(it, 4)] }
     params_not_header.each {
       info_map[ix][it] = params[it]
     }
@@ -94,9 +94,6 @@ def msgf_info_map(info_fn) {
   expected_fields = ["mzmlfile", "setname", "plate", "fraction", "phospho", "activation",
         "prectol", "iso_err", "instrument", "enzyme", "frag", "terminicleaved"]
   def samples = create_info_map(info_fn, expected_fields)
-  samples.each { ix, fn ->
-    //samples[ix].fraction = samples[ix].fraction ? samples[ix].fraction : 'NA'
   return samples
-  }
 }
 
