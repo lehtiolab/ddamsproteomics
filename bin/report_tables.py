@@ -48,7 +48,7 @@ plateplotnames = ['fryield', 'score', 'pif', 'retentiontime', 'precerror', 'fwhm
 plots = defaultdict(dict)
 
 plateplots = defaultdict(defaultdict)
-pdir = 'psmplots' # FIXME nt neded no ph here
+pdir = 'psmplots'
 for plotname, fileplot in psmplots.items():
     pfile = os.path.join(pdir, fileplot)
     if os.path.exists(pfile):

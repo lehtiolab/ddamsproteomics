@@ -21,14 +21,12 @@
     * [`--awsregion`](#--awsregion)
 * [Other command line parameters](#other-command-line-parameters)
     * [`--outdir`](#--outdir)
-    * [`--email`](#--email)
     * [`-name`](#-name-single-dash)
     * [`-resume`](#-resume-single-dash)
     * [`-c`](#-c-single-dash)
     * [`--max_memory`](#--max_memory)
     * [`--max_time`](#--max_time)
     * [`--max_cpus`](#--max_cpus)
-    * [`--plaintext_emails`](#--plaintext_emails)
 
 
 ## General Nextflow info
@@ -43,7 +41,7 @@ NXF_OPTS='-Xms1g -Xmx4g'
 ## Running the pipeline
 The typical command for running the pipeline is as follows:
 ```bash
-nextflow run lehtiolab/ddamsproteomics --mzmls '/path/to/*.mzML' --tdb /path/to/proteins.fa --mods 'oxidation;carbamidomethylation' -profile standard,docker
+nextflow run lehtiolab/ddamsproteomics --input /path/to/input_definition.txt --tdb /path/to/proteins.fa --mods 'oxidation;carbamidomethylation' -profile standard,docker
 ```
 
 This will launch the pipeline with the `docker` configuration profile. See below for more information about profiles.
@@ -97,20 +95,11 @@ Use this parameter to choose a configuration profile. Profiles can give configur
 * `none`
     * No configuration at all. Useful if you want to build your own config from scratch and want to avoid loading in the default `base` config profile (not recommended).
 
-### `--mzmls`
-Use this to specify the location of your input mzML files. For example:
+### `--input`
+This param passes an mzML definition (txt) file which contains the mzML specifications. This also enables runs with specific fractionation such as HiRIEF or high pH, and the specification of individual instruments per file.
 
 ```bash
---mzML 'path/to/data/sample_*.mzML'
-```
-The path must be enclosed in quotes when using wildcards like `*`
-
-
-### `--mzmldef`
-Alternative to the above --mzml this would pass a mzML definition (txt) file which contains the mzML specifications. This also enables runs with specific fractionation such as HiRIEF or high pH, and the specification of individual instruments per file.
-
-```bash
---mzmldef /path/to/data/mzmls.txt
+--input /path/to/data/mzmls.txt
 ```
 
 The file itself is tab-separated without header, contains a single line per mzML file specified as follows:
@@ -219,13 +208,10 @@ Please make sure to also set the `-w/--work-dir` and `--outdir` parameters to a 
 ### `--outdir`
 The output directory where the results will be saved.
 
-### `--email`
-Set this parameter to your e-mail address to get a summary e-mail with details of the run sent to you when the workflow exits. If set in your user config file (`~/.nextflow/config`) then you don't need to speicfy this on the command line for every run.
-
 ### `-name`
 Name for the pipeline run. If not specified, Nextflow will automatically generate a random mnemonic.
 
-This is used in the MultiQC report (if not default) and in the summary HTML / e-mail (always).
+This is used in the QC report (if not default)
 
 **NB:** Single hyphen (core Nextflow option)
 
@@ -241,11 +227,8 @@ Specify the path to a specific config file (this is a core NextFlow command).
 
 **NB:** Single hyphen (core Nextflow option)
 
-Note - you can use this to override defaults. For example, you can specify a config file using `-c` that contains the following:
+Note - you can use this to override defaults.
 
-```nextflow
-process.$multiqc.module = []
-```
 
 ### `--max_memory`
 Use to set a top-limit for the default memory requirement for each process.
@@ -258,6 +241,3 @@ Should be a string in the format integer-unit. eg. `--max_time '2.h'`
 ### `--max_cpus`
 Use to set a top-limit for the default CPU requirement for each process.
 Should be a string in the format integer-unit. eg. `--max_cpus 1`
-
-### `--plaintext_email`
-Set to receive plain-text e-mails instead of HTML formatted.

@@ -23,13 +23,13 @@ The pipeline is built using [Nextflow](https://www.nextflow.io), a workflow tool
 - run pipeline:
 
 ```
-nextflow run lehtiolab/ddamsproteomics --mzmls '/path/to/*.mzML' --tdb /path/to/proteins.fa --mods 'oxidation;carbamidomethylation' -profile standard,docker
+nextflow run lehtiolab/ddamsproteomics --input /path/to/input_definition.txt --tdb /path/to/proteins.fa --mods 'oxidation;carbamidomethylation' -profile standard,docker
 ```
 
 Or for two sample sets of isobaric data you can:
 
 ```
-nextflow run lehtiolab/ddamsproteomics --mzmls '/path/to/*.mzML' --tdb /path/to/proteins.fa --mods 'oxidation;carbamidomethylation --isobaric 'setA:tmt10plex:126 setB:tmt10plex:127N'
+nextflow run lehtiolab/ddamsproteomics --input /path/to/input_definition.txt --tdb /path/to/proteins.fa --mods 'oxidation;carbamidomethylation --isobaric 'setA:tmt10plex:126 setB:tmt10plex:127N'
 ```
 
 For more elaborate examples covering fractionation, PTMs, and more, the lehtiolab/ddamsproteomics pipeline comes with documentation about the pipeline, found in the `docs/` directory:
@@ -38,10 +38,8 @@ For more elaborate examples covering fractionation, PTMs, and more, the lehtiola
 - [Output and how to interpret the results](docs/output.md)
 - [Troubleshooting](https://nf-co.re/usage/troubleshooting)
 
-There is more extensive documentation on the options inside the main.nf file.
-
 The pipeline takes multiple mzML files as input and performs identification and quantification to output results and a QC report ([an example can be found here](docs/example_qc.html)) 
 
 
 ## Credits
-lehtiolab/ddamsproteomics was originally written by Jorrit Boekel and tries to follow the [nf-core](https://nf-co.re) best practices and templates.
+lehtiolab/ddamsproteomics was originally written by Jorrit Boekel and has been inspired by [nf-core](https://nf-co.re) pipelines

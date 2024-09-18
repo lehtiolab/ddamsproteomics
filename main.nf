@@ -505,18 +505,18 @@ def header = []
 
 workflow {
 
-// Validate and set file inputs
-
-// Files which are not standard can be checked here
-if (params.hirief && !file(params.hirief).exists()) exit 1, "Peptide pI data file not found: ${params.hirief}"
-if (params.hirief && !params.input) exit 1, "Cannot run HiRIEF delta pI calculation without fraction-annotated mzML definition file"
-if (params.sampletable) {
-  // create value channel with first()
-  sampletable = Channel.fromPath(params.sampletable).first()
-  if( !sampletable.exists() ) exit 1, "Sampletable file not found: ${params.sampletable}"
-} else {
-  sampletable = Channel.fromPath("${baseDir}/assets/NO__FILE").first()
-}
+  // Validate and set file inputs
+  
+  // Files which are not standard can be checked here
+  if (params.hirief && !file(params.hirief).exists()) exit 1, "Peptide pI data file not found: ${params.hirief}"
+  if (params.hirief && !params.input) exit 1, "Cannot run HiRIEF delta pI calculation without fraction-annotated mzML definition file"
+  if (params.sampletable) {
+    // create value channel with first()
+    sampletable = Channel.fromPath(params.sampletable).first()
+    if( !sampletable.exists() ) exit 1, "Sampletable file not found: ${params.sampletable}"
+  } else {
+    sampletable = Channel.fromPath("${baseDir}/assets/NO__FILE").first()
+  }
   nofile = "${baseDir}/assets/NO__FILE"
   nofile_ch = Channel.fromPath(nofile)
 

@@ -1,5 +1,0 @@
-#Mods
-NumMods=2
-C2H3N1O1,C,fix,any,Carbamidomethyl
-O1,M,opt,any,Oxidation
-
