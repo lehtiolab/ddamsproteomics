@@ -36,17 +36,17 @@ To run the pipeline, several software packages are required. How you satisfy the
 ### Docker
 Docker is a great way to run lehtiolab/ddamsproteomics, as it manages all software installations and allows the pipeline to be run in an identical software environment across a range of systems.
 
-Nextflow has [excellent integration](https://www.nextflow.io/docs/latest/docker.html) with Docker, and beyond installing the two tools, not much else is required - nextflow will automatically fetch the [lehtiolab/ddamsproteomics](https://hub.docker.com/r/lehtiolab/ddamsproteomics/) image that we have created and is hosted at dockerhub at run time.
+Nextflow has [excellent integration](https://www.nextflow.io/docs/latest/docker.html) with Docker, and beyond installing the two tools, not much else is required - nextflow will automatically fetch the images that are needed at run time.
 
 To add docker support to your own config file, add the following:
 
 ```nextflow
 docker.enabled = true
-process.container = "lehtiolab/ddamsproteomics"
 ```
 
 
 ### Singularity image
+Unfortunately Singularity is currently not testd as a containerization method for this pipeline!
 Many HPC environments are not able to run Docker due to security issues.
 [Singularity](http://singularity.lbl.gov/) is a tool designed to run on such HPC systems which is very similar to Docker.
 
@@ -56,27 +56,20 @@ To specify singularity usage in your pipeline config file, add the following:
 singularity.enabled = true
 ```
 
-If you intend to run the pipeline offline, nextflow will not be able to automatically download the singularity image for you.
+If you intend to run the pipeline offline, nextflow will not be able to automatically download the singularity images for you.
 Instead, you'll have to do this yourself manually first, transfer the image file and then point to that.
 
-First, pull the image file where you have an internet connection:
-
-```bash
-singularity pull --name ddamsproteomics.simg docker://lehtiolab/ddamsproteomics
-```
-
-Then transfer this file and point the config file to the image:
+First, pull the image files where you have an internet connection, then point the config file to the images:
 
 ```nextflow
 singularity.enabled = true
-process.container = "/path/to/ddamsproteomics.simg"
+process {
+  withName youProcess {
+    container = "/path/to/singularity_container.simg"
+  }
+}
 ```
 
 
 ### Conda
-If you're not able to use Docker or Singularity, you can instead use conda to manage the software requirements.
-To use conda in your own config file, add the following:
-
-```nextflow
-process.conda = "$baseDir/environment.yml"
-```
+If you're not able to use Docker or Singularity, you can instead use conda to manage the software requirements. This is currently not supported, so you will have to supply the conda installs yourself.
