@@ -7,8 +7,6 @@ library(stringr)
 
 args = commandArgs(trailingOnly=TRUE)
 has_fractions = args[1] == TRUE
-newmzmlfn = ifelse(args[2] == 'FALSE', '', args[2])
-oldmzmlfn = ifelse(args[3] == 'FALSE', '', args[3])
 
 # Fraction needs to be a factor and not numeric, since it can contain strings (e.g. A2)
 # That would be fine but when mixing oldmzmls from a rerun in, the join on Fraction op may fail
@@ -107,7 +105,7 @@ mcplot = ggplot(mcl_am) +
     geom_text(position=position_dodge(width=0.9), aes(x=.data[[xcol]], y=mc_text_y, group=missed_cleavage, label=glue('{nrscan} PSMs')), colour="black", size=4, inherit.aes=T) +
     ylim(c(0, 100)) + ylab('% of PSMs') +
     theme_bw() +
-    theme(axis.title.x=element_text(size=15), axis.title.y=element_blank(), axis.text=element_text(size=10), legend.position="top", legend.text=element_text(size=10), legend.title=element_blank()) +
+    theme(axis.title.x=element_text(size=15), axis.title.y=element_blank(), axis.text=element_text(size=10), axis.text.y=element_text(angle=90), legend.position="top", legend.text=element_text(size=10), legend.title=element_blank()) +
     coord_flip() 
 p = ggplotly(mcplot, width=400, height=vert_height) %>%
         layout(legend = list(orientation = 'h', x = 0, y = 1.1, xanchor='left', yanchor='bottom'))
@@ -116,28 +114,12 @@ htmlwidgets::saveWidget(p, 'missed_cleavages.html', selfcontained=F)
 
 
 # Now the per-fraction or per-file stats
-if (has_fractions) {
-  xcol = 'Fraction'
-} else { 
-  xcol = filenamecol
-}
-fryield_form = glue('{scancol} ~ {xcol}')
-
-if (str_length(newmzmlfn)) {
-  newmzmls = read.table(newmzmlfn, colClasses='character', header=T, sep='\t', fill=T)
-}
-if (str_length(oldmzmlfn)) {
-  allfilefractions = read.table(oldmzmlfn, colClasses='character', header=T, sep='\t')
-  if (str_length(newmzmlfn)) {
-    allfilefractions = rbind(allfilefractions, newmzmls)
-  }
-}  else {
-  allfilefractions = newmzmls
-}
+allfilefractions = read.table('mzmls', colClasses='character', header=F, sep='\t', fill=T)
+colnames(allfilefractions) = c('mzmlfile', 'setname', 'plate', 'fraction')
 allfilefractions$setname = trimws(allfilefractions$setname)
 allfilefractions$Fraction = allfilefractions$fraction
 allfilefractions$plateID = paste(allfilefractions$setname, allfilefractions$plate, sep='_')
-allfilefractions$filename = basename(allfilefractions$mzmlfile)
+allfilefractions[[ filenamecol ]]  = basename(allfilefractions$mzmlfile)
 
 # List of plot names and their axis label:
 ptypes = list(
@@ -149,28 +131,31 @@ ptypes = list(
   pif=c('Precursor.ion.fraction', 'Precursor/all in window')
 )
 
-for (plateid in amount_ms2$plateID) {
+if (has_fractions) {
+  frcol = 'Fraction'
+  plate_ids = amount_ms2[[xcol]]
+} else { 
+  frcol = filenamecol
+  plate_ids = c('noplates')
+}
+for (plateid in plate_ids) {
   if (has_fractions) {
-    subfeats = subset(feats, plateID==plateid) 
-    subfiles = subset(allfilefractions, plateID==plateid)
-    h = 4
-    w = 14
+    subfeats = subset(feats, get(xcol)==plateid) 
+    subfiles = subset(allfilefractions, get(xcol)==plateid)
   } else { 
     subfeats = feats
     subfiles = allfilefractions
-    h = nrow(unique(feats[xcol])) + 1
-    w = 14
   }
   for (ptype in names(ptypes)) {
-    fn = paste('PLATE', plateid, ptype, sep="___")
     if (nrow(subfeats) && ptypes[[ptype]][1] %in% colnames(subfeats)) {
       if (ptype == 'fryield' && nrow(subfeats)) {
+        fryield_form = glue('{scancol} ~ {frcol}')
         yieldcounts = aggregate(as.formula(fryield_form), subfeats, length)
-        plotdata = merge(yieldcounts, subfiles[xcol], all.y=T)
-        p = ggplot(plotdata, aes(x=.data[[ xcol ]], y=.data[[ ptypes[[ptype]][1] ]])) + geom_bar(stat='identity')
+        plotdata = merge(yieldcounts, subfiles[frcol], all.y=T)
+        p = ggplot(plotdata, aes(x=.data[[ frcol ]], y=.data[[ ptypes[[ptype]][1] ]])) + geom_bar(stat='identity')
       } else {
         plotdata = subfeats
-        p = ggplot(plotdata, aes(x=.data[[ xcol ]], y=.data[[ ptypes[[ptype]][1] ]])) + geom_violin(trim=F) 
+        p = ggplot(plotdata, aes(x=.data[[ frcol ]], y=.data[[ ptypes[[ptype]][1] ]])) + geom_violin(trim=F) 
       }
       if (ptype == 'precerror') {
         p = p + geom_hline(yintercept=0, size=2)

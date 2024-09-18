@@ -571,13 +571,11 @@ if (params.sampletable) {
 
 
   if (params.oldmzmldef) { 
-    // oldmzml_lines = file("${params.oldmzmldef}").readLines().collect { it.tokenize('\t') }
-    oldmzmls = msgf_info_map(params.oldmzmldef)
-    oldmzml_sets = oldmzmls.collect { k,v -> v.setname }
-    //oldmzmls_fn = Channel.fromPath(params.oldmzmldef).first()
+    oldmzmls = msgf_info_map(params.oldmzmldef).collect { k,v -> v}
+    oldmzml_sets = oldmzmls.collect { it.setname }
   } else {
-    //oldmzmls_fn = Channel.fromPath("${baseDir}/assets/NO__FILE").first()
     oldmzml_sets = []
+    oldmzmls = []
   }
 
   all_setnames = (mzml_list.collect { it.setname } + oldmzml_sets).unique()
@@ -603,8 +601,13 @@ if (params.sampletable) {
     // Prepare mzml files (sort, collect) for processes that need all of them
     .toList()
     .map { it.sort( {a, b -> a.sample <=> b.sample}) } // sort on sample for consistent .sh script in -resume
-    .map { it -> [it.collect() { it.setname }, it.collect() { it.mzmlfile }, it.collect() { it.plate }, it.collect() { it.fraction } ] } // lists: [sets], [mzmlfiles], [plates], [fractions]
-    .map { it -> it[0..2] } // remove basenames, fractions
+    // Somehow .tap hangs this pipeline so set and continue instead
+    .set{ sorted_mzml_in }
+
+    sorted_mzml_in
+    .map { it.collect { x -> [x.setname, x.mzmlfile, x.plate] } }
+    .transpose()
+    .toList()
     .set { mzmlfiles_all_sort }
 
   // Spec lookup prep if needed
@@ -921,10 +924,10 @@ if (params.sampletable) {
     protpepgene_ch.set { feattables_out_ch }
   }
   
-  REPORTING(mzmlfiles_all_sort,
+  REPORTING(
+    sorted_mzml_in,
     tdspeclookup.map { it[0] },
-    Channel.fromPath(params.input ?: nofile),
-    Channel.fromPath(params.oldmzmldef ?: nofile),
+    oldmzmls,
     fractionation,
     target_psmtable.map { it[1] },
     protpepgene_ch.with_nogroup,
