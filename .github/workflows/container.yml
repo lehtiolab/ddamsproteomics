@@ -1,8 +1,7 @@
 name: Build docker container for reporting
 
 on:
-  release:
-    types: [published, edited]
+  workflow_call:
   workflow_dispatch:
 
 env:
@@ -40,4 +39,3 @@ jobs:
           file: ./assets/Dockerfile
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-
