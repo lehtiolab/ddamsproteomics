@@ -8,11 +8,11 @@ on:
 
 jobs:
   create-container:
-    uses: ./github/workflows/container.yml
+    uses: ./.github/workflows/container.yml
 
   run-all-tests:
     needs: create-container
-    uses: lehtiolab/ddamsproteomics/.github/workflows/tests_all.yml
+    uses: ./.github/workflows/tests_all.yml
 
   create-release:  
     needs: run-all-tests
