@@ -479,10 +479,11 @@ process proteinPeptideSetMerge {
   
   output:
   tuple val(acctype), path('grouptable'), emit: with_nogroup
-  tuple val(acctype), path('no_nogrouptable'), emit: nogroup_rm
+  tuple val(acctype), path(outfile), emit: nogroup_rm
 
   script:
   sampletable_iso = sampletable_with_special_chars.name != 'NO__FILE' && do_isobaric
+  outfile = "${acctype}_table.txt"
   """
 
   # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
@@ -504,7 +505,7 @@ process proteinPeptideSetMerge {
   ${sampletable_iso ? "cat <(tail -n1 tmph) <(tail -n+2 mergedtable) > grouptable" : 'mv mergedtable grouptable'}
 
   # Remove internal no-group identifier so it isnt output
-  sed '1s/NO__GROUP_//g' < grouptable > no_nogrouptable
+  sed '1s/NO__GROUP_//g' < grouptable > ${outfile}
   """
 }
 
@@ -519,15 +520,16 @@ process DEqMS {
 
   output:
   tuple val(acctype), path('proteintable'), emit: with_nogroup
-  tuple val(acctype), path('no_nogrouptable'), emit: nogroup_rm
+  tuple val(acctype), path(outfile), emit: nogroup_rm
 
   script:
+  outfile = "${acctype}_table.txt"
   """
   # Run DEqMS if needed, use original sample table with NO__GROUP
   numfields=\$(head -n1 grouptable | tr '\t' '\n' | wc -l) && deqms.R && paste <(head -n1 grouptable) <(head -n1 deqms_output | cut -f \$(( numfields+1 ))-\$(head -n1 deqms_output|wc -w)) > tmpheader && cat tmpheader <(tail -n+2 deqms_output) > proteintable
 
   # Remove internal no-group identifier so it isnt output
-  sed '1s/NO__GROUP_//g' < proteintable > no_nogrouptable
+  sed '1s/NO__GROUP_//g' < proteintable > ${outfile}
   """
 }
 
@@ -951,9 +953,9 @@ workflow {
       Channel.from(params.report_seqmatch).flatMap { it.tokenize(';') }.map { file(it) },
       params.maxmiscleav,
       params.minpeplen,
-    ).set { feattables_out_ch }
+    ).map { it[1] }.set { feattables_out_ch }
   } else {
-    protpepgene_ch.set { feattables_out_ch }
+    protpepgene_ch.nogroup_rm.map { it[1]}.set { feattables_out_ch }
   }
   
   REPORTING(
@@ -981,6 +983,7 @@ workflow {
   .concat(psmtables_ch | filter { it[0] == 'decoy' } | map { it[1] })
   .concat(psmlookups_ch | map { it[1] })
   .concat(ptm_ch.flatten())
+  .concat(feattables_out_ch)
   .concat(REPORTING.out.flatten())
   .subscribe { it.copyTo("${params.outdir}/${it.baseName}.${it.extension}") }
 }
