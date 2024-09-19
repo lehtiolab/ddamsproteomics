@@ -2,6 +2,7 @@ name: release-new-version
 run-name: Build container, run all tests, do release
 on:
   workflow_dispatch:
+  pull_request:
 
 jobs:
     run-all-tests:
