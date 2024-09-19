@@ -18,4 +18,5 @@ jobs:
     needs: run-all-tests
     steps:
       - uses: ncipollo/release-action@v1
-        draft: true
+        with:
+          draft: true
