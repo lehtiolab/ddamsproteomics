@@ -1,9 +1,17 @@
 # lehtiolab/ddamsproteomics: Changelog
+
+## Version 3.0 [2024-09-19]
+- Rewrote in DSL2
+- QC report with plotly
+- Tool update to msstitch 3.16, proteowizard 3.0.24172
+
+
 ## Version 2.18 [2024-04-08]
 - Increase heap size for dinosaur to handle bigger files
 - Make percolator accept unknown non-UNIMOD modifications
 - Fix issue where set/sample group names were not correctly matched if they overlap
 - Minor fixes, file special characters
+
 
 ## Version 2.17 [2023-11-20]
 - Percolator forces concatenated T/D search instead of mix-max

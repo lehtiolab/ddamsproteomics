@@ -1,5 +1,5 @@
-name: run-tests
-run-name: Run pipeline tests
+name: run-one-test
+run-name: Run single test for speed
 on:
     push:
         branches:
@@ -18,5 +18,4 @@ jobs:
             uses: nf-core/setup-nextflow@v1
 
           - name: Run tests
-            run: bash run_tests.sh
-
+            run: bash run_tests.sh tmt16_fast

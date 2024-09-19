@@ -33,19 +33,28 @@ test_names=(
     tims
 )
 
-for testname in ${test_names[@]}
-do
-    bash "${testdir}/${testname}.sh"
-    results["$testname"]="$?"
-done
-
-for testname in ${test_names[@]}
-do
-    if [[ ${results["$testname"]} == 0 ]]
-    then
-        echo ${green}"$testname" - SUCCESS ${reset}
-    else
-        echo ${red}"$testname" - FAIL ${reset}
-    fi
-done
-# FIXME look through all the QCs to check if runs are correct
+if [ -z "$1" ]
+then
+       	for testname in ${test_names[@]}
+       	do
+	       	bash "${testdir}/${testname}.sh"
+	       	results["$testname"]="$?"
+       	done
+	for testname in ${test_names[@]}
+	do
+	    if [[ ${results["$testname"]} == 0 ]]
+	    then
+	        echo ${green}"$testname" - SUCCESS ${reset}
+	    else
+	        echo ${red}"$testname" - FAIL ${reset}
+	    fi
+	done
+else
+       	bash "${testdir}/$1.sh"
+       	if [[ "$?" == 0 ]]
+       	then
+	       	echo ${green}"$1" - SUCCESS ${reset}
+       	else
+	       	echo ${red}"$1" - FAIL ${reset}
+       	fi
+fi

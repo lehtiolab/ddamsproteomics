@@ -16,7 +16,7 @@ nextflow run -resume -profile test ${repodir}/main.nf --name ${name} --outdir ${
     --hardklor --isobaric '0set-A:tmtpro:126:131N' \
     --tdb "${testdata}/tmt16_fa.fa" \
     --mods 'carbamidomethyl;oxidation;43.005814,*,opt,N-term,Unknown' \
-    --deqms --keepnapsmsquant --genes \
+    --deqms --keepnapsmsquant --genes
 
 
 echo TMT16 phospho + acetyl and total protnorm

@@ -1,14 +1,9 @@
 # lehtiolab/ddamsproteomics
 **A Quantitative MS proteomics analysis pipeline**
 
-[![Build Status](https://travis-ci.org/lehtiolab/ddamsproteomics.svg?branch=master)](https://travis-ci.org/lehtiolab/ddamsproteomics)
-[![Nextflow](https://img.shields.io/badge/nextflow-%E2%89%A520.01.1-brightgreen.svg)](https://www.nextflow.io/)
+[![Nextflow DSL2](https://img.shields.io/badge/nextflow-%E2%89%A524.04.4-brightgreen.svg)](https://www.nextflow.io/)
 [![DOI](https://zenodo.org/badge/219955514.svg)](https://zenodo.org/badge/latestdoi/219955514)
-
-[![install with bioconda](https://img.shields.io/badge/install%20with-bioconda-brightgreen.svg)](http://bioconda.github.io/)
-[![Docker](https://img.shields.io/docker/automated/lehtiolab/ddamsproteomics.svg)](https://hub.docker.com/r/lehtiolab/ddamsproteomics)
-![Singularity Container available](
-https://img.shields.io/badge/singularity-available-7E4C74.svg)
+[![run with docker](https://img.shields.io/badge/run%20with-docker-0db7ed?labelColor=000000&logo=docker)](https://www.docker.com/)
 
 ### Introduction
 This workflow identifies peptides in mzML input data using [MSGF+](https://github.com/MSGFPlus/msgfplus), and [Percolator](https://github.com/percolator/percolator/), quantifies isobarically labeled samples with [OpenMS](https://github.com/openms/openms), and precursor peptides with [Dinosaur](https://github.com/fickludd/dinosaur), and processes that output to formatted peptide and protein/gene tables using [Msstitch](https://github.com/lehtiolab/msstitch). Optional PTM data is analyzed by [Luciphor2](https://github.com/dfermin/lucxor), and differential expression analyses can be performed using [DEqMS](https://github.com/yafeng/deqms). 
@@ -38,7 +33,7 @@ For more elaborate examples covering fractionation, PTMs, and more, the lehtiola
 - [Output and how to interpret the results](docs/output.md)
 - [Troubleshooting](https://nf-co.re/usage/troubleshooting)
 
-The pipeline takes multiple mzML files as input and performs identification and quantification to output results and a QC report ([an example can be found here](docs/example_qc.html)) 
+The pipeline takes multiple mzML files as input and performs identification and quantification to output results and a QC report ([an example can be found here](docs/example_report.html), save to your computer and open it locally).
 
 
 ## Credits
