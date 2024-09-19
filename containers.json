@@ -21,8 +21,8 @@
   },
   "dinosaur": {
       "version": "1.2.0",
-      "docker": "ghcr.io/lehtiolab/ddamsproteomics:main",
-      "singularity": "docker://ghcr.io/lehtiolab/ddamsproteomics:main"
+      "docker": "ghcr.io/lehtiolab/ddamsproteomics:master",
+      "singularity": "docker://ghcr.io/lehtiolab/ddamsproteomics:master"
   },
   "hardklor": {
       "version": "2.3.2",
@@ -41,8 +41,13 @@
   },
   "deqms": {
       "version": "1.18.0",
-      "docker": "ghcr.io/lehtiolab/ddamsproteomics:main",
-      "singularity": "docker://ghcr.io/lehtiolab/ddamsproteomics:main"
+      "docker": "ghcr.io/lehtiolab/ddamsproteomics:master",
+      "singularity": "docker://ghcr.io/lehtiolab/ddamsproteomics:master"
+  },
+  "ddamsproteomics": {
+      "version": "3.0",
+      "docker": "ghcr.io/lehtiolab/ddamsproteomics:master",
+      "singularity": "docker://ghcr.io/lehtiolab/ddamsproteomics:master"
   },
   "msgfplus": {
       "version": "2023.01.1202",

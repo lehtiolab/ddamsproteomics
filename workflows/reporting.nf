@@ -3,7 +3,8 @@
 include { listify; stripchars_infile; get_regex_specialchars } from '../modules.nf' 
 
 process countMS2sPerPlate {
-  label 'python'
+  tag 'python'
+  container params.__containers[tag][workflow.containerEngine]
 
 // FIXME this could possibly go into the PSM QC R code?
 
@@ -71,7 +72,8 @@ process PSMQC {
     not available in biocontainers, so using own container.
     */
  
-  container params.report_container
+  tag 'ddamsproteomics'
+  container params.__containers[tag][workflow.containerEngine]
 
   input:
   tuple path('psms'), path('filescans'), path('platescans'), val(mzmls), val(fractionation), val(has_newmzmls), val(has_oldmzmls)
@@ -92,7 +94,8 @@ process PSMQC {
 
 process featQC {
 
-  container params.report_container
+  tag 'ddamsproteomics'
+  container params.__containers[tag][workflow.containerEngine]
 
   input:
   tuple val(acctype), path('feats'), path(normfacs), path(peptable), path('sampletable'), val(setnames), val(has_sampletable), val(conflvl)
@@ -121,7 +124,8 @@ process featQC {
 
 process PTMQC {
   
-  container params.report_container
+  tag 'ddamsproteomics'
+  container params.__containers[tag][workflow.containerEngine]
 
   input:
   tuple path(ptmpsms), path(peptable)
@@ -140,8 +144,10 @@ process PTMQC {
 
 
 process summaryReport {
-  
-  container params.report_container
+
+  tag 'ddamsproteomics'
+  container params.__containers[tag][workflow.containerEngine]
+
 
   input:
   tuple path(platescans), path(plotlibs), path('psmplots'), path(psm_summary), path(featplots), path(feat_summaries), path(feat_overlaps), path('ptmplots'), path(ptmfiles), path('warnings*')

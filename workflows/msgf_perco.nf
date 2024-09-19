@@ -1,7 +1,8 @@
 include { listify; stripchars_infile; parse_isotype } from '../modules.nf'
 
 process createMods {
-  label 'python'
+  tag 'python'
+  container params.__containers[tag][workflow.containerEngine]
 
   input:
   tuple val(setname), val(isobtype), val(maxvarmods), path(msgfmods), val(mods)
@@ -17,6 +18,9 @@ process createMods {
 
 
 process msgfPlus {
+
+  tag 'msgfplus'
+  container params.__containers[tag][workflow.containerEngine]
 
   input:
   tuple val(setname), val(sample), path(mzml), val(maxmiscleav), val(fparams), val(mods), val(setisobaric), val(fractionation), val(minpeplen), val(maxpeplen), val(mincharge), val(maxcharge), path(db), path('mods.txt')
@@ -52,6 +56,9 @@ process msgfPlus {
 
 process percolator {
 
+  tag 'percolator'
+  container params.__containers[tag][workflow.containerEngine]
+
   input:
   tuple val(setname), path(mzids), path(tsvs), val(enzyme)
 
@@ -69,7 +76,8 @@ process percolator {
 
 process percolatorToPsms {
 
-  label 'msstitch'
+  tag 'msstitch'
+  container params.__containers[tag][workflow.containerEngine]
 
   input:
   tuple val(setname), path(perco), path(mzids), path(tsvs), val(psmconf), val(pepconf), val(output_unfiltered)
