@@ -1,0 +1,78 @@
+name: run-all-test
+run-name: Run all tests
+on:
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+    test-tmt16:
+        runs-on: ubuntu-latest
+        steps:
+          - name: Checkout repo
+            uses: actions/checkout@v4
+
+          - name: Setup nextflow
+            uses: nf-core/setup-nextflow@v2
+
+          - name: Run tests
+            run: bash run_tests.sh tmt16
+
+    test-tmt18:
+        runs-on: ubuntu-latest
+        steps:
+          - name: Checkout repo
+            uses: actions/checkout@v4
+
+          - name: Setup nextflow
+            uses: nf-core/setup-nextflow@v2
+
+          - name: Run tests
+            run: bash run_tests.sh tmt18
+
+    test-labelfree:
+        runs-on: ubuntu-latest
+        steps:
+          - name: Checkout repo
+            uses: actions/checkout@v4
+
+          - name: Setup nextflow
+            uses: nf-core/setup-nextflow@v2
+
+          - name: Run tests
+            run: bash run_tests.sh labelfree
+
+    test-lf_phos:
+        runs-on: ubuntu-latest
+        steps:
+          - name: Checkout repo
+            uses: actions/checkout@v4
+
+          - name: Setup nextflow
+            uses: nf-core/setup-nextflow@v2
+
+          - name: Run tests
+            run: bash run_tests.sh labelfree_phos
+
+    test-tims:
+        runs-on: ubuntu-latest
+        steps:
+          - name: Checkout repo
+            uses: actions/checkout@v4
+
+          - name: Setup nextflow
+            uses: nf-core/setup-nextflow@v2
+
+          - name: Run tests
+            run: bash run_tests.sh tims
+
+    test-mixed-tmt:
+        runs-on: ubuntu-latest
+        steps:
+          - name: Checkout repo
+            uses: actions/checkout@v4
+
+          - name: Setup nextflow
+            uses: nf-core/setup-nextflow@v2
+
+          - name: Run tests
+            run: bash run_tests.sh tmt16_18

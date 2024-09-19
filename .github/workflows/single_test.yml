@@ -1,0 +1,23 @@
+name: run-one-test
+run-name: Run single test for speed
+on:
+    push:
+        branches:
+            - master
+    pull_request:
+        branches:
+            - master
+    workflow_call:
+
+jobs:
+    integration-tests:
+        runs-on: ubuntu-latest
+        steps:
+          - name: Checkout repo
+            uses: actions/checkout@v4
+
+          - name: Setup nextflow
+            uses: nf-core/setup-nextflow@v2
+
+          - name: Run single test
+            run: bash run_tests.sh tmt16_fast

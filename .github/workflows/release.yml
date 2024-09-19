@@ -1,0 +1,21 @@
+name: release-new-version
+run-name: Build container, run all tests, do release
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      release-*
+
+jobs:
+  create-container:
+    uses: ./.github/workflows/container.yml
+
+  run-all-tests:
+    needs: create-container
+    uses: ./.github/workflows/tests_all.yml
+
+  create-release:  
+    needs: run-all-tests
+    steps:
+      - uses: ncipollo/release-action@v1
+        draft: true

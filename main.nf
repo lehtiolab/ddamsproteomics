@@ -1,6 +1,5 @@
 #!/usr/bin/env nextflow
 
-import groovy.json.JsonSlurper
 include { paramsSummaryMap } from 'plugin/nf-validation'
 
 include { msgf_info_map; listify; stripchars_infile; get_regex_specialchars; read_header } from './modules.nf' 
@@ -20,7 +19,10 @@ include { REPORTING } from './workflows/reporting.nf'
 */
 
 process createTargetDecoyFasta {
-  label 'msstitch'
+  
+  tag 'msstitch'
+  container params.__containers[tag][workflow.containerEngine]
+
  
   input:
   path(tdb)
@@ -51,6 +53,9 @@ process createTargetDecoyFasta {
 
 process centroidMS1 {
 
+  tag 'proteowizard'
+  container params.__containers[tag][workflow.containerEngine]
+
   input:
   tuple val(setname), path(infile), val(instr)
 
@@ -68,6 +73,9 @@ process centroidMS1 {
 
 
 process isobaricQuant {
+
+  tag 'openms'
+  container params.__containers[tag][workflow.containerEngine]
 
   input:
   tuple val(setname), val(parsed_infile), path(infile), val(instr), val(isobtype)
@@ -89,6 +97,9 @@ process isobaricQuant {
 
 process dinosaur {
 
+  tag 'dinosaur'
+  container params.__containers[tag][workflow.containerEngine]
+
   input:
   tuple val(sample), path(infile)
 
@@ -106,6 +117,9 @@ process dinosaur {
 
 
 process hardklor {
+
+  tag 'hardklor'
+  container params.__containers[tag][workflow.containerEngine]
 
   input:
   tuple val(sample), path(infile), path(hkconf)
@@ -125,6 +139,9 @@ process hardklor {
 
 process kronik {
 
+  tag 'kronik'
+  container params.__containers[tag][workflow.containerEngine]
+
   input:
   tuple val(sample), val(parsed_infile), path('hardklor.out')
   
@@ -139,7 +156,8 @@ process kronik {
 
 
 process PTMClean {
-  label 'sqlite'
+  tag 'sqlite'
+  container params.__containers[tag][workflow.containerEngine]
   // FIXME can be in PTM wf?
   // In PTMS we need to delete all PSMs since we will rebuild it
 
@@ -175,7 +193,8 @@ process PTMClean {
 
 
 process complementSpectraLookupCleanPSMs {
-  label 'msstitch'
+  tag 'msstitch'
+  container params.__containers[tag][workflow.containerEngine]
 
   input:
   tuple val(in_setnames), path(mzmlfiles), val(platenames), path(tlup), path(dlup), path(tpsms), path(dpsms), path(ptmpsms)
@@ -218,7 +237,8 @@ process complementSpectraLookupCleanPSMs {
 
 process createNewSpectraLookup {
 
-  label 'msstitch'
+  tag 'msstitch'
+  container params.__containers[tag][workflow.containerEngine]
 
   input:
   tuple val(setnames), file(mzmlfiles), val(platenames)
@@ -237,7 +257,8 @@ process createNewSpectraLookup {
 
 process quantLookup {
   
-  label 'msstitch'
+  tag 'msstitch'
+  container params.__containers[tag][workflow.containerEngine]
 
   input:
   tuple val(mzmlnames), path(isofns), path(ms1fns), path(tlookup)
@@ -258,7 +279,8 @@ process quantLookup {
 
 process createPSMTable {
 
-  label 'msstitch'
+  tag 'msstitch'
+  container params.__containers[tag][workflow.containerEngine]
 
   input:
   tuple val(td), path(psms), path('lookup'), path(tdb), path(ddb), path('oldpsms'), val(complementary_run), val(do_ms1), val(do_isobaric), val(onlypeptides)
@@ -292,7 +314,8 @@ process createPSMTable {
 
 process peptidePiAnnotation {
 
-  label 'python'
+  tag 'python'
+  container params.__containers[tag][workflow.containerEngine]
 
   input:
   tuple path('psms'), val(strips), path('hirief_training_pep')
@@ -310,7 +333,8 @@ process peptidePiAnnotation {
 
 process splitPSMs {
 
-  label 'msstitch'
+  tag 'msstitch'
+  container params.__containers[tag][workflow.containerEngine]
 
   input:
   tuple val(td), path('psms'), val(setnames)
@@ -327,7 +351,8 @@ process splitPSMs {
 
 process splitTotalProteomePSMs {
 
-  label 'msstitch'
+  tag 'msstitch'
+  container params.__containers[tag][workflow.containerEngine]
 
   input:
   tuple path('tppsms_in'), val(setnames)
@@ -344,7 +369,8 @@ process splitTotalProteomePSMs {
 
 process makePeptides {
 
-  label 'msstitch'
+  tag 'msstitch'
+  container params.__containers[tag][workflow.containerEngine]
 
   input:
   tuple val(td), val(setname), path('psms'), val(setisobaric), val(denoms), val(keepnapsms_quant), val(normalize_isob), val(do_ms1)
@@ -373,7 +399,8 @@ process makePeptides {
 
 process proteinGeneSymbolTableFDR {
  
-  label 'msstitch'
+  tag 'msstitch'
+  container params.__containers[tag][workflow.containerEngine]
  
   input:
   tuple val(setname), path('tpeptides'), path('tpsms'), path('dpeptides'), path(tfasta), path(dfasta), val(acctype), val(do_ms1), val(isobaric), val(denom), val(keepnapsms_quant), val(normalize)
@@ -417,7 +444,8 @@ process proteinGeneSymbolTableFDR {
 process sampleTableCheckClean {
 
   // Runs no python but that container has the tools needed
-  label 'python'
+  tag 'python'
+  container params.__containers[tag][workflow.containerEngine]
  
   input:
   tuple path('sampletable'), val(do_deqms)
@@ -443,17 +471,19 @@ process sampleTableCheckClean {
 
 process proteinPeptideSetMerge {
 
-  label 'msstitch'
+  tag 'msstitch'
+  container params.__containers[tag][workflow.containerEngine]
 
   input:
   tuple val(setnames), val(acctype), path(tables), path(lookup), path(sampletable_with_special_chars), path('sampletable_no_special_chars'), val(do_isobaric), val(do_ms1), val(proteinconflvl), val(do_pgroup), val(do_deqms)
   
   output:
   tuple val(acctype), path('grouptable'), emit: with_nogroup
-  tuple val(acctype), path('no_nogrouptable'), emit: nogroup_rm
+  tuple val(acctype), path(outfile), emit: nogroup_rm
 
   script:
   sampletable_iso = sampletable_with_special_chars.name != 'NO__FILE' && do_isobaric
+  outfile = "${acctype}_table.txt"
   """
 
   # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
@@ -475,27 +505,31 @@ process proteinPeptideSetMerge {
   ${sampletable_iso ? "cat <(tail -n1 tmph) <(tail -n+2 mergedtable) > grouptable" : 'mv mergedtable grouptable'}
 
   # Remove internal no-group identifier so it isnt output
-  sed '1s/NO__GROUP_//g' < grouptable > no_nogrouptable
+  sed '1s/NO__GROUP_//g' < grouptable > ${outfile}
   """
 }
 
 
 process DEqMS {
 
+  tag 'deqms'
+  container params.__containers[tag][workflow.containerEngine]
+
   input:
   tuple val(acctype), path('grouptable'), path('sampletable')
 
   output:
   tuple val(acctype), path('proteintable'), emit: with_nogroup
-  tuple val(acctype), path('no_nogrouptable'), emit: nogroup_rm
+  tuple val(acctype), path(outfile), emit: nogroup_rm
 
   script:
+  outfile = "${acctype}_table.txt"
   """
   # Run DEqMS if needed, use original sample table with NO__GROUP
   numfields=\$(head -n1 grouptable | tr '\t' '\n' | wc -l) && deqms.R && paste <(head -n1 grouptable) <(head -n1 deqms_output | cut -f \$(( numfields+1 ))-\$(head -n1 deqms_output|wc -w)) > tmpheader && cat tmpheader <(tail -n+2 deqms_output) > proteintable
 
   # Remove internal no-group identifier so it isnt output
-  sed '1s/NO__GROUP_//g' < proteintable > no_nogrouptable
+  sed '1s/NO__GROUP_//g' < proteintable > ${outfile}
   """
 }
 
@@ -919,9 +953,9 @@ workflow {
       Channel.from(params.report_seqmatch).flatMap { it.tokenize(';') }.map { file(it) },
       params.maxmiscleav,
       params.minpeplen,
-    ).set { feattables_out_ch }
+    ).map { it[1] }.set { feattables_out_ch }
   } else {
-    protpepgene_ch.set { feattables_out_ch }
+    protpepgene_ch.nogroup_rm.map { it[1]}.set { feattables_out_ch }
   }
   
   REPORTING(
@@ -949,6 +983,7 @@ workflow {
   .concat(psmtables_ch | filter { it[0] == 'decoy' } | map { it[1] })
   .concat(psmlookups_ch | map { it[1] })
   .concat(ptm_ch.flatten())
+  .concat(feattables_out_ch)
   .concat(REPORTING.out.flatten())
   .subscribe { it.copyTo("${params.outdir}/${it.baseName}.${it.extension}") }
 }
@@ -971,25 +1006,12 @@ workflow.onComplete {
       infiles = [[], []]
     }
 
-    // Parse containers file to get software versions
-    def jsonslurp = new JsonSlurper()
-    def containers_versions = jsonslurp.parseText(new File("${baseDir}/containers.json").text)
-      .collectEntries { k, v -> [v[workflow.containerEngine], [k, v.version]] }
-
-    // Get processes used from trace to output the software versions used in pipeline
-    def label_containers = psmap['Core Nextflow options']['container']
-      .findAll { it.key.contains('withLabel:') }
-      .collect { it.value }
-      .collect { [containers_versions[it][0], containers_versions[it][1], it] }
-    def sw_versions = label_containers + file("${params.outdir}/pipeline_info/execution_trace.txt").readLines()[1..-1]
-      .collect { it.tokenize('\t')[3]
-          .replaceFirst(~/^.+:/, '')
-          .replaceFirst(~/\s\([0-9]+\)$/, '')
-      }.unique()
-      .collect { psmap['Core Nextflow options']['container'][it] }
-      .findAll { it } // remove null in case process is not defined in container-config
+    // Get processes tags used from trace to output the software versions used in pipeline
+    def sw_versions = file("${params.outdir}/pipeline_info/execution_trace.txt").readLines()[1..-1]
+      .collect { it.tokenize('\t')[4] } // get process tag
       .unique()
-      .collect { [containers_versions[it][0], containers_versions[it][1], it] }
+      .collect { [it, params.__containers[it].version, params.__containers[it][workflow.containerEngine]] }
+    // The above crashes this handler in case the tag (software) is not defined in the containers.json
       
     // Set the name of the workflow
     // if not wf.runName (-name or auto) is like "crazy_euler" or other "{adjective}_{scientist}"

@@ -4,7 +4,8 @@ process createTrypticMatchDB {
   /* Create a sequence match SQLite database to be used for filtering
   PSM tables and percolator */
 
-  label 'msstitch'
+  tag 'msstitch'
+  container params.__containers[tag][workflow.containerEngine]
 
   input:
   tuple path(sequences), val(maxmiscleav), val(minpeplen)
@@ -26,7 +27,8 @@ process createTrypticMatchDB {
 
 process markPeptidesPresentInDB {
 
-  label 'msstitch'
+  tag 'msstitch'
+  container params.__containers[tag][workflow.containerEngine]
 
   /* Match peptide sequences to user-provided sequences in a storeseq SQLite DB.
   Mark peptides that match with a 1, else 0 in a new column.
@@ -60,24 +62,26 @@ process markPeptidesPresentInDB {
 
 process joinAnnotatedSeqmatchPeptides {
 
-  label 'sqlite'
+  tag 'sqlite'
+  container params.__containers[tag][workflow.containerEngine]
 
   input:
   tuple val(acctype), path('feats'), path('peptides'), path(seqdbs)
 
   output:
-  tuple val(acctype), path('joinedfeats')
+  tuple val(acctype), path(outfile)
   
   script:
   headfield = [proteins: "Protein(s)", ensg: "Gene ID(s)", genes: "Gene name(s)"][acctype]
   featfield = [proteins: "Protein ID", ensg: "Gene ID", genes: "Gene Name"][acctype]
   len_seqmatch = listify(seqdbs).size()
   seqdbs_clean = seqdbs.collect() { it.baseName.replaceAll('[^A-Za-z0-9_-]', '_') }
+  outfile = "${acctype}_table.txt"
   """
   acc_col=${get_field_nr('peptides', headfield)}
   cut -f1-${len_seqmatch},\${acc_col} peptides > seqmatches
   echo "\$(head -n1 feats)\t${seqdbs_clean.join('\t')}" > joinedfeats
-  sqlite3 test.db <<END_COMMANDS >> joinedfeats
+  sqlite3 test.db <<END_COMMANDS >> ${outfile}
 .mode tabs
 .import seqmatches seqmatch
 .import feats feats
@@ -115,4 +119,8 @@ workflow MATCH_SEQUENCES {
   | combine(sequence_fa_ch.toList().toList())
   | joinAnnotatedSeqmatchPeptides
   | concat(markPeptidesPresentInDB.out.peptides)
+  | set { matched_out }
+
+  emit:
+  matched_out
 }
