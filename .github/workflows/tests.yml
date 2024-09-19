@@ -18,5 +18,5 @@ jobs:
             uses: nf-core/setup-nextflow@v1
 
           - name: Run tests
-            run: bash run_test.sh
+            run: bash run_tests.sh
 
