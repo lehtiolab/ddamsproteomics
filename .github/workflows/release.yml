@@ -6,7 +6,7 @@ on:
 jobs:
     run-all-tests:
       #uses: lehtiolab/ddamsproteomics/.github/workflows/tests_all.yml
-      uses: lehtiolab/ddamsproteomics/.github/workflows/single_test.yml
+      uses: ./.github/workflows/single_test.yml
 
     create-release:  
         runs-on: ubuntu-latest
