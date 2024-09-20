@@ -21,3 +21,4 @@ jobs:
       - uses: ncipollo/release-action@v1
         with:
           draft: true
+          omitBody: true

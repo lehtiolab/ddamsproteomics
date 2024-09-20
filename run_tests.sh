@@ -35,6 +35,8 @@ test_names=(
 
 if [ -z "$1" ]
 then
+	# Run all tests, do not exit with failures
+	# Manual runs
        	for testname in ${test_names[@]}
        	do
 	       	bash "${testdir}/${testname}.sh"
@@ -50,11 +52,14 @@ then
 	    fi
 	done
 else
+	# Single test, exit with error when failing
+	# Used in github actions
        	bash "${testdir}/$1.sh"
        	if [[ "$?" == 0 ]]
        	then
 	       	echo ${green}"$1" - SUCCESS ${reset}
        	else
 	       	echo ${red}"$1" - FAIL ${reset}
+		exit 1
        	fi
 fi

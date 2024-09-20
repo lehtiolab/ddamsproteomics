@@ -37,5 +37,7 @@ jobs:
           push: true
           context: ./assets
           file: ./assets/Dockerfile
-          tags: ${{ steps.meta.outputs.tags }}
+          tags: |
+            type=ref,event=branch
+            type=match,pattern=release-(.*),group=1
           labels: ${{ steps.meta.outputs.labels }}
