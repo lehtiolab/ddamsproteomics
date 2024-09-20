@@ -30,6 +30,9 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=match,pattern=release-(.*),group=1
 
       - name: Build and push container to registry
         uses: docker/build-push-action@v6
@@ -37,7 +40,5 @@ jobs:
           push: true
           context: ./assets
           file: ./assets/Dockerfile
-          tags: |
-            type=ref,event=branch
-            type=match,pattern=release-(.*),group=1
+          tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
