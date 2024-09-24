@@ -166,6 +166,22 @@ if (is.character(sampletable)) {
   names(setlookup) = rownames(sampletable)
 }
 
+
+boxplot_stats = function(data, col) {
+  summary_stats = data %>%
+  summarise(lower = quantile({{col}}, 0.25),
+            middle = median({{col}}),
+            upper = quantile({{col}}, 0.75),
+            minval = min({{col}}),
+            maxval = max({{col}}),
+    )
+  summary_stats$iqr = summary_stats$upper - summary_stats$lower
+  summary_stats$whisk_min = pmax(summary_stats$minval, summary_stats$middle - summary_stats$iqr * 1.5)
+  summary_stats$whisk_max = pmin(summary_stats$maxval, summary_stats$middle + summary_stats$iqr * 1.5)
+  return(summary_stats)
+}
+
+
 if (is_isobaric) {
   # First produce the boxplots
   overlap = na.exclude(feats[c(tmtcols, qcols)])
@@ -177,17 +193,25 @@ if (is_isobaric) {
     tmt$Set = sub('_[a-z0-9]*plex.*', '', tmt$channelset)
   }
   tmt$channel = sub('.*_[a-z].*[0-9]*plex_', '', tmt$channelset)
-  ggp = ggplot(na.exclude(tmt[c('Set', 'value', 'channel')]), aes(x=Set, y=value, fill=channel)) +
-	  geom_boxplot(position=position_dodge(width=1), linewidth=0.3) +
+  # Do not use geom_boxplot, we dont want ALL of the data frame in the HTML, this only passes
+  # the relevant values and thus keeps it smaller
+  summary_stats <- na.exclude(tmt[c('Set', 'value', 'channel')]) %>%
+	    group_by(Set, channel) %>%
+	    boxplot_stats(value)
+  # Plot using geom_crossbar, geom_errorbar
+  ggp = ggplot(summary_stats, aes(x=Set, y=middle, fill=channel)) +
     coord_flip() + ylab('Fold change') +
     xlab('Channels') + theme_bw() + 
     theme(axis.title=element_text(size=10), axis.text=element_text(size=10)) + 
     theme(legend.text=element_text(2), legend.title=element_blank()) +
+    geom_errorbar(aes(ymin = whisk_min, ymax = whisk_max), width=0.07, position=position_dodge(width=1) ) +
+    geom_crossbar(aes(ymin = lower, ymax=upper, color=channel), width=0.1, position=position_dodge(width=1)) +
+    guides(linetype='none', size='none', fill='none', shape='none')
+  
   if (min(na.exclude(tmt$value)) >= 0) { ggp = ggp + scale_y_log10() }
   p = ggplotly(ggp, width=400, height=vert_height_iso) %>%
     layout(boxmode='group',
-      legend = list(title='', orientation = 'h', x = 0, y = 1.1, xanchor='left', yanchor='bottom'
-      )
+      legend = list(title='', orientation = 'h', x = 0, y = 1.1, xanchor='left', yanchor='bottom')
     )
   writeLines(c(glue('Overlap with values in all {length(tmtcols)} channels: {overlap}')), 'isobaric__text.html')
   htmlwidgets::saveWidget(p, 'isobaric.html', selfcontained=F)
@@ -278,14 +302,24 @@ if (length(precursorcols)) {
       parea$Set = sub('_MS1.*', '', parea$Set)
       parea$Set = sub('^X([^a-zA-Z])', '\\1', parea$Set)
       parea = parea[complete.cases(parea$ms1), ]
-      ggp = ggplot(parea) + 
-        geom_boxplot(aes(Set, ms1)) + scale_y_log10() + coord_flip() + ylab("Intensity") + theme_bw() + theme(axis.title=element_text(size=15), axis.text=element_text(size=10), axis.title.y=element_blank())
+
+  summary_stats <- parea[c('Set', 'ms1')] %>%
+	    group_by(Set) %>%
+	    boxplot_stats(ms1)
+
+  # Plot using geom_crossbar, geom_errorbar
+  ggp = ggplot(summary_stats, aes(x=Set, y=middle)) +
+    ylab('Intensity') +
+    theme_bw() + 
+    scale_y_log10() + coord_flip() +
+    theme(axis.title=element_text(size=15), axis.text=element_text(size=10), axis.title.y=element_blank()) +
+    geom_errorbar(aes(ymin = whisk_min, ymax = whisk_max), position=position_dodge(width=1) ) +
+    geom_crossbar(aes(ymin = lower, ymax=upper), fill='white', linewidth=0.15, position=position_dodge(width=1))
     } else {
       ggp = ggplot(data.frame()) + geom_point() + xlim(0, 10) + ylim(0, 100) + theme_bw() +
             geom_text(aes(5, 50, label=sprintf('No MS1 found in %s', feattype)))
     }
-    p = ggplotly(ggp, width=400, height=vert_height) %>%
-            layout(legend = list(title='', orientation = 'h', x = 0, y = 1.1, xanchor='left', yanchor='bottom'))
+    p = ggplotly(ggp, width=400, height=vert_height) #%>%
     htmlwidgets::saveWidget(p, 'precursorarea.html', selfcontained=F)
 }
 
