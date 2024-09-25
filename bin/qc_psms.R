@@ -21,6 +21,20 @@ precerrcol = 'PrecursorError.ppm.' # precursor_ppm
 scorecol = 'MSGFScore' # 'sage_discriminant_score'
 filenamecol = 'SpectraFile' # 'filename'
 
+boxplot_stats = function(data, col) {
+  summary_stats = data %>%
+  summarise(lower = quantile({{col}}, 0.25, na.rm=T),
+            middle = median({{col}}, na.rm=T),
+            upper = quantile({{col}}, 0.75, na.rm=T),
+            minval = min({{col}}, na.rm=T),
+            maxval = max({{col}}, na.rm=T),
+    )
+  summary_stats$iqr = summary_stats$upper - summary_stats$lower
+  summary_stats$whisk_min = pmax(summary_stats$minval, summary_stats$middle - summary_stats$iqr * 1.5)
+  summary_stats$whisk_max = pmin(summary_stats$maxval, summary_stats$middle + summary_stats$iqr * 1.5)
+  return(summary_stats)
+}
+
 
 if (has_fractions) {
   xcol ='plateID'
@@ -154,8 +168,13 @@ for (plateid in plate_ids) {
         plotdata = merge(yieldcounts, subfiles[frcol], all.y=T)
         p = ggplot(plotdata, aes(x=.data[[ frcol ]], y=.data[[ ptypes[[ptype]][1] ]])) + geom_bar(stat='identity')
       } else {
-        plotdata = subfeats
-        p = ggplot(plotdata, aes(x=.data[[ frcol ]], y=.data[[ ptypes[[ptype]][1] ]])) + geom_violin(trim=F) 
+        summary_stats <- subfeats[c(frcol, ptypes[[ptype]][1])] %>%
+	    group_by(.data[[frcol]]) %>%
+	    boxplot_stats(.data[[ptypes[[ptype]][1]]])
+        # Plot using geom_crossbar, geom_errorbar
+        p = ggplot(summary_stats, aes(x=.data[[ frcol ]], y=middle)) +
+          geom_errorbar(aes(ymin = whisk_min, ymax = whisk_max), position=position_dodge(width=1) ) +
+          geom_crossbar(aes(ymin = lower, ymax=upper), fill='white', linewidth=0.15, position=position_dodge(width=1))
       }
       if (ptype == 'precerror') {
         p = p + geom_hline(yintercept=0, size=2)
