@@ -377,7 +377,7 @@
       {% endfor %}
 
       {% if deqmsplots %}
-      <h4 class="title is-4">DEqMS<h4>
+      <h4 class="title is-4">DEqMS results<h4>
       <div class="columns">
         {% for fname, ftitle in featnames %}
         {% if deqmsplots[fname] %}
@@ -385,7 +385,7 @@
           <h5 class="title is-5">{{ ftitle }}</h5>
           {% for comp in deqmscomps %}
           {% if deqmsplots[fname][comp] %}
-          {{ deqmsplots[fname][comp] }}
+          <div><img src="data:image/png;base64,{{ deqmsplots[fname][comp] }}"></div>
           {% endif %}
           {% endfor %}
         </div>

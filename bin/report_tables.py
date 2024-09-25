@@ -3,6 +3,7 @@
 import re
 import os
 import sys
+import base64
 import shutil
 import argparse
 from glob import glob
@@ -109,7 +110,7 @@ for plotname, (pfn, textfn) in featplotfns.items():
 
 expplotnames = [
           ('pca', 'Principal component analysis'),
-          ('scree', 'DEqMS results'),
+          ('scree', 'PCA Scree plot'),
           ]
 expplotfns = [('pca', 'pca.html'),
         ('scree', 'scree.html'),
@@ -130,11 +131,12 @@ deqmsplots = defaultdict(dict)
 deqmscomps = set()
 for featname, feattitle in featnames:
     pdir = f'{featname}__plothtml'
-    for fn in glob(f'{pdir}/deqms_volcano_*.html'):
+    for fn in glob(f'{pdir}/deqms_volcano_*.png'):
         comp = re.sub(f'^{pdir}/*deqms_volcano_', '', fn)
-        comp = re.sub('.html$', '', comp)
+        comp = re.sub('.png$', '', comp)
         deqmscomps.add(comp)
-        deqmsplots[featname][comp] = get_plotly_html(fn)
+        with open(fn, 'rb') as fp:
+            deqmsplots[featname][comp] = base64.b64encode(fp.read()).decode('utf-8')
 
 
 #PTMs
