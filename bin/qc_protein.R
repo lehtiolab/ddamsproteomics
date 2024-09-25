@@ -57,8 +57,8 @@ if (is_isobaric) {
   nrpsms$Set = sub('^X([^a-zA-Z])', '\\1', nrpsms$Set)
   nrpsms_plot = nrpsms[c('Set', 'psmcount', 'setrank')] %>%
     group_by(Set, psmcount) %>%
-    summarise(psmcount = max(setrank))
-  ggp = ggplot(nrpsms_plot, aes(y=psmcount, x=psmcount)) +
+    summarise(maxrank = max(setrank))
+  ggp = ggplot(nrpsms_plot, aes(y=psmcount, x=maxrank)) +
     geom_step(aes(color=Set), size=2) + scale_y_log10() + xlab('Rank') + ylab('# PSMs quanted') +
     theme_bw() + 
     theme(axis.title=element_text(size=15), axis.text=element_text(size=10), legend.position="top", legend.text=element_text(size=10), legend.title=element_blank()) +
@@ -251,8 +251,8 @@ if (is_isobaric) {
     agg_nrpsms$Set = sub('^X([^a-zA-Z])', '\\1', agg_nrpsms$Set)
     agg_nrpsms_plot = agg_nrpsms[c('Set', 'psmcount', 'setrank')] %>%
       group_by(Set, psmcount) %>%
-      summarise(psmcount = max(setrank))
-    ggp = ggplot(agg_nrpsms_plot, aes(y=psmcount, x=psmcount)) +
+      summarise(maxrank = max(setrank))
+    ggp = ggplot(agg_nrpsms_plot, aes(y=psmcount, x=maxrank)) +
       geom_step(aes(color=Set), linewidth=2) + scale_y_log10() + xlab('Rank') + ylab('# PSMs quanted') +
       theme_bw() + 
       theme(axis.title=element_text(size=15), axis.text=element_text(size=10), legend.position="top", legend.text=element_text(size=10), legend.title=element_blank()) +
