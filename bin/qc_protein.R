@@ -55,7 +55,10 @@ if (is_isobaric) {
   nrpsms = aggregate(psmcount~get(featcol)+Set, nrpsms, max)
   nrpsms = transform(nrpsms, setrank=ave(psmcount, Set, FUN = function(x) rank(x, ties.method = "random")))
   nrpsms$Set = sub('^X([^a-zA-Z])', '\\1', nrpsms$Set)
-  ggp = ggplot(nrpsms, aes(y=psmcount, x=setrank)) +
+  nrpsms_plot = nrpsms[c('Set', 'psmcount', 'setrank')] %>%
+    group_by(Set, psmcount) %>%
+    summarise(psmcount = max(setrank))
+  ggp = ggplot(nrpsms_plot, aes(y=psmcount, x=psmcount)) +
     geom_step(aes(color=Set), size=2) + scale_y_log10() + xlab('Rank') + ylab('# PSMs quanted') +
     theme_bw() + 
     theme(axis.title=element_text(size=15), axis.text=element_text(size=10), legend.position="top", legend.text=element_text(size=10), legend.title=element_blank()) +
@@ -246,7 +249,10 @@ if (is_isobaric) {
     }
     agg_nrpsms = transform(agg_nrpsms, setrank=ave(psmcount, Set, FUN = function(x) rank(x, ties.method = "random")))
     agg_nrpsms$Set = sub('^X([^a-zA-Z])', '\\1', agg_nrpsms$Set)
-    ggp = ggplot(agg_nrpsms, aes(y=psmcount, x=setrank)) +
+    agg_nrpsms_plot = agg_nrpsms[c('Set', 'psmcount', 'setrank')] %>%
+      group_by(Set, psmcount) %>%
+      summarise(psmcount = max(setrank))
+    ggp = ggplot(agg_nrpsms_plot, aes(y=psmcount, x=psmcount)) +
       geom_step(aes(color=Set), linewidth=2) + scale_y_log10() + xlab('Rank') + ylab('# PSMs quanted') +
       theme_bw() + 
       theme(axis.title=element_text(size=15), axis.text=element_text(size=10), legend.position="top", legend.text=element_text(size=10), legend.title=element_blank()) +
@@ -282,7 +288,10 @@ if (feattype != 'peptides') {
       nrpep_set$Set = sub('^X([^a-zA-Z])', '\\1', nrpep_set$Set)
       nrpep_set = aggregate(ms1~Protein.s.+Set, nrpep_set, length) 
       nrpep_set = transform(nrpep_set, setrank=ave(ms1, Set, FUN = function(x) rank(x, ties.method = "random")))
-      ggp = ggplot(nrpep_set, aes(y=ms1, x=setrank)) +
+      nrpep_set_plot = nrpep_set[c('Set', 'ms1', 'setrank')] %>%
+        group_by(Set, ms1) %>%
+        summarise(psmcount = max(setrank))
+      ggp = ggplot(nrpep_set_plot, aes(y=ms1, x=psmcount)) +
         geom_step(aes(color=Set), linewidth=2) + scale_y_log10() + xlab('Rank') + ylab('# peptides with MS1') +
         theme_bw() + 
         theme(axis.title=element_text(size=15), axis.text=element_text(size=10), legend.position="top", legend.text=element_text(size=10), legend.title=element_blank()) +
