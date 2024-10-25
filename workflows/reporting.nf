@@ -116,7 +116,8 @@ process featQC {
      ${parse_normfactors ? '--normtable allnormfacs' : ''}
 
   mkdir ${htmldir}
-  mv *.html *.png ${htmldir}/
+  mv *.html ${htmldir}/
+  if [ -e *.png ] ; then mv *.png ${htmldir}/; fi
   ${parse_normfactors ? "mv allnormfacs ${htmldir}" : ''}
   """
 }
