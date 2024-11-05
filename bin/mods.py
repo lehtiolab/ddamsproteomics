@@ -1,3 +1,5 @@
+import sys
+
 NON_BLOCKING_MODS = {
         'GG': ['TMTpro', 'TMT6plex', 'iTRAQ8plex', 'iTRAQ4plex'],
         }
