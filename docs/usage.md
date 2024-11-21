@@ -104,7 +104,15 @@ This param passes an mzML definition (txt) file which contains the mzML specific
 
 The file itself is tab-separated without header, contains a single line per mzML file specified as follows:
 `/path/to/file	instrument_type	sample_or_sampleset_name	OPTIONAL:fractionation_plate_name	OPTIONAL:fraction_nr`
-Fractionation is automatically detected from this file, and enforced if ANY of the files have a fraction. This mainly has implications for QC though, identification and quantification are not much impacted by specifying fractionation. Instrument type can currently be one of 'qe', 'qehf', 'velos', 'lumos', 'qehfx', 'timstof', or 'lowres'.
+Fractionation is automatically detected from this file, and enforced if ANY of the files have a fraction. This mainly has implications for QC though, identification and quantification are not much impacted by specifying fractionation. Instrument type can currently be one of 
+* `qe1`
+* `qehf`
+* `velos`
+* `lumos`
+* `qehfx`
+* `timstof`
+* `lowres`
+  
 Examples of instruments can be found in [this MSGF+ parameter file](https://github.com/MSGFPlus/msgfplus/blob/master/docs/ParameterFiles/MSGFPlus_Tryp_NoMods_20ppmParTol.txt).
 
 ### Input sequences: `--tdb`
@@ -138,7 +146,7 @@ column "other high scoring PTMs".
 
 
 ### Output types
-The pipeline will produce by default PSM, peptide, and protein tables. You may pass FASTA databases that contain mixtures of ENSEMBL, Uniprot, or other types of entries. Use `--genes` and `--ensg` to output a gene(name)-centric table and an ENSG-centric table. If you rather have less output, use `--onlypeptides` to not output a protein table. If you have a HiRIEF table of predicted isoelectric points for peptides, you
+The pipeline will produce by default PSM, peptide, and protein tables. You may pass FASTA databases that contain mixtures of ENSEMBL, Uniprot, or other types of entries. Use `--genes` and `--ensg` to output a gene(name)-centric table and an ENSG-centric table. If you would rather have less output, use `--onlypeptides` to not output a protein table. If you have a HiRIEF table of predicted isoelectric points for peptides, you
 may specify it by `--hirief /path/to/table.txt`.
 
 
