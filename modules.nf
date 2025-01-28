@@ -97,3 +97,20 @@ def msgf_info_map(info_fn) {
   return samples
 }
 
+
+process createMods {
+
+  tag 'python'
+  container params.__containers[tag][workflow.containerEngine]
+
+  input:
+  tuple val(setname), val(isobtype), val(maxvarmods), val(search_engine), path(msgfmods), val(mods)
+
+  output:
+  tuple val(setname), path('mods.txt')
+
+  script:
+  """
+  create_modfile.py $maxvarmods "${msgfmods}" $search_engine "${mods}${isobtype ? ";${parse_isotype(isobtype)}" : ''}"
+  """
+}

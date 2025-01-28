@@ -55,9 +55,9 @@
       "singularity": "https://depot.galaxyproject.org/singularity/msgf_plus:2023.01.1202--hdfd78af_0"
   },
   "percolator": {
-      "version": "3.5",
-      "docker": "quay.io/biocontainers/percolator:3.5--hfd1433f_1",
-      "singularity": "https://depot.galaxyproject.org/singularity/percolator:3.5--hfd1433f_1"
+      "version": "3.6.5",
+      "docker": "quay.io/biocontainers/percolator:3.6.5--h6351f2a_0",
+      "singularity": "https://depot.galaxyproject.org/singularity/percolator:3.6.5--h6351f2a_0"
   },
   "luciphor2": {
       "version": "2020_04_03",

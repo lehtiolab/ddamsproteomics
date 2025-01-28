@@ -4,6 +4,7 @@ include { paramsSummaryMap } from 'plugin/nf-validation'
 
 include { msgf_info_map; listify; stripchars_infile; get_regex_specialchars; read_header } from './modules.nf' 
 include { MSGFPERCO } from './workflows/msgf_perco.nf'
+include { SAGEPERCO } from './workflows/sage_perco.nf'
 include { PTMANALYSIS } from './workflows/ptms.nf'
 include { MATCH_SEQUENCES } from './workflows/match_sequences.nf'
 include { REPORTING } from './workflows/reporting.nf'

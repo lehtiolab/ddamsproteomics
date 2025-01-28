@@ -113,7 +113,7 @@ class Mods:
                     adjustment += fmod['mass']
             mod['adjusted_mass'] = round(-(adjustment - mod['mass']), 5)
 
-    def get_msgf_modlines(self):
+    def get_grouped_mods_by_mass(self):
         grouped = {}
         for mod in self.mods:
             mass = self.get_mass_or_adj(mod)
@@ -125,7 +125,10 @@ class Mods:
                 if len(check_names) != 1:
                     print('Cannot have two modifications of the same mass but different names')
                     sys.exit(1)
+        return grouped
 
+    def get_msgf_modlines(self):
+        grouped = self.get_grouped_mods_by_mass()
         for mass, mods in grouped.items():
             name = mods[0]['name']
             line_res = {}
@@ -140,6 +143,27 @@ class Mods:
                 var, pos = mid.split('__')
                 vf = 'opt' if int(var) else 'fix'
                 yield f'{mass},{"".join(residues)},{vf},{pos},{name}'
+
+    def get_sage_mods(self):
+        grouped = self.get_grouped_mods_by_mass()
+        outmods = {'static_mods': {}, 'variable_mods': {}}
+        posmap = {'N-term': '^',
+                'C-term': '$',
+                }
+        mtypemap = {False: 'static_mods', True: 'variable_mods'}
+        for mass, mods in grouped.items():
+            line_res = {}
+            for mod in mods:
+                mtype = mtypemap[mod['var']]
+                pos = '' if mod['pos'] == 'any' else posmap[mod['pos']]
+                res = '' if mod['residue'] == '*' else mod['residue']
+                sage_residue = f'{pos}{res}'
+                try:
+                    outmods[mtype][sage_residue].append(mass)
+                except KeyError:
+                    outmods[mtype][sage_residue] = [mass]
+        outmods['static_mods'] = {k: sum(v) for k,v in outmods['static_mods'].items()}
+        return outmods
 
     def get_mass_or_adj(self, mod):
         return mod['adjusted_mass'] or mod['mass']
