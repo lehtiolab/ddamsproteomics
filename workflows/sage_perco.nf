@@ -2,10 +2,8 @@ include { createMods; listify; stripchars_infile; parse_isotype } from '../modul
 
 
 process sagePrepare {
- //FIXME other container
- // container params.test ? 'nfhelaqc_test' : \
-  //  "ghcr.io/lehtiolab/nfhelaqc:${workflow.manifest.version}"
-  container 'quay.io/biocontainers/jq:1.5--4'
+  tag 'jq'
+  container params.__containers[tag][workflow.containerEngine]
  
   input:
   tuple val(setname), val(id), val(minlen), val(maxlen), val(mincharge), val(maxcharge), val(maxmiscleav), val(maxvarmods), val(fparams), path('sage.json'), path('mods.json')
@@ -30,7 +28,8 @@ process sagePrepare {
 
 
 process sage {
-  container 'ghcr.io/lazear/sage:v0.14.7'
+  tag 'sage'
+  container params.__containers[tag][workflow.containerEngine]
 
   input:
   tuple val(setname), path('config.json'), path(specfile), val(fparams), val(instrumenttype), val(fractionation), path(db)
@@ -40,16 +39,25 @@ process sage {
   tuple val(setname), path("${specfile.baseName}.tsv"), emit: tsv
 
   script:
+  // Bruker from msconvert has merged= frame= scanStart= scanEnd= as scannr
+  // Bruker from tdf2mzml has index=.. as scannr
   remove_scan_index_str = instrumenttype == 'bruker'
+  (is_stripped, parsed_infile) = stripchars_infile(specfile)
+  (_, parsed_basename) = stripchars_infile(file(specfile.baseName))
   """
+  ${is_stripped ? "ln -s ${specfile} '${parsed_infile}'" : ''}
   export RAYON_NUM_THREADS=${task.cpus}
   export SAGE_LOG=trace
-  sage --disable-telemetry-i-dont-want-to-improve-sage --write-pin -f $db config.json $specfile
+  sage --disable-telemetry-i-dont-want-to-improve-sage --write-pin -f $db config.json $parsed_infile
   ${remove_scan_index_str ? "sed -i 's/index=//' results.sage.tsv" : ''}
+  ${remove_scan_index_str ? "sed -i 's/merged=//;s/ //' results.sage.tsv" : ''}
   ${remove_scan_index_str ? "sed -i 's/index=//' results.sage.pin" : ''}
-  mv results.sage.pin "${specfile.baseName}.pin"
+  ${remove_scan_index_str ? "sed -i 's/merged=//;s/ //' results.sage.pin" : ''}
   awk -F \$'\\t' '{OFS=FS ; print \$0, "Biological set" ${fractionation ? ', "Strip", "Fraction"' : ''}}' <( head -n1 results.sage.tsv) > "${specfile.baseName}.tsv"
-  awk -F \$'\\t' '{OFS=FS ; print \$0, "$setname" ${fractionation ? ", \"$fparams.plate\", \"$fparams.fraction\"" : ''}}' <( tail -n+2 results.sage.tsv) >> "${specfile.baseName}.tsv"
+  awk -F \$'\\t' '{OFS=FS ; print "${parsed_basename}" \$0, "$setname" ${fractionation ? ", \"$fparams.plate\", \"$fparams.fraction\"" : ''}}' <( tail -n+2 results.sage.tsv) >> "${specfile.baseName}.tsv"
+
+  head -n1 results.sage.pin > "${specfile.baseName}.pin"
+  awk -F \$'\\t' '{OFS=FS ; print "${parsed_basename}" \$0}' <( tail -n+2 results.sage.pin) >> "${specfile.baseName}.pin"
   """
 }
 
@@ -66,8 +74,8 @@ process percolator {
 
   script:
   """
-  head -n1 ${pins[0]} > percoin.tsv
-  cat ${pins.collect { "<(tail -n+2 $it)" }.join(' ')} >> percoin.tsv
+  head -n1 ${listify(pins)[0]} > percoin.tsv
+  cat ${listify(pins).collect { "<(tail -n+2 $it)" }.join(' ')} >> percoin.tsv
   percolator -j percoin.tsv -X perco.xml -N 500000 --decoy-xml-output -Y --num-threads ${task.cpus}
   """
 }
@@ -101,34 +109,6 @@ process percolatorToPsms {
   msstitch split -i psms --splitcol TD
   ${['target', 'decoy'].collect() { 
     "test -f '${it}.tsv' && mv '${it}.tsv' '${setname}_${it}.tsv' || echo 'No ${it} PSMs found for set ${setname} at PSM FDR ${psmconf} and peptide FDR ${pepconf} ${it == 'decoy' ? '(not possible to output protein/gene FDR)' : ''}' >> warnings" }.join(' && ') }
-  """
-}
-
-
-process createPSMTable {
-  container 'quay.io/biocontainers/msstitch:3.16--pyhdfd78af_0'
-
-  input:
-  tuple path('perco'), path('psms'), val(instrumenttype), path(lookup), path(db), path(ddb), val(psmconf), val(pepconf)
-
-  output:
-  tuple path('tpsmtable'), path('dpsmtable'), path('tpeptides'), path('dpeptides'), emit: tables
-  path('tpsmlookup'), emit: lookup
-
-  script:
-  add_scan_index_str = instrumenttype == 'bruker'
-  """
-  msstitch perco2psm --perco perco -i psms -o psms_perco --filtpsm ${psmconf} --filtpep ${pepconf}
-  ${add_scan_index_str ? "mv psms_perco ppnoi && head -n1 ppnoi > psms_perco" : ''}
-  ${add_scan_index_str ? "paste <(awk -F'\t' -v OFS='\t' '{print \$1,\$2,\$3,\$4,\$5,\"index=\"\$6}' ppnoi) <(cut -f7- ppnoi) | tail -n+2 >> psms_perco" : ''}
-
-  msstitch split -i psms_perco --splitcol TD
-  cp $lookup tpsmlookup
-  cp $lookup dpsmlookup
-  msstitch psmtable -i target.tsv --dbfile tpsmlookup -o tpsmtable --fasta "$db" --ms1quant --proteingroup --spectracol ${Utils.get_field_nr('target.tsv', 'filename')}
-  msstitch psmtable -i decoy.tsv --dbfile dpsmlookup -o dpsmtable --fasta "$ddb" --proteingroup --spectracol ${Utils.get_field_nr('decoy.tsv', 'filename')}
-  msstitch peptides -i tpsmtable -o tpeptides --scorecolpattern sage_discriminant --spectracol ${Utils.get_field_nr('tpsmtable', 'filename')} --ms1quantcolpattern area
-  msstitch peptides -i dpsmtable -o dpeptides --scorecolpattern sage_discriminant --spectracol ${Utils.get_field_nr('dpsmtable', 'filename')}
   """
 }
 
@@ -172,10 +152,9 @@ workflow SAGEPERCO {
 
   sage.out.perco
   | groupTuple
-  | view()
   | percolator
-  | join(sage.out.tsv)
-  | map { [it, psmconflvl, pepconflvl, output_unfilt_psms].flatten() }
+  | join(sage.out.tsv | groupTuple)
+  | map { it + [psmconflvl, pepconflvl, output_unfilt_psms] }
   | percolatorToPsms
 
 //  tuple val(id), path('config.json'), path(specfile), val(instrumenttype), path(mods), path(db)

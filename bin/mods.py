@@ -179,14 +179,18 @@ class Mods:
             residue = mod['residue']
         return f'{residue} {self.get_mass_or_adj(mod)}'
 
-    def msgfmass_mod_dict(self):
-        '''Create MSGF output mass (round(x,3) ) to mod lookup'''
+    def msgfmass_mod_dict(self, search_engine):
+        '''Create MSGF output mass (round(x,3) ), or sage (round(x,5), round(x,4) ) to mod lookup'''
         mod_map = {}
+        nrdigits = {'sage': [4,5], 'msgf': [3]}[search_engine]
         for mod in self.mods:
-            try:
-                mod_map[round(self.get_mass_or_adj(mod), 3)].append(mod)
-            except KeyError:
-                mod_map[round(self.get_mass_or_adj(mod), 3)] = [mod]
+            mass = self.get_mass_or_adj(mod)
+            for digits in nrdigits:
+                key = round(mass, digits)
+                try:
+                    mod_map[key].append(mod)
+                except KeyError:
+                    mod_map[key] = [mod]
         return mod_map
 
     def lucimass_mod_dict(self):

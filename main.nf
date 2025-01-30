@@ -319,7 +319,7 @@ process peptidePiAnnotation {
   container params.__containers[tag][workflow.containerEngine]
 
   input:
-  tuple path('psms'), val(strips), path('hirief_training_pep')
+  tuple path('psms'), val(strips), val(search_engine), path('hirief_training_pep')
 
   output:
   path('target_psmtable.txt')
@@ -327,7 +327,9 @@ process peptidePiAnnotation {
   script:
   """
   echo '${groovy.json.JsonOutput.toJson(strips)}' >> strip.json
-  peptide_pi_annotator.py -i hirief_training_pep -p psms --out target_psmtable.txt --stripcolpattern Strip --pepcolpattern Peptide --fraccolpattern Fraction --stripdef strip.json --ignoremods '*'
+  peptide_pi_annotator.py -i hirief_training_pep -p psms --out target_psmtable.txt \
+    --fraccolpattern Fraction --stripdef strip.json --ignoremods '*' --stripcolpattern Strip \
+    --pepcolpattern ${search_engine == 'sage' ? 'peptide' : 'Peptide'}
   """
 }
 
@@ -756,34 +758,63 @@ workflow {
   tdb = Channel.fromPath(params.tdb)
   createTargetDecoyFasta(tdb)
 
+  if (params.sage) {
+    search_engine = 'sage'
+  } else if (params.msgf) {
+    search_engine = 'msgf'
+  } else {
+    exit 1, 'Must specify --sage or --msgf'
+  }
+
   if (!is_rerun) {
     search_mods = [params.mods ? params.mods : false,
       params.ptms ?: false,
       params.locptms ?: false,
       ].findAll { it }
       .join(';')
-    MSGFPERCO(mzml_in,
-      createTargetDecoyFasta.out.concatdb,
-      setisobaric,
-      fractionation,
-      mzmls,
-      params.maxvarmods,
-      params.msgfmods,
-      search_mods,
-      params.psmconflvl,
-      params.pepconflvl,
-      params.locptms,
-      params.maxmiscleav,
-      params.enzyme,
-      params.minpeplen,
-      params.maxpeplen,
-      params.mincharge,
-      params.maxcharge,
-    )
-  
-    MSGFPERCO.out.t_tsv
+    if (params.sage) {
+      SAGEPERCO(mzml_in,
+        createTargetDecoyFasta.out.concatdb,
+        setisobaric,
+        fractionation,
+        mzmls,
+        params.maxvarmods,
+        params.msgfmods,
+        search_mods,
+        params.psmconflvl,
+        params.pepconflvl,
+        params.locptms,
+        params.maxmiscleav,
+        params.enzyme,
+        params.minpeplen,
+        params.maxpeplen,
+        params.mincharge,
+        params.maxcharge,
+      ).set { SEARCH }
+    } else {
+      MSGFPERCO(mzml_in,
+        createTargetDecoyFasta.out.concatdb,
+        setisobaric,
+        fractionation,
+        mzmls,
+        params.maxvarmods,
+        params.msgfmods,
+        search_mods,
+        params.psmconflvl,
+        params.pepconflvl,
+        params.locptms,
+        params.maxmiscleav,
+        params.enzyme,
+        params.minpeplen,
+        params.maxpeplen,
+        params.mincharge,
+        params.maxcharge,
+      ).set { SEARCH }
+    }
+
+    SEARCH.t_tsv
     | ifEmpty(['target', nofile])
-    | concat(MSGFPERCO.out.d_tsv)
+    | concat(SEARCH.d_tsv)
     | groupTuple
     | join(specquant_lookups)
     | combine(createTargetDecoyFasta.out.bothdbs)
@@ -807,7 +838,7 @@ workflow {
     hiriefpep = Channel.fromPath(params.hirief)
     psmtables_ch
     | filter { it[0] == 'target' }
-    | map { [it[1], params.strips]  }
+    | map { [it[1], params.strips, search_engine]  }
     | combine(hiriefpep)
     | peptidePiAnnotation
     | map { ['target', it]}
@@ -855,8 +886,9 @@ workflow {
       setisobaric,
       mzml_in | map { [it.setname, it.mzmlfile] } | groupTuple,
       splitpsms_ch | filter { it[0] == 'target' } | map { it[1..-1] },
+      search_engine,
       tdb,
-      !is_rerun ? MSGFPERCO.out.unfiltered : Channel.empty(),
+      !is_rerun ? SEARCH.unfiltered : Channel.empty(),
       mzml_list,
       params.maxpeplen,
       params.maxcharge,
@@ -962,6 +994,7 @@ workflow {
   REPORTING(
     sorted_mzml_in,
     tdspeclookup.map { it[0] },
+    search_engine,
     oldmzmls,
     fractionation,
     target_psmtable.map { it[1] },
@@ -973,7 +1006,7 @@ workflow {
     all_setnames,
     ptm_ch,
     psmwarnings_ch
-      .concat(!is_rerun ? MSGFPERCO.out.warnings: Channel.empty())
+      .concat(!is_rerun ? SEARCH.warnings: Channel.empty())
       .concat(ptmwarn_ch)
       .toList().toList()
       .filter { it[0] }

@@ -9,11 +9,20 @@ library(stringr)
 args = commandArgs(trailingOnly=TRUE)
 psmfn = args[1]
 pepfn = args[2]
+search_engine = args[3]
 
 psms = read.table(psmfn, header=T, sep="\t", comment.char = "", quote = "")
 peptides = read.table(pepfn, header=T, sep="\t", comment.char="", quote="")
 
-scancol = 'SpecID'
+if (search_engine == 'sage') {
+  scancol = 'scannr'
+  pepcol = 'peptide'
+
+} else if (search_engine == 'msgf') {
+  scancol = 'SpecID' # MSGF (sage has scannr)
+  pepcol = 'Peptide'
+}
+
 
 ## Prepare a data frame with all the info for plots
 
@@ -25,7 +34,7 @@ repeater = sapply(multiptms, FUN=length)
 sites = data.frame(sites=unlist(multiptms),
                    specid=rep(psms[[ scancol ]], repeater),
                    bioset=rep(psms$Biological.set, repeater),
-                   peptide=rep(psms$Peptide, repeater)
+                   peptide=rep(psms[[ pepcol ]], repeater)
 )
 if ('Master.protein.s.' %in% names(psms)) {
     sites$protein = rep(psms$Master.protein.s., repeater)

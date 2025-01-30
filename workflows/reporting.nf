@@ -76,7 +76,7 @@ process PSMQC {
   container params.__containers[tag][workflow.containerEngine]
 
   input:
-  tuple path('psms'), path('filescans'), path('platescans'), val(mzmls), val(fractionation), val(has_newmzmls), val(has_oldmzmls)
+  tuple path('psms'), path('filescans'), path('platescans'), val(mzmls), val(fractionation), val(has_newmzmls), val(has_oldmzmls), val(search_engine)
 
   output:
   tuple path('platescans'), path('amount_psms_files'), path("psmplothtml"), path('psmtable__summary.txt')
@@ -85,7 +85,7 @@ process PSMQC {
   """
   ${mzmls.collect { "echo \$'${it.join('\t')}' >> mzmls"  }.join('\n')}
   sed '1s/\\#SpecFile/SpectraFile/' < psms > psms_clean
-  qc_psms.R ${fractionation ? 'TRUE' : 'FALSE'}
+  qc_psms.R ${fractionation ? 'TRUE' : 'FALSE'} $search_engine
   mkdir psmplothtml
   mv *.html psmplothtml/
   """
@@ -129,7 +129,7 @@ process PTMQC {
   container params.__containers[tag][workflow.containerEngine]
 
   input:
-  tuple path(ptmpsms), path(peptable)
+  tuple path(ptmpsms), path(peptable), val(search_engine)
 
   output:
   tuple path('ptmplothtml'), path('*.txt')
@@ -137,7 +137,7 @@ process PTMQC {
   script:
   """
   sed '1s/\\#SpecFile/SpectraFile/' < "${ptmpsms}" > psms_clean
-  qc_ptms.R psms_clean "${peptable}"
+  qc_ptms.R psms_clean "${peptable}" $search_engine
   mkdir ptmplothtml
   mv *.html ptmplothtml/
   """
@@ -171,6 +171,7 @@ workflow REPORTING {
   take:
   mzmls
   speclookup
+  search_engine
   oldmzmls
   fractionation
   plot_psms
@@ -220,7 +221,7 @@ workflow REPORTING {
   plot_psms
   | combine(countMS2sPerPlate.out.counted)
   | combine(all_mzmls_for_psmqc)
-  | map { it + [fractionation, 1,1] }
+  | map { it + [fractionation, 1, 1, search_engine] }
   | PSMQC
 
   pepprotgenes
@@ -238,6 +239,7 @@ workflow REPORTING {
   // Only pick one PTM table for reporting nr of sites etc
   ptms
   | filter { it[1].name.contains('_not_adjusted') }
+  | map { [it, search_engine].flatten() }
   | PTMQC
   | ifEmpty([nofile, nofile])
   | set { ptmqc }

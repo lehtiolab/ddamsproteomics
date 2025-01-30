@@ -7,19 +7,31 @@ library(stringr)
 
 args = commandArgs(trailingOnly=TRUE)
 has_fractions = args[1] == TRUE
+search_engine = args[2]
 
 # Fraction needs to be a factor and not numeric, since it can contain strings (e.g. A2)
 # That would be fine but when mixing oldmzmls from a rerun in, the join on Fraction op may fail
 # when there is both the factor 02, and the numeric 2 in different tables
 feats = read.table("psms_clean", colClasses=c('Fraction'='factor'), header=T, sep="\t", comment.char = "", quote = "")
 
-scancol = 'SpecID' # MSGF (sage has scannr)
-miscleavcol = 'missed_cleavage'
-rtcol = 'Retention.time.min.' # 'rt'
-ioncol = 'Ion.injection.time.ms.' # ?
-precerrcol = 'PrecursorError.ppm.' # precursor_ppm
-scorecol = 'MSGFScore' # 'sage_discriminant_score'
-filenamecol = 'SpectraFile' # 'filename'
+if (search_engine == 'sage') {
+  scancol = 'scannr'
+  miscleavcol = 'missed_cleavages'
+  rtcol = 'rt'
+  ioncol = 'Ion.injection.time.ms.'
+  precerrcol = 'precursor_ppm'
+  scorecol = 'sage_discriminant_score'
+  filenamecol = 'filename'
+
+} else if (search_engine == 'msgf') {
+  scancol = 'SpecID' # MSGF (sage has scannr)
+  miscleavcol = 'missed_cleavage'
+  rtcol = 'Retention.time.min.' # 'rt'
+  ioncol = 'Ion.injection.time.ms.' # ?
+  precerrcol = 'PrecursorError.ppm.' # precursor_ppm
+  scorecol = 'MSGFScore' # 'sage_discriminant_score'
+  filenamecol = 'SpectraFile' # 'filename'
+}
 
 boxplot_stats = function(data, col) {
   summary_stats = data %>%

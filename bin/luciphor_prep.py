@@ -43,14 +43,18 @@ class PSM:
                 'mass': modptm['mass'], 'name': modptm['name'],
                 'name_lower': modptm['name_lower'], 'adjusted_mass': modptm['adjusted_mass']}
 
-    def parse_msgf_peptide(self, msgfseq, msgf_mods, labileptmnames, stableptmnames):
+    def parse_search_peptide(self, searchseq, msgf_mods, labileptmnames, stableptmnames, search_engine):
         self.mods = []
         barepep = ''
         start = 0
-        for x in re.finditer(r'([A-Z]){0,1}([0-9\.+\-]+)', msgfseq):
+        if search_engine == 'sage':
+            regex = r'([A-Z]){0,1}([\[\]0-9\.+\-]+)'
+        else:
+            regex = r'([A-Z]){0,1}([0-9\.+\-]+)'
+        for x in re.finditer(regex, searchseq):
             if x.group(1) is not None:
                 # mod is on a residue
-                barepep = f'{barepep}{msgfseq[start:x.start()+1]}'
+                barepep = f'{barepep}{searchseq[start:x.start()+1]}'
                 residue = barepep[-1]
                 sitenum = len(barepep) - 1
             else:
@@ -60,10 +64,19 @@ class PSM:
             # TODO cterm = 100, ']'
             start = x.end()
             for mass in re.findall(r'[\+\-][0-9.]+', x.group(2)):
-                mod = msgf_mods[float(mass)][0] # only take first, contains enough info
+                try:
+                    mod = msgf_mods[float(mass)][0] # only take first, contains enough info
+                except KeyError:
+                    if search_engine == 'sage':
+                        # Sage turns 57.021464 into 57.021465 (carbamidomethyl)
+                        # Not sure about others or why, but try to counteract here
+                        alt_sagemass = float(f'{float(mass):.4f}')
+                        mod = msgf_mods[alt_sagemass][0]
+                    else:
+                        raise
                 self.mods.append(self.get_mod_dict(residue, sitenum, mod, labileptmnames,
                     stableptmnames))
-        self.sequence = f'{barepep}{msgfseq[start:]}'
+        self.sequence = f'{barepep}{searchseq[start:]}'
 
     def parse_luciphor_peptide(self, luciline, ptms_map, labileptmnames, stableptmnames):
         '''From a luciphor sequence, create a peptide with PTMs
@@ -144,6 +157,8 @@ def main():
     parser.add_argument('--modfile')
     parser.add_argument('--labileptms', nargs='+', default=[])
     parser.add_argument('--mods', nargs='+', default=[])
+    parser.add_argument('--searchengine', default='msgf', type=str)
+
     args = parser.parse_args(sys.argv[1:])
 
     labileptms = [x.lower() for x in args.labileptms]
@@ -196,22 +211,41 @@ def main():
     # translation table needed...
     # But how to spec in luciphor, it also wants fixed/var/target mods? Does it apply fixed regardless?
 
-    msgf_mod_map = msgfmods.msgfmass_mod_dict()
+    msgf_mod_map = msgfmods.msgfmass_mod_dict(args.searchengine)
+    colummap = {'sage': {
+        'pep': 'peptide',
+        'fn': 'filename',
+        'ch': 'charge',
+        'scan': 'scannr',
+        'value': 'PSM q-value',
+        }, 'msgf': {
+        'pep': 'Peptide',
+        'fn': '#SpecFile',
+        'ch': 'Charge',
+        'scan': 'ScanNum',
+        'value': 'PSM q-value',
+            }
+        }
+            
     with open(args.psmfile) as fp, open(args.lucipsms, 'w') as wfp:
         header = next(fp).strip('\n').split('\t')
-        pepcol = header.index('Peptide')
-        spfile = header.index('#SpecFile')
-        charge = header.index('Charge')
-        scan = header.index('ScanNum')
-        evalue = header.index('PSM q-value')
+        pepcol = header.index(colummap[args.searchengine]['pep'])
+        spfile = header.index(colummap[args.searchengine]['fn'])
+        charge = header.index(colummap[args.searchengine]['ch'])
+        scancol = header.index(colummap[args.searchengine]['scan'])
+        evalue = header.index(colummap[args.searchengine]['value'])
         wfp.write('srcFile\tscanNum\tcharge\tPSMscore\tpeptide\tmodSites')
         for line in fp:
             line = line.strip('\n').split('\t')
             psm = PSM()
-            psm.parse_msgf_peptide(line[pepcol], msgf_mod_map, labileptms, othermods)
+            psm.parse_search_peptide(line[pepcol], msgf_mod_map, labileptms, othermods, args.searchengine)
+            if args.searchengine == 'sage':
+                scan = re.sub('.*scan=', '', line[scancol])
+            else:
+                scan = line[scancol]
             # TODO add C-terminal mods (rare)
             if psm.has_labileptms():
-                wfp.write('\n{}\t{}\t{}\t{}\t{}\t{}'.format(line[spfile], line[scan], line[charge], line[evalue], psm.sequence, psm.luciphor_input_sites()))
+                wfp.write('\n{}\t{}\t{}\t{}\t{}\t{}'.format(line[spfile], scan, line[charge], line[evalue], psm.sequence, psm.luciphor_input_sites()))
 
 
 if __name__ == '__main__':
