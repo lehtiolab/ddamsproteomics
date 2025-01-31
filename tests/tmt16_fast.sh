@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
 
+# Single test to not spend too much time, tests a lot of things but not all.
+
 set -eu
   
 echo TMT16 test with hiRIEF, isobaric and Phospho
-# no hirief, so it can be added in the addsetB test even if not used here
 # Test TMT16, DEqMS w denominator, keepnapsmsquant, implicit normalizing (deqms forces normalize)
 # Warning: no decoys for any set (aka only setA)
 name=tmt16denomdeq
 resultsdir=test_output/${name}
 mkdir -p $resultsdir
 cat "${testdir}/tmt16_mzmls.txt" | envsubst > ${resultsdir}/mzmldef
-nextflow run -resume -profile test ${repodir}/main.nf --name ${name} --outdir ${resultsdir} \
+$NXFCMD --name ${name} --outdir ${resultsdir} \
     --input ${resultsdir}/mzmldef \
     --sampletable "${testdir}/tmt16_samples.txt" \
     --hardklor --isobaric '0set-A:tmtpro:126:131N' \

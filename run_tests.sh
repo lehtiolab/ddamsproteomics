@@ -11,6 +11,12 @@ rundir=$(pwd)
 export repodir=$(dirname "$(realpath -s "$0")")
 export testdir="${repodir}/tests/"
 export testdata="${rundir}/static-resources/test-data/ddamsproteomics"
+if [ "$1" != 'sage' ] && [ "$1" != 'msgf' ]
+then
+	echo 'Must run tests with "bash run_tests.sh sage [or msgf]"'
+	exit 1
+fi
+export NXFCMD="nextflow run -resume -profile test ${repodir}/main.nf --$1"
 
 if [ -e "${testdata}" ]
 then
@@ -33,7 +39,8 @@ test_names=(
     tims
 )
 
-if [ -z "$1" ]
+
+if [ -z "$2" ]
 then
 	# Run all tests, do not exit with failures
 	# Manual runs
@@ -54,12 +61,12 @@ then
 else
 	# Single test, exit with error when failing
 	# Used in github actions
-       	bash "${testdir}/$1.sh"
+       	bash "${testdir}/$2.sh"
        	if [[ "$?" == 0 ]]
        	then
-	       	echo ${green}"$1" - SUCCESS ${reset}
+	       	echo ${green}"$2" - SUCCESS ${reset}
        	else
-	       	echo ${red}"$1" - FAIL ${reset}
+	       	echo ${red}"$2" - FAIL ${reset}
 		exit 1
        	fi
 fi

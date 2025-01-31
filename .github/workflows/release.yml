@@ -10,13 +10,21 @@ jobs:
   create-container:
     uses: ./.github/workflows/container.yml
 
-  run-all-tests:
+  run-all-tests-sage:
     needs: create-container
+    env:
+      SEARCH: sage
+    uses: ./.github/workflows/tests_all.yml
+
+  run-all-tests-msgf:
+    needs: create-container
+    env:
+      SEARCH: msgf
     uses: ./.github/workflows/tests_all.yml
 
   create-release:  
     runs-on: ubuntu-latest
-    needs: run-all-tests
+    needs: [run-all-tests-sage, run-all-tests-msgf]
     steps:
       - uses: ncipollo/release-action@v1
         with:

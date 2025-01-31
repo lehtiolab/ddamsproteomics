@@ -5,7 +5,7 @@ echo Phospho, labelfree, one luciphor setB not enough PSMs
 name=labelfree_phos
 lfphos_dir=test_output/${name}
 cat ${testdir}/lf_mzmls.txt | envsubst > test_output/mzmldef
-nextflow run -resume -profile test ${repodir}/main.nf --name ${name} \
+$NXFCMD --name ${name} \
     --outdir ${lfphos_dir} \
     --input test_output/mzmldef \
     --genes \
@@ -19,7 +19,7 @@ nextflow run -resume -profile test ${repodir}/main.nf --name ${name} \
 # LF phos where we add replace a set with a "new" set
 name=labelfree_phos_addset
 cat <(head -n1 ${testdir}/lf_mzmls.txt) <(grep setA ${testdir}/lf_mzmls.txt) | envsubst > test_output/mzmldef
-nextflow run -resume -profile test ${repodir}/main.nf --name ${name} \
+$NXFCMD --name ${name} \
     --outdir test_output/${name} \
     --input test_output/mzmldef \
     --oldmzmldef ${testdir}/lf_mzmls.txt \
@@ -41,7 +41,7 @@ nextflow run -resume -profile test ${repodir}/main.nf --name ${name} \
 echo LF phos no decoy
 name=labelfree_phos_nodecoy
 cat <(head -n1 ${testdir}/lf_mzmls.txt) <(grep setA ${testdir}/lf_mzmls.txt) | envsubst > test_output/mzmldef
-nextflow run -resume -profile test ${repodir}/main.nf --name ${name} \
+$NXFCMD --name ${name} \
     --outdir test_output/${name} \
     --input test_output/mzmldef \
     --genes \
@@ -55,9 +55,10 @@ set +eu
 echo Run in which no target PSMs are found - crashes
 name=labelfree_phos_notarget
 cat <(head -n1 ${testdir}/lf_mzmls.txt) <(grep setA ${testdir}/lf_mzmls.txt) | envsubst > test_output/mzmldef
-nextflow run -resume -profile test ${repodir}/main.nf --name ${name} \
+$NXFCMD --name ${name} \
     --outdir test_output/${name} \
     --input test_output/mzmldef \
+    --psmconflvl 0.001 \
     --genes \
     --tdb ${testdata}/lf.fa \
     --mods 'carbamidomethyl;oxidation' \
