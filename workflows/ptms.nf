@@ -52,7 +52,8 @@ process luciphorPTMLocalizationScoring {
   export OUTFILE=luciphor.out
   cat "${template}" | envsubst > lucinput.txt
 
-  if luciphor2 -Xmx${task.memory.toGiga()}G lucinput.txt 2>&1 | grep 'not have enough PSMs'
+  luciphor2 -Xmx${task.memory.toGiga()}G lucinput.txt 2> luci_stderr
+  if grep 'not have enough PSMs' luci_stderr
   then
     echo 'Not enough PSMs for luciphor FLR calculation in set ${setname}' > warnings
   fi
