@@ -20,5 +20,6 @@ $NXFCMD --name ${name} --outdir ${resultsdir} \
     --locptms Phospho \
     --psmconflvl 0.2 --pepconflvl 0.2 \
     --deqms --keepnapsmsquant --genes \
+    --remove_channels '0set-A:127C:128N' \
     --hirief https://github.com/nf-core/test-datasets/raw/6defbf8a92a46b0ac48bb05f9ad96b62716b4a5d/testdata/formatted_known_peptides_ENSUniRefseq_TMT_predpi_20150825.txt
     # FIXME cannot run with carbamyl +43 -> -261 and Phospho, luciprep crash \

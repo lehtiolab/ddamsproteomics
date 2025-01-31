@@ -300,6 +300,9 @@
     },
     "msgf": {
       "type": "boolean"
+    },
+    "remove_channels": {
+      "type": "boolean"
     }
   }
 }

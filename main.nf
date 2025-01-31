@@ -2,7 +2,7 @@
 
 include { paramsSummaryMap } from 'plugin/nf-schema'
 
-include { msgf_info_map; listify; stripchars_infile; get_regex_specialchars; read_header } from './modules.nf' 
+include { msgf_info_map; get_complement_field_nr; listify; stripchars_infile; get_regex_specialchars; read_header } from './modules.nf' 
 include { MSGFPERCO } from './workflows/msgf_perco.nf'
 include { SAGEPERCO } from './workflows/sage_perco.nf'
 include { PTMANALYSIS } from './workflows/ptms.nf'
@@ -340,7 +340,7 @@ process splitPSMs {
   container params.__containers[tag][workflow.containerEngine]
 
   input:
-  tuple val(td), path('psms'), val(setnames)
+  tuple val(td), path('psms'), val(setnames), val(remove_channels)
 
   output:
   tuple val(td), path({listify(setnames).collect { "${it}.tsv" }}) optional true
@@ -348,8 +348,17 @@ process splitPSMs {
   script:
   """
   msstitch split -i psms --splitcol bioset
+  ${td == 'target' ?
+    remove_channels.collect {
+      setch -> setch[1].collect {
+        ch -> "colnum=${get_complement_field_nr("${setch[0]}.tsv", ch)} && \
+          cut -f \$colnum ${setch[0]}.tsv > tmprm && mv tmprm ${setch[0]}.tsv"
+        }.join(' && ')
+      }.join(' && ')
+  : ''}
   """
 }
+
 
 
 process splitTotalProteomePSMs {
@@ -454,13 +463,20 @@ process sampleTableCheckClean {
   container params.__containers[tag][workflow.containerEngine]
  
   input:
-  tuple path('sampletable'), val(do_deqms)
+  tuple path('sampletable'), val(do_deqms), val(remove_channels)
 
   output:
   tuple path('clean_sampletable'), path('sampletable_no_special_chars')
   
   script:
   """
+  # Remove empty channels
+  ${remove_channels.collect {
+    setch -> setch[1].collect {
+      ch -> "grep -v '^${ch}\t${setch[0]}' sampletable > tmpst && mv tmpst sampletable"
+      }.join(' && ')
+    }.join(' && ')
+  }
   # First add NO__GROUP marker for no-samplegroups clean sampletable from special chars
   awk -v FS="\\t" -v OFS="\\t" \'{if (NF==3) print \$1,\$2,\$3,"NO__GROUP"; else print}\' sampletable > clean_sampletable
   # Check if there are samplegroups at all
@@ -633,6 +649,12 @@ workflow {
   }.collectEntries() {
     x-> [x[0], x[2..-1]]
   } : [:]
+  // Remove channels from specific sets if those are empty: --remove_channels 'setA:126:127 setB:131'
+  rmch = params.remove_channels ? params.remove_channels.tokenize(' ') : false
+  remove_channels_psmtable = rmch ? rmch.collect { y -> y.tokenize(':')
+  }.collect { x -> [x[0], x[1..-1].collect { ch -> "${setisobaric[x[0]]}_${ch}" } ] } : [:]
+  remove_channels_sampletable = rmch ? rmch.collect { y -> y.tokenize(':')
+  }.collect { x -> [x[0], x[1..-1]] } : [:]
   
   do_ms1 = !params.noquant && !params.noms1quant
   do_normalize = (!params.noquant && (params.mediannormalize || params.deqms) && params.isobaric)
@@ -854,7 +876,7 @@ workflow {
   psmtables_ch
   | filter { it[0] == 'decoy' }
   | concat(target_psmtable)
-  | map { [it[0], it[1], all_setnames] }
+  | map { [it[0], it[1], all_setnames, remove_channels_psmtable] }
   | splitPSMs
   | map{ it -> [it[0], listify(it[1]).collect() { it.baseName.replaceFirst(/\.tsv$/, "") }, it[1]]} // get setname from {setname}.tsv
   | transpose
@@ -953,7 +975,7 @@ workflow {
 
   if (params.sampletable) {
     Channel.fromPath(params.sampletable)
-    | map { [it, params.deqms] }
+    | map { [it, params.deqms, remove_channels_sampletable] }
     | sampleTableCheckClean
     | set { sampletable_ch }
   } else {
