@@ -361,11 +361,14 @@ process splitTotalProteomePSMs {
   tuple path('tppsms_in'), val(setnames)
 
   output:
-  path({listify(setnames).collect() { "tppsms/${it}.tsv" }}), emit: totalprotpsms_allsets optional true
+  path({listify(setnames).collect() { "tppsms/${it}.tsv" }}) optional true
 
   script:
   """
   mkdir tppsms && msstitch split -i tppsms_in -d tppsms --splitcol bioset
+  ${listify(setnames).collect { set -> "[ -e 'tppsms/${set}.tsv' ] || (\
+    echo Not all sets in the experiment are in the --totalproteomepsms table, \
+    we need: ${listify(setnames).join(', ')}. The total proteome PSM table contains: \$(ls tppsms) && exit 1)" }.join( '&&')}
   """
 }
 
