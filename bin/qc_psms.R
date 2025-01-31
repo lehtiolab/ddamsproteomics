@@ -33,6 +33,27 @@ if (search_engine == 'sage') {
   filenamecol = 'SpectraFile' # 'filename'
 }
 
+tmtcolors = c(
+  "#b15928",
+  "#e31a1c",
+  "#fb9a99",
+  "#ff7f00",
+  "#fdbf6f",
+  "gold4",
+  "gold1",
+  "#33a02c",
+  "#b2df8a",
+  "#01665e",
+  "#80cdc1",
+  "#1f78b4",
+  "#a6cee3",
+  "#6a3d9a",
+  "#cab2d6",
+  "#c51b7d",
+  "#f1b6da",
+  "magenta4"
+  )
+
 boxplot_stats = function(data, col) {
   summary_stats = data %>%
   summarise(lower = quantile({{col}}, 0.25, na.rm=T),
@@ -108,8 +129,13 @@ if (length(grep('plex', names(feats)))) {
     psm_empty = aggregate(value~get(xcol)+ name, psm_empty, sum)
     names(psm_empty) = c(xcol, 'channels', 'nr_missing_values')
     psm_empty$channels = sub('.*plex_', '', psm_empty$channels)
+    allchannels = unique(psm_empty$channels)
     ggp = ggplot(psm_empty, aes(x=.data[[ xcol ]], y=nr_missing_values, fill=channels)) + 
-      geom_bar(stat='identity', position="dodge") + ylab('# PSMs without quant') + coord_flip() + theme_bw() + theme(axis.title.x=element_text(size=15), axis.title.y=element_blank(), axis.text=element_text(size=10), axis.text.y=element_text(angle=90), legend.position="top", legend.text=element_text(size=10), legend.title=element_blank())
+      geom_bar(stat='identity', position="dodge") + 
+      scale_fill_manual(values=tmtcolors[1:length(allchannels)]) +
+      ylab('# PSMs without quant') + coord_flip() + theme_bw() +
+      theme(axis.title.x=element_text(size=15), axis.title.y=element_blank(), axis.text=element_text(size=10), axis.text.y=element_text(angle=90), legend.position="top", legend.text=element_text(size=10), legend.title=element_blank()
+    )
     p = ggplotly(ggp, width=400, height=vert_height) %>%
         layout(legend = list(orientation = 'h', x = 0, y = 1.1, xanchor='left', yanchor='bottom'))
   p$x$layout$legend$title$text = ''

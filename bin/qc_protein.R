@@ -46,6 +46,27 @@ if (is_isobaric) {
   nrpsmscols = colnames(feats)[grep('_Fully.quanted.PSM.count', colnames(feats))]
 }
 
+tmtcolors = c(
+  "#b15928",
+  "#e31a1c",
+  "#fb9a99",
+  "#ff7f00",
+  "#fdbf6f",
+  "gold4",
+  "gold1",
+  "#33a02c",
+  "#b2df8a",
+  "#01665e",
+  "#80cdc1",
+  "#1f78b4",
+  "#a6cee3",
+  "#6a3d9a",
+  "#cab2d6",
+  "#c51b7d",
+  "#f1b6da",
+  "magenta4"
+  )
+
 # nrpsms used for isobaric quant
 if (is_isobaric) {
   nrpsms = pivot_longer(feats, any_of(nrpsmscols), names_to='psmset', values_to='psmcount') 
@@ -202,7 +223,10 @@ if (is_isobaric) {
 	    group_by(Set, channel) %>%
 	    boxplot_stats(value)
   # Plot using geom_crossbar, geom_errorbar
-  ggp = ggplot(summary_stats, aes(x=Set, y=middle, fill=channel)) +
+  allchannels = unique(summary_stats$channel)
+  ggp = ggplot(summary_stats, aes(x=Set, y=middle, fill=channel, width=0.35)) +
+    scale_fill_manual(values=tmtcolors[1:length(allchannels)]) +
+    scale_colour_manual(values=tmtcolors[1:length(allchannels)]) +
     coord_flip() + ylab('Fold change') +
     xlab('Channels') + theme_bw() + 
     theme(axis.title=element_text(size=10), axis.text=element_text(size=10)) + 
@@ -226,6 +250,7 @@ if (is_isobaric) {
     norms$variable = sub('[a-z].*[0-9]*plex_', '', norms$variable)
     ggp = ggplot(norms, aes(Set, value, group=variable)) + 
       geom_col(aes(fill=variable), position=position_dodge(width=1)) +
+      scale_fill_manual(values=tmtcolors[1:length(allchannels)]) +
       geom_text(aes(y=min(value), label=round(value, 4)), position=position_dodge(width=1), colour="gray20", size=3, hjust=0) +
       coord_flip() + ylab('Normalizing factor') + xlab('Channels') + theme_bw() + 
       theme(axis.title=element_text(size=15), axis.text=element_text(size=10)) + 
