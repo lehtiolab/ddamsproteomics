@@ -1,6 +1,6 @@
 #!/usr/bin/env nextflow
 
-include { paramsSummaryMap } from 'plugin/nf-validation'
+include { paramsSummaryMap } from 'plugin/nf-schema'
 
 include { msgf_info_map; listify; stripchars_infile; get_regex_specialchars; read_header } from './modules.nf' 
 include { MSGFPERCO } from './workflows/msgf_perco.nf'
