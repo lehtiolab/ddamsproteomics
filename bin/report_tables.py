@@ -109,11 +109,17 @@ for plotname, (pfn, textfn) in featplotfns.items():
         featplots[plotname] = False
 
 expplotnames = [
-          ('pca', 'Principal component analysis'),
-          ('scree', 'PCA Scree plot'),
+          ('pcagroup', 'Principal component analysis'),
+          ('screegroup', 'PCA Scree plot'),
           ]
-expplotfns = [('pca', 'pca.html'),
-        ('scree', 'scree.html'),
+pcaplotnames = [
+          ('pcaset', 'Principal component analysis'),
+          ('screeset', 'PCA Scree plot'),
+          ]
+expplotfns = [('pcaset', 'pca_set.html'),
+        ('pcagroup', 'pca_group.html'),
+        ('screeset', 'scree_set.html'),
+        ('screegroup', 'scree_group.html'),
         ]
 expplots = defaultdict(defaultdict)
 for plotname, pfn in expplotfns:
@@ -305,6 +311,7 @@ with open('report_groovy_template.html', 'w') as fp:
         plates=args.plates,
         expplots=expplots,
         expplotnames=expplotnames,
+        pcaplotnames=pcaplotnames,
         deqmsplots=deqmsplots,
         deqmscomps=deqmscomps,
         tabletitles=tabletitles,

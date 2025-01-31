@@ -28,8 +28,11 @@
           {% if ptmtables.summary %}
           <li id="ptmqctab"> <a> PTMs </a> </li>
           {% endif %}
-          {% if expplots.pca %}
+          {% if expplots.pcagroup %}
           <li id="deqctab"><a>Expression</a> </li>
+          {% endif %}
+          {% if expplots.pcaset %}
+          <li id="pcatab"><a>PCA</a> </li>
           {% endif %}
           <li id="rundatatab"><a>Run data</a></li>
         </ul>
@@ -360,7 +363,7 @@
     </div>
     {% endif %}
 
-    {% if expplots.pca %}
+    {% if expplots.pcagroup %}
     <div id="deqcpage" class="mt-5 container">
       {% for plotname, plottitle in expplotnames %}
       <h4 class="title is-4">{{ plottitle }}</h4>
@@ -397,6 +400,24 @@
     </div>
     {% endif %}
 
+    {% if expplots.pcaset %}
+    <div id="pcapage" class="mt-5 container">
+      {% for plotname, plottitle in pcaplotnames %}
+      <h4 class="title is-4">{{ plottitle }}</h4>
+      <div class="columns">
+        {% for fname, ftitle in featnames %}
+        {% if expplots[plotname][fname] %}
+        <div class="column">
+          <h5 class="title is-5">{{ ftitle }}</h5>
+          {{ expplots[plotname][fname] }}
+        </div>
+        {% endif %}
+        {% endfor %}
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
     <script type="text/javascript">
       let tabs = [
         ['results', document.getElementById('resultstab'), document.getElementById('resultspage')],
@@ -406,8 +427,11 @@
         {% if ptmtables.summary %}
         ['ptmqc', document.getElementById('ptmqctab'), document.getElementById('ptmqcpage')],
         {% endif %}
-        {% if expplots.pca %}
+        {% if expplots.pcagroup %}
         ['deqc', document.getElementById('deqctab'), document.getElementById('deqcpage')],
+        {% endif %}
+        {% if expplots.pcaset %}
+        ['pca', document.getElementById('pcatab'), document.getElementById('pcapage')],
         {% endif %}
       ];
       tabs.forEach(t => {

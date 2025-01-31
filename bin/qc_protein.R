@@ -367,21 +367,8 @@ if (length(deqpval_cols)) {
   }
 }
 
-
-# PCA
-if (is_isobaric && use_sampletable) {
-  topca = na.omit(feats[,tmtcols])
-  if (nrow(topca)) {
-    pca_ana <- prcomp(t(topca), scale. = TRUE)
-    score.df <- as.data.frame(pca_ana$x)
-    rownames(score.df) = sub('_[a-z0-9]*plex', '', rownames(score.df))
-    if (length(sampletable[sampletable$group != 'NO__GROUP', 'group'])) {
-        colortype = 'group'
-    } else {
-        colortype = 'set'
-    }
-    score.df$type = sampletable[rownames(score.df), colortype]
-  
+run_pca = function(scoredf, colortype) {
+    scoredf$type = sampletable[rownames(scoredf), colortype]
     #Scree plot
     contributions <- data.frame(contrib=round(summary(pca_ana)$importance[2,] * 100, 2)[1:20])
     contributions$pc = sub('PC', '', rownames(contributions))
@@ -391,10 +378,10 @@ if (is_isobaric && use_sampletable) {
       ylab("Contribution (%)") + xlab('PC (ranked by contribution)')
     p = ggplotly(ggp, width=400) %>%
             layout(legend = list(title='', orientation = 'h', x = 0, y = 1.1, xanchor='left', yanchor='bottom'))
-    htmlwidgets::saveWidget(p, glue('scree.html'), selfcontained=F)
+    htmlwidgets::saveWidget(p, glue('scree_{colortype}.html'), selfcontained=F)
 
     # PCA plot
-    ggp = ggplot(data=score.df, aes(x=PC1, y=PC2, label=rownames(score.df), colour=type)) +
+    ggp = ggplot(data=scoredf, aes(x=PC1, y=PC2, label=rownames(scoredf), colour=type)) +
       geom_hline(yintercept = 0, colour = "gray65") +
       geom_vline(xintercept = 0, colour = "gray65") +
       geom_point(size=4) +
@@ -403,6 +390,24 @@ if (is_isobaric && use_sampletable) {
       xlab(sprintf("PC1 (%s%%)", contributions$contrib[1])) + ylab(sprintf("PC2 (%s%%)", contributions$contrib[2]))
     p = ggplotly(ggp, width=400) %>%
             layout(legend = list(title='', orientation = 'h', x = 0, y = 1.1, xanchor='left', yanchor='bottom'))
-    htmlwidgets::saveWidget(p, glue('pca.html'), selfcontained=F)
+    htmlwidgets::saveWidget(p, glue('pca_{colortype}.html'), selfcontained=F)
+}
+
+
+# PCA
+if (is_isobaric && use_sampletable) {
+  topca = na.omit(feats[,tmtcols])
+  if (nrow(topca)) {
+    pca_ana <- prcomp(t(topca), scale. = TRUE)
+    score.df <- as.data.frame(pca_ana$x)
+    rownames(score.df) = sub('_[a-z0-9]*plex', '', rownames(score.df))
+    if (length(sampletable[sampletable$group != 'NO__GROUP', 'group'])) {
+        colortypes = c('group', 'set')
+    } else {
+        colortypes = c('set')
+    }
+    for (colortype in colortypes) {
+      run_pca(score.df, colortype)
+    }
   }
 }
