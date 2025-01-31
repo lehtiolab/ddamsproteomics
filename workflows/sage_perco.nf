@@ -1,4 +1,4 @@
-include { createMods; listify; stripchars_infile; parse_isotype } from '../modules.nf'
+include { createMods; listify; get_field_nr; stripchars_infile; parse_isotype } from '../modules.nf'
 
 
 process sagePrepare {
@@ -49,12 +49,20 @@ process sage {
   export RAYON_NUM_THREADS=${task.cpus}
   export SAGE_LOG=trace
   sage --disable-telemetry-i-dont-want-to-improve-sage --write-pin -f $db config.json $parsed_infile
-  ${remove_scan_index_str ? "sed -i 's/index=//' results.sage.tsv" : ''}
-  ${remove_scan_index_str ? "sed -i 's/merged=//;s/ //' results.sage.tsv" : ''}
   ${remove_scan_index_str ? "sed -i 's/index=//' results.sage.pin" : ''}
-  ${remove_scan_index_str ? "sed -i 's/merged=//;s/ //' results.sage.pin" : ''}
-  awk -F \$'\\t' '{OFS=FS ; print \$0, "Biological set" ${fractionation ? ', "Strip", "Fraction"' : ''}}' <( head -n1 results.sage.tsv) > "${specfile.baseName}.tsv"
-  awk -F \$'\\t' '{OFS=FS ; print "${parsed_basename}" \$0, "$setname" ${fractionation ? ", \"$fparams.plate\", \"$fparams.fraction\"" : ''}}' <( tail -n+2 results.sage.tsv) >> "${specfile.baseName}.tsv"
+  ${remove_scan_index_str ? "sed -E -i 's/merged=([0-9]+) [SEa-z0-9\\ =]+/\\1/' results.sage.pin" : ''}
+
+  # Add set/strip/fraction
+  awk -F \$'\\t' '{OFS=FS ; print \$0, \
+    "Biological set" \
+    ${fractionation ? ', "Strip", "Fraction"' : ''}}' \
+        <( head -n1 results.sage.tsv) > "${specfile.baseName}.tsv"
+  awk -F \$'\\t' '{OFS=FS ; print "${parsed_basename}" \$0, \
+    "$setname" ${fractionation ? ", \"$fparams.plate\", \"$fparams.fraction\"" : ''}}' \
+        <( tail -n+2 results.sage.tsv) >> "${specfile.baseName}.tsv"
+
+  ${remove_scan_index_str ? "sed -i 's/index=//' results.sage.tsv" : ''}
+  ${remove_scan_index_str ? "sed -E -i 's/merged=([0-9]+) [SEa-z0-9\\ =]+/\\1/' results.sage.tsv" : ''}
 
   head -n1 results.sage.pin > "${specfile.baseName}.pin"
   awk -F \$'\\t' '{OFS=FS ; print "${parsed_basename}" \$0}' <( tail -n+2 results.sage.pin) >> "${specfile.baseName}.pin"
