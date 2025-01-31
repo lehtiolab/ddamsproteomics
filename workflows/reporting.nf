@@ -117,7 +117,7 @@ process featQC {
 
   mkdir ${htmldir}
   mv *.html ${htmldir}/
-  if [ -e *.png ] ; then mv *.png ${htmldir}/; fi
+  if ls *.png > /dev/null 2>&1 ; then mv *.png ${htmldir}/; fi
   ${parse_normfactors ? "mv allnormfacs ${htmldir}" : ''}
   """
 }
