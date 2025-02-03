@@ -7,19 +7,52 @@ library(stringr)
 
 args = commandArgs(trailingOnly=TRUE)
 has_fractions = args[1] == TRUE
+search_engine = args[2]
 
 # Fraction needs to be a factor and not numeric, since it can contain strings (e.g. A2)
 # That would be fine but when mixing oldmzmls from a rerun in, the join on Fraction op may fail
 # when there is both the factor 02, and the numeric 2 in different tables
 feats = read.table("psms_clean", colClasses=c('Fraction'='factor'), header=T, sep="\t", comment.char = "", quote = "")
 
-scancol = 'SpecID' # MSGF (sage has scannr)
-miscleavcol = 'missed_cleavage'
-rtcol = 'Retention.time.min.' # 'rt'
-ioncol = 'Ion.injection.time.ms.' # ?
-precerrcol = 'PrecursorError.ppm.' # precursor_ppm
-scorecol = 'MSGFScore' # 'sage_discriminant_score'
-filenamecol = 'SpectraFile' # 'filename'
+if (search_engine == 'sage') {
+  scancol = 'scannr'
+  miscleavcol = 'missed_cleavages'
+  rtcol = 'rt'
+  ioncol = 'Ion.injection.time.ms.'
+  precerrcol = 'precursor_ppm'
+  scorecol = 'sage_discriminant_score'
+  filenamecol = 'filename'
+
+} else if (search_engine == 'msgf') {
+  scancol = 'SpecID' # MSGF (sage has scannr)
+  miscleavcol = 'missed_cleavage'
+  rtcol = 'Retention.time.min.' # 'rt'
+  ioncol = 'Ion.injection.time.ms.' # ?
+  precerrcol = 'PrecursorError.ppm.' # precursor_ppm
+  scorecol = 'MSGFScore' # 'sage_discriminant_score'
+  filenamecol = 'SpectraFile' # 'filename'
+}
+
+tmtcolors = c(
+  "#b15928",
+  "#e31a1c",
+  "#fb9a99",
+  "#ff7f00",
+  "#fdbf6f",
+  "gold4",
+  "gold1",
+  "#33a02c",
+  "#b2df8a",
+  "#01665e",
+  "#80cdc1",
+  "#1f78b4",
+  "#a6cee3",
+  "#6a3d9a",
+  "#cab2d6",
+  "#c51b7d",
+  "#f1b6da",
+  "magenta4"
+  )
 
 boxplot_stats = function(data, col) {
   summary_stats = data %>%
@@ -83,8 +116,8 @@ p = ggplotly(ggp, width=400, height=vert_height) %>%
         layout(legend = list(orientation = 'h', x = 0, y = 1.1, xanchor='left', yanchor='bottom'))
 # Work around since plotly does not honor above legend.title=element_blank call
 p$x$layout$legend$title$text = ''
-
 htmlwidgets::saveWidget(p, 'amount_psms.html', selfcontained=F)
+write.table(amount_id, 'psms_ids.txt', row.names=F, quote=F, sep='\t')
 
 # Missing isobaric values
 if (length(grep('plex', names(feats)))) {
@@ -96,8 +129,13 @@ if (length(grep('plex', names(feats)))) {
     psm_empty = aggregate(value~get(xcol)+ name, psm_empty, sum)
     names(psm_empty) = c(xcol, 'channels', 'nr_missing_values')
     psm_empty$channels = sub('.*plex_', '', psm_empty$channels)
+    allchannels = unique(psm_empty$channels)
     ggp = ggplot(psm_empty, aes(x=.data[[ xcol ]], y=nr_missing_values, fill=channels)) + 
-      geom_bar(stat='identity', position="dodge") + ylab('# PSMs without quant') + coord_flip() + theme_bw() + theme(axis.title.x=element_text(size=15), axis.title.y=element_blank(), axis.text=element_text(size=10), axis.text.y=element_text(angle=90), legend.position="top", legend.text=element_text(size=10), legend.title=element_blank())
+      geom_bar(stat='identity', position="dodge") + 
+      scale_fill_manual(values=tmtcolors[1:length(allchannels)]) +
+      ylab('# PSMs without quant') + coord_flip() + theme_bw() +
+      theme(axis.title.x=element_text(size=15), axis.title.y=element_blank(), axis.text=element_text(size=10), axis.text.y=element_text(angle=90), legend.position="top", legend.text=element_text(size=10), legend.title=element_blank()
+    )
     p = ggplotly(ggp, width=400, height=vert_height) %>%
         layout(legend = list(orientation = 'h', x = 0, y = 1.1, xanchor='left', yanchor='bottom'))
   p$x$layout$legend$title$text = ''
@@ -107,16 +145,16 @@ if (length(grep('plex', names(feats)))) {
 
 # Missed cleavages
 mcl = aggregate(get(scancol)~get(xcol)+get(miscleavcol), feats, length)
-colnames(mcl) = c(xcol, 'missed_cleavage', 'nrscan')
+colnames(mcl) = c(xcol, 'missed_cleavage', 'nrpsms')
 mcl_am = subset(merge(mcl, amount_psms, by=xcol), missed_cleavage %in% c(0,1,2))
-mcl_am$percent = mcl_am$nrscan / mcl_am$"PSMs IDed" * 100
+mcl_am$percent = mcl_am$nrpsms / mcl_am$"PSMs IDed" * 100
 mc_text_y = max(mcl_am$percent) * 2/6
 mcl_am$missed_cleavage = as.factor(mcl_am$missed_cleavage)
 
 mcplot = ggplot(mcl_am) +
     geom_bar(aes(x=.data[[ xcol ]], y=percent, fill=missed_cleavage, group=missed_cleavage), position='dodge', stat='identity') +
     # 0.9 is the default dodge (90% of 1, 1 used bc all same value) but when not spec -> no dodge at all?
-    geom_text(position=position_dodge(width=0.9), aes(x=.data[[xcol]], y=mc_text_y, group=missed_cleavage, label=glue('{nrscan} PSMs')), colour="black", size=4, inherit.aes=T) +
+    geom_text(position=position_dodge(width=0.9), aes(x=.data[[xcol]], y=mc_text_y, group=missed_cleavage, label=glue('{nrpsms} PSMs')), colour="black", size=4, inherit.aes=T) +
     ylim(c(0, 100)) + ylab('% of PSMs') +
     theme_bw() +
     theme(axis.title.x=element_text(size=15), axis.title.y=element_blank(), axis.text=element_text(size=10), axis.text.y=element_text(angle=90), legend.position="top", legend.text=element_text(size=10), legend.title=element_blank()) +
@@ -125,6 +163,7 @@ p = ggplotly(mcplot, width=400, height=vert_height) %>%
         layout(legend = list(orientation = 'h', x = 0, y = 1.1, xanchor='left', yanchor='bottom'))
 p$x$layout$legend$title$text = ''
 htmlwidgets::saveWidget(p, 'missed_cleavages.html', selfcontained=F)
+write.table(mcl_am, 'miscleav.txt', row.names=F, quote=F, sep='\t')
 
 
 # Now the per-fraction or per-file stats

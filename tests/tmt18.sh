@@ -11,7 +11,7 @@ echo TMT18 phos, no MS1 found somehow
 name=tmt18phos
 baseresults=test_output/${name}
 cat "${testdir}/tmt18_mzmls.txt" | envsubst > test_output/mzmldef
-nextflow run -resume -profile test ${repodir}/main.nf --name ${name} --outdir ${baseresults} \
+$NXFCMD --name ${name} --outdir ${baseresults} \
     --input test_output/mzmldef \
     --sampletable "${testdir}/tmt18_samples.txt" \
     --hardklor --isobaric '0set-A:tmt18plex:126:131N' \
@@ -30,7 +30,7 @@ mkdir -p test_output/${name}
 ln -fs "${testdata}/tmt18_fr06_1000.mzML" "${testdata}/linked_tmt18_fr06_1000.mzML"
 cat "${testdir}/tmt18_mzmls.txt" | envsubst > test_output/${name}/oldmzmls
 sed 's/tmt18_fr/linked_tmt18_fr/;s/0set-A/20set-A/' "${testdir}/tmt18_mzmls.txt" | envsubst > test_output/mzmldef
-nextflow run -resume -profile test ${repodir}/main.nf --name ${name} --outdir test_output/${name} \
+$NXFCMD --name ${name} --outdir test_output/${name} \
     --input test_output/mzmldef \
     --sampletable "${testdir}/tmt18_setAB_samples.txt" \
     --hardklor --isobaric '0set-A:tmt18plex:sweep 20set-A:tmt18plex:sweep' \
@@ -52,7 +52,7 @@ echo TMT18 rerun with different settings post PSMs, --noms1quant
 name=tmt18phos_rerun
 mkdir -p test_output/${name}
 cat "${testdir}/tmt18_mzmls.txt" | envsubst > test_output/${name}/oldmzmls
-nextflow run -resume -profile test ${repodir}/main.nf --name ${name} --outdir test_output/${name} \
+$NXFCMD --name ${name} --outdir test_output/${name} \
     --sampletable "${testdir}/tmt18_samples.txt" \
     --isobaric '0set-A:tmt18plex:131' \
     --tdb "${testdata}/tmt18_fa.fa" \

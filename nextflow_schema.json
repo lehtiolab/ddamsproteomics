@@ -294,6 +294,15 @@
     "overbook_cpus_factor": {
       "type": "integer",
       "default": 1
+    },
+    "sage": {
+      "type": "boolean"
+    },
+    "msgf": {
+      "type": "boolean"
+    },
+    "remove_channels": {
+      "type": "boolean"
     }
   }
 }

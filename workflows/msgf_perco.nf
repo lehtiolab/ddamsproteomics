@@ -1,21 +1,4 @@
-include { listify; stripchars_infile; parse_isotype } from '../modules.nf'
-
-process createMods {
-  tag 'python'
-  container params.__containers[tag][workflow.containerEngine]
-
-  input:
-  tuple val(setname), val(isobtype), val(maxvarmods), path(msgfmods), val(mods)
-
-  output:
-  tuple val(setname), path('mods.txt')
-
-  script:
-  """
-  create_modfile.py $maxvarmods "${msgfmods}" "${mods}${isobtype ? ";${parse_isotype(isobtype)}" : ''}"
-  """
-}
-
+include { createMods; listify; stripchars_infile; parse_isotype } from '../modules.nf'
 
 process msgfPlus {
 
@@ -60,7 +43,7 @@ process percolator {
   container params.__containers[tag][workflow.containerEngine]
 
   input:
-  tuple val(setname), path(mzids), path(tsvs), val(enzyme)
+  tuple val(setname), path(mzids), val(enzyme)
 
   output:
   tuple val(setname), path('perco.xml')
@@ -130,7 +113,7 @@ workflow MSGFPERCO {
   mzml_in
   | map { [it.setname]}
   | groupTuple
-  | map { [it[0], setisobaric && setisobaric[it[0]] ? setisobaric[it[0]] : false, maxvarmods, file(msgfmodfile), mods] }
+  | map { [it[0], setisobaric && setisobaric[it[0]] ? setisobaric[it[0]] : false, maxvarmods, 'msgf', file(msgfmodfile), mods] }
   | createMods
 
   mzml_in
@@ -145,7 +128,7 @@ workflow MSGFPERCO {
   .set { mzid_tsv_2psm }
 
   mzid_tsv_2psm
-  | map {it + [enzyme] }
+  | map {[it[0], it[1], enzyme] }
   | percolator
   | join(mzid_tsv_2psm)
   | map { it + [psmconflvl, pepconflvl, output_unfilt_psms] }

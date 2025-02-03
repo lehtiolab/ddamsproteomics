@@ -28,8 +28,11 @@
           {% if ptmtables.summary %}
           <li id="ptmqctab"> <a> PTMs </a> </li>
           {% endif %}
-          {% if expplots.pca %}
+          {% if expplots.pcagroup %}
           <li id="deqctab"><a>Expression</a> </li>
+          {% endif %}
+          {% if expplots.pcaset %}
+          <li id="pcatab"><a>PCA</a> </li>
           {% endif %}
           <li id="rundatatab"><a>Run data</a></li>
         </ul>
@@ -93,6 +96,52 @@
         </div>
         {% endif %}
         {% endfor %}
+      </div>
+
+      <h4 class="title is-4">PSMs</h4>
+      <div class="columns">
+        <div class="column">
+          <h5 class="title is-5">IDs</h5>
+          <table class="table is-striped is-narrow is-hoverable is-size-7">
+            <thead>
+              <th>Sample/plate</th>
+              <th>Scans</th>
+              <th>PSMs</th>
+              <th>% ID</th>
+            </thead>
+            <tbody>
+              {% for plate, scans, psms, pc in psmtables.ids %}
+              <tr>
+                <td> {{ plate }} </td>
+                <td> {{ scans }} </td>
+                <td> {{ psms }} </td>
+                <td> {{ pc }} </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="column">
+          <h5 class="title is-5">Missed cleavages</h5>
+          <table class="table is-striped is-narrow is-hoverable is-size-7">
+            <thead>
+              <th>Sample/plate</th>
+              <th># missed cleavages</th>
+              <th># PSMs</th>
+              <th>% PSMs</th>
+            </thead>
+            <tbody>
+              {% for plate, mc, psms, pc in psmtables.miscleav %}
+              <tr>
+                <td> {{ plate }} </td>
+                <td> {{ mc }} </td>
+                <td> {{ psms }} </td>
+                <td> {{ pc }} </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {% if ptmtables.summary %}
@@ -360,7 +409,7 @@
     </div>
     {% endif %}
 
-    {% if expplots.pca %}
+    {% if expplots.pcagroup %}
     <div id="deqcpage" class="mt-5 container">
       {% for plotname, plottitle in expplotnames %}
       <h4 class="title is-4">{{ plottitle }}</h4>
@@ -397,6 +446,24 @@
     </div>
     {% endif %}
 
+    {% if expplots.pcaset %}
+    <div id="pcapage" class="mt-5 container">
+      {% for plotname, plottitle in pcaplotnames %}
+      <h4 class="title is-4">{{ plottitle }}</h4>
+      <div class="columns">
+        {% for fname, ftitle in featnames %}
+        {% if expplots[plotname][fname] %}
+        <div class="column">
+          <h5 class="title is-5">{{ ftitle }}</h5>
+          {{ expplots[plotname][fname] }}
+        </div>
+        {% endif %}
+        {% endfor %}
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
     <script type="text/javascript">
       let tabs = [
         ['results', document.getElementById('resultstab'), document.getElementById('resultspage')],
@@ -406,8 +473,11 @@
         {% if ptmtables.summary %}
         ['ptmqc', document.getElementById('ptmqctab'), document.getElementById('ptmqcpage')],
         {% endif %}
-        {% if expplots.pca %}
+        {% if expplots.pcagroup %}
         ['deqc', document.getElementById('deqctab'), document.getElementById('deqcpage')],
+        {% endif %}
+        {% if expplots.pcaset %}
+        ['pca', document.getElementById('pcatab'), document.getElementById('pcapage')],
         {% endif %}
       ];
       tabs.forEach(t => {

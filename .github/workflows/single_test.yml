@@ -20,4 +20,4 @@ jobs:
             uses: nf-core/setup-nextflow@v2
 
           - name: Run single test
-            run: bash run_tests.sh tmt16_fast
+            run: bash run_tests.sh sage tmt16_fast

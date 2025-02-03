@@ -10,15 +10,19 @@ from luciphor_prep import PSM, Mods
 
 
 # PTM input/output header fields
-TOPPTM = 'Top luciphor PTM'
-TOPFLR = 'Top PTM FLR'
-TOPSCORE = 'Top PTM score'
-OTHERPTMS = 'High-scoring PTMs'
-SE_PEPTIDE = 'SearchEnginePeptide'
-PEPTIDE = 'Peptide'
-MASTER_PROTEIN = 'Master protein(s)'
-FLANKING_SEQS = 'PTM flanking seq(s)'
-PTMFIELDS = [SE_PEPTIDE, TOPPTM, TOPSCORE, TOPFLR, OTHERPTMS, FLANKING_SEQS]
+def get_headerfields(search_engine):
+    fields = {'TOPPTM': 'Top luciphor PTM', 'TOPFLR': 'Top PTM FLR', 'TOPSCORE': 'Top PTM score',
+            'OTHERPTMS': 'High-scoring PTMs', 'SE_PEPTIDE': 'SearchEnginePeptide',
+            'MASTER_PROTEIN': 'Master protein(s)', 'FLANKING_SEQS': 'PTM flanking seq(s)',
+
+            'PEPTIDE': {'sage': 'peptide', 'msgf': 'Peptide'}[search_engine],
+            'CHARGE': {'sage': 'charge', 'msgf': 'Charge'}[search_engine],
+            'FILENAME': {'sage': 'filename', 'msgf': '#SpecFile'}[search_engine],
+            'SCANNR': {'sage': 'scannr', 'msgf': 'ScanNum'}[search_engine],
+            }
+    fields['PTMFIELDS'] = [fields['SE_PEPTIDE'], fields['TOPPTM'], fields['TOPSCORE'], fields['TOPFLR'], fields['OTHERPTMS'], fields['FLANKING_SEQS']]
+    return fields
+
 
 def main():
     parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
@@ -32,18 +36,20 @@ def main():
     parser.add_argument('--stabileptms', nargs='+', default=[])
     parser.add_argument('--mods', nargs='+', default=[])
     parser.add_argument('--fasta')
+    parser.add_argument('--searchengine', default='msgf', type=str)
     args = parser.parse_args(sys.argv[1:])
 
     minscore_high = args.minscore
     labileptms = [x.lower() for x in args.labileptms]
     stabileptms = [x.lower() for x in args.stabileptms]
     mods = [x.lower() for x in args.mods]
+    fields = get_headerfields(args.searchengine)
 
     # First prepare a residue + PTM weight -> PTM name dict for naming mods
     msgfmods = Mods()
     msgfmods.parse_msgf_modfile(args.modfile, [*args.labileptms, *args.stabileptms, *args.mods])
     luci_modmap = msgfmods.lucimass_mod_dict()
-    msgf_mod_map = msgfmods.msgfmass_mod_dict()
+    msgf_mod_map = msgfmods.msgfmass_mod_dict(args.searchengine)
 
     # load sequences
     tdb = SeqIO.index(args.fasta, 'fasta')
@@ -81,30 +87,34 @@ def main():
     # because that needs parsing from PSM table (luciphor throws them out)
     with open(args.psms) as psms, open(args.outfile, 'w') as wfp:
         psmheader = next(psms).strip('\n').split('\t')
-        outheader = psmheader + PTMFIELDS
+        outheader = psmheader + fields['PTMFIELDS']
         wfp.write('\t'.join(outheader))
         for psm in psms:
             psm = psm.strip('\n').split('\t')
             psm = {k: v for k,v in zip(psmheader, psm)}
             msgfpsm = PSM()
-            msgfpsm.parse_msgf_peptide(psm[PEPTIDE], msgf_mod_map,
-                    labileptms, stabileptms)
+            msgfpsm.parse_search_peptide(psm[fields['PEPTIDE']], msgf_mod_map,
+                    labileptms, stabileptms, args.searchengine)
             if not msgfpsm.has_labileptms():
                 continue
-            psmid = '{}.{}.{}.{}'.format(os.path.splitext(psm['#SpecFile'])[0], psm['ScanNum'], psm['ScanNum'], psm['Charge'])
+            if args.searchengine == 'sage':
+                scan = re.sub('.*scan=', '', psm[fields['SCANNR']])
+            else:
+                scan = psm[fields['SCANNR']]
+            psmid = '{}.{}.{}.{}'.format(os.path.splitext(psm[fields['FILENAME']])[0], scan, scan, psm[fields['CHARGE']])
             if psmid in lucptms:
                 luciptm = lucptms[psmid]
                 ptm = {
-                    TOPFLR: luciptm.top_flr,
-                    TOPSCORE: luciptm.top_score,
-                    OTHERPTMS: luciptm.format_alt_ptm_locs(),
+                    fields['TOPFLR']: luciptm.top_flr,
+                    fields['TOPSCORE']: luciptm.top_score,
+                    fields['OTHERPTMS']: luciptm.format_alt_ptm_locs(),
                     }
             else:
                 luciptm = False
                 ptm = {
-                    TOPFLR: 'NA',
-                    TOPSCORE: 'NA',
-                    OTHERPTMS: 'NA',
+                    fields['TOPFLR']: 'NA',
+                    fields['TOPSCORE']: 'NA',
+                    fields['OTHERPTMS']: 'NA',
                     }
             # If there are PTMs which are on fixed mod residues, we need to parse
             # those from the residues from sequences in the PSM table because luciphor
@@ -114,22 +124,22 @@ def main():
                 luciptm = msgfpsm
             elif msgfmods.has_varmods_on_fixmod_residues:
                 luciptm.add_ptms_from_psm(msgfpsm.mods)
-            ptm[TOPPTM] = luciptm.topptm_output()
+            ptm[fields['TOPPTM']] = luciptm.topptm_output()
 
             # Get protein site location of mods
-            if MASTER_PROTEIN in psm:
-                annotate_protein_and_flanks(psm, luciptm, tdb, [*labileptms, *stabileptms])
+            if fields['MASTER_PROTEIN'] in psm:
+                annotate_protein_and_flanks(psm, luciptm, tdb, [*labileptms, *stabileptms], fields)
             outpsm = {k: v for k,v in psm.items()}
             outpsm.update(ptm)
-            outpsm[SE_PEPTIDE] = outpsm.pop(PEPTIDE)
-            outpsm[PEPTIDE] = '{}_{}'.format(luciptm.sequence, ptm[TOPPTM])
+            outpsm[fields['SE_PEPTIDE']] = outpsm.pop(fields['PEPTIDE'])
+            outpsm[fields['PEPTIDE']] = '{}_{}'.format(luciptm.sequence, ptm[fields['TOPPTM']])
             wfp.write('\n{}'.format('\t'.join([outpsm[k] for k in outheader])))
 
 
-def annotate_protein_and_flanks(psm, ptmpsm, tdb, ptmnames):
+def annotate_protein_and_flanks(psm, ptmpsm, tdb, ptmnames, fields):
     flankseqs = set()
     proteins_peploc = {}
-    for p in psm[MASTER_PROTEIN].split(';'):
+    for p in psm[fields['MASTER_PROTEIN']].split(';'):
         proteins_peploc[p] = [x.start() for x in re.finditer(ptmpsm.sequence, str(tdb[p].seq))]
     proteins_loc = {p: [] for p, peplocs in proteins_peploc.items() if len(peplocs)}
     for p, peplocs in proteins_peploc.items():
@@ -145,8 +155,8 @@ def annotate_protein_and_flanks(psm, ptmpsm, tdb, ptmnames):
             flankpos = [(max(x-7, 0) , min(x+8, len(protseq))) for x in site_protlocs]
             flankseqs.update([str(protseq[x[0]:x[1]]) for x in flankpos])
             proteins_loc[p].append('{}:{}'.format(ptm['name'], ','.join(protptms)))
-    psm[MASTER_PROTEIN] = ';'.join(['{}__{}'.format(p, '_'.join(ptmloc)) for p, ptmloc in proteins_loc.items()])
-    psm[FLANKING_SEQS] = ';'.join(flankseqs)
+    psm[fields['MASTER_PROTEIN']] = ';'.join(['{}__{}'.format(p, '_'.join(ptmloc)) for p, ptmloc in proteins_loc.items()])
+    psm[fields['FLANKING_SEQS']] = ';'.join(flankseqs)
 
 
 if __name__ == '__main__':

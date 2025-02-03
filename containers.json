@@ -1,8 +1,8 @@
 {
   "msstitch": {
-    "version": "3.16",
-    "singularity": "https://depot.galaxyproject.org/singularity/msstitch:3.16--pyhdfd78af_0",
-    "docker": "quay.io/biocontainers/msstitch:3.16--pyhdfd78af_0"
+    "version": "3.17",
+    "singularity": "https://depot.galaxyproject.org/singularity/msstitch:3.17--pyhdfd78af_0",
+    "docker": "quay.io/biocontainers/msstitch:3.17--pyhdfd78af_0"
   },
   "python": {
     "version": "3.12",
@@ -15,9 +15,9 @@
       "singularity": "docker://proteowizard/pwiz-skyline-i-agree-to-the-vendor-licenses:3.0.24172-63d00b1"
   },
   "openms": {
-      "version": "3.1.0",
-      "docker": "quay.io/biocontainers/openms:3.1.0--h191ead1_4",
-      "singularity": "https://depot.galaxyproject.org/singularity/openms:3.1.0--h191ead1_4"
+      "version": "3.3.0",
+      "docker": "quay.io/biocontainers/openms:3.3.0--h0656172_8",
+      "singularity": "https://depot.galaxyproject.org/singularity/openms:3.3.0--h0656172_8"
   },
   "dinosaur": {
       "version": "1.2.0",
@@ -50,14 +50,24 @@
       "singularity": "docker://ghcr.io/lehtiolab/ddamsproteomics:3.0"
   },
   "msgfplus": {
-      "version": "2023.01.1202",
-      "docker": "quay.io/biocontainers/msgf_plus:2023.01.1202--hdfd78af_0",
-      "singularity": "https://depot.galaxyproject.org/singularity/msgf_plus:2023.01.1202--hdfd78af_0"
+      "version": "2024.03.26",
+      "docker": "quay.io/biocontainers/msgf_plus:2024.03.26--hdfd78af_0",
+      "singularity": "https://depot.galaxyproject.org/singularity/msgf_plus:2024.03.26--hdfd78af_0"
+  },
+  "jq": {
+      "version": "1.5",
+      "docker": "quay.io/biocontainers/jq:1.5--4",
+      "singularity": "https://depot.galaxyproject.org/singularity/jq:1.5--4"
+  },
+  "sage": {
+      "version": "0.14.7",
+      "docker": "ghcr.io/lazear/sage:v0.14.7",
+      "singularity": "https://depot.galaxyproject.org/singularity/sage-proteomics:0.14.7--hc1c3326_2"
   },
   "percolator": {
-      "version": "3.5",
-      "docker": "quay.io/biocontainers/percolator:3.5--hfd1433f_1",
-      "singularity": "https://depot.galaxyproject.org/singularity/percolator:3.5--hfd1433f_1"
+      "version": "3.6.5",
+      "docker": "quay.io/biocontainers/percolator:3.6.5--h6351f2a_0",
+      "singularity": "https://depot.galaxyproject.org/singularity/percolator:3.6.5--h6351f2a_0"
   },
   "luciphor2": {
       "version": "2020_04_03",

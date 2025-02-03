@@ -10,12 +10,14 @@ name=tmt16denomdeq
 resultsdir=test_output/${name}
 mkdir -p $resultsdir
 cat "${testdir}/tmt16_mzmls.txt" | envsubst > ${resultsdir}/mzmldef
-nextflow run -resume -profile test ${repodir}/main.nf --name ${name} --outdir ${resultsdir} \
+$NXFCMD --name ${name} --outdir ${resultsdir} \
     --input ${resultsdir}/mzmldef \
     --sampletable "${testdir}/tmt16_samples.txt" \
     --hardklor --isobaric '0set-A:tmtpro:126:131N' \
     --tdb "${testdata}/tmt16_fa.fa" \
     --mods 'carbamidomethyl;oxidation;43.005814,*,opt,N-term,Unknown' \
+    --maxmiscleav 2 \
+    --pepconflvl 0.05 \
     --deqms --keepnapsmsquant --genes
 
 
@@ -25,7 +27,7 @@ baseresults=${resultsdir}
 resultsdir=test_output/${name}
 mkdir -p $resultsdir
 cat <(head -n1 "${testdir}/tmt16_mzmls.txt") <(grep fr07 ${testdir}/tmt16_mzmls.txt) | envsubst > ${resultsdir}/mzmldef
-nextflow run -resume -profile test ${repodir}/main.nf --name ${name} --outdir test_output/${name} \
+$NXFCMD --name ${name} --outdir test_output/${name} \
     --input ${resultsdir}/mzmldef \
     --sampletable "${testdir}/tmt16_samples.txt" \
     --hardklor --isobaric '0set-A:tmtpro:126:131N' \
@@ -48,7 +50,7 @@ resultsdir=test_output/${name}
 mkdir -p $resultsdir
 cat "${testdir}/tmt16_mzmls.txt" | envsubst > ${resultsdir}/oldmzmls
 cat "${testdir}/tmt16_setB_mzmls.txt" | envsubst > ${resultsdir}/mzmldef
-nextflow run -resume -profile test ${repodir}/main.nf --name ${name} --outdir test_output/${name} \
+$NXFCMD --name ${name} --outdir test_output/${name} \
     --input ${resultsdir}/mzmldef \
     --sampletable "${testdir}/tmt16_setAB_samples.txt" \
     --isobaric '0set-A:tmtpro:126:131N set-B:tmt16plex:126:131N' \
@@ -69,7 +71,7 @@ baseresults=${resultsdir}
 resultsdir=test_output/${name}
 mkdir -p $resultsdir
 cat <(head -n1 "${testdir}/tmt16_mzmls.txt") <(grep fr07 ${testdir}/tmt16_mzmls.txt) <(grep fr08 ${testdir}/tmt16_mzmls.txt | cut -f1-3) | envsubst > ${resultsdir}/mzmldef
-nextflow run -resume -profile test ${repodir}/main.nf --name ${name} --outdir test_output/${name} \
+$NXFCMD --name ${name} --outdir test_output/${name} \
     --input ${resultsdir}/mzmldef \
     --sampletable "${testdir}/tmt16_samples.txt" \
     --hardklor --isobaric '0set-A:tmtpro:126:131N' \
@@ -85,7 +87,7 @@ name=tmt16_singlefile
 resultsdir=test_output/${name}
 mkdir -p $resultsdir
 cat <(head -n1 ${testdir}/tmt16_mzmls.txt) <(grep fr08 ${testdir}/tmt16_mzmls.txt) | envsubst > ${resultsdir}/mzmldef
-nextflow run -resume -profile test ${repodir}/main.nf --name ${name} --outdir test_output/${name} \
+$NXFCMD --name ${name} --outdir test_output/${name} \
     --input ${resultsdir}/mzmldef \
     --sampletable "${testdir}/tmt16_samples.txt" \
     --hardklor --isobaric '0set-A:tmtpro:126:131N' \

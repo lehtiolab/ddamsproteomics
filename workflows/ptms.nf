@@ -7,7 +7,7 @@ process luciphorPrep {
   container params.__containers[tag][workflow.containerEngine]
 
   input:
-  tuple val(setname), path(allpsms), val(locptms), val(stab_ptms), val(all_non_ptm_mods), path(msgfmodfile)
+  tuple val(setname), path(allpsms), val(locptms), val(stab_ptms), val(all_non_ptm_mods), path(msgfmodfile), val(search_engine)
 
   output:
   tuple val(setname), path('luciphor_config.txt'), path('lucipsms')
@@ -20,7 +20,7 @@ process luciphorPrep {
   msstitch split -i "${allpsms}" --splitcol TD
   luciphor_prep.py --psmfile target.tsv --template "$baseDir/assets/luciphor2_input_template.txt" \
       --labileptms "${lab_ptms}" --mods ${all_non_ptm_mods} ${stab_ptms} \
-      --modfile "${msgfmodfile}" --lucipsms lucipsms
+      --modfile "${msgfmodfile}" --lucipsms lucipsms --searchengine $search_engine
   """
 }
 
@@ -52,7 +52,8 @@ process luciphorPTMLocalizationScoring {
   export OUTFILE=luciphor.out
   cat "${template}" | envsubst > lucinput.txt
 
-  if luciphor2 -Xmx${task.memory.toGiga()}G lucinput.txt 2>&1 | grep 'not have enough PSMs'
+  luciphor2 -Xmx${task.memory.toGiga()}G lucinput.txt 2> luci_stderr
+  if grep 'not have enough PSMs' luci_stderr
   then
     echo 'Not enough PSMs for luciphor FLR calculation in set ${setname}' > warnings
   fi
@@ -68,7 +69,7 @@ process luciphorParse {
   // is no luciphor data due to errors, it will put NA for luciphor columns
 
   input:
-  tuple val(setname), path(luciphor_out), path('all_scores.debug'), path('psms'), val(ptm_minscore_high), path(msgfmodfile), val(lab_ptms), val(stab_ptms), val(all_non_ptm_mods), path(tdb)
+  tuple val(setname), path(luciphor_out), path('all_scores.debug'), path('psms'), val(ptm_minscore_high), path(msgfmodfile), val(lab_ptms), val(stab_ptms), val(all_non_ptm_mods), val(search_engine), path(tdb)
 
   output:
   tuple val(setname), path('labileptms.txt')
@@ -80,7 +81,7 @@ process luciphorParse {
      --luci_in ${luciphor_file} --luci_scores all_scores.debug --psms psms \
      --modfile "${msgfmodfile}" --labileptms ${lab_ptms.join(' ')} \
      ${stab_ptms ? "--stabileptms ${stab_ptms.join(' ')}": ''} --mods ${all_non_ptm_mods} \
-     --fasta "${tdb}"
+     --fasta "${tdb}" --searchengine $search_engine
   """
 }
 // FIXME msgfmods is false? oxidation so probably never.
@@ -92,7 +93,7 @@ process stabilePTMPrep {
   container params.__containers[tag][workflow.containerEngine]
 
   input:
-  tuple val(setname), val(ptms), path('psms'), path(tdb), val(non_ptm_mods), val(lab_ptms), path(msgfmods)
+  tuple val(setname), val(ptms), path('psms'), path(tdb), val(non_ptm_mods), val(lab_ptms), path(msgfmods), val(search_engine)
   
   output:
   tuple val(setname), path('stabileptms.txt')
@@ -102,7 +103,7 @@ process stabilePTMPrep {
   lab_ptms = listify(lab_ptms).join(' ')
   """
   nonlabile_ptm_columns.py --psms psms -o stabileptms.txt --modfile "${msgfmods}" --fasta "${tdb}" \
-      --stabileptms $stab_ptms \
+      --searchengine $search_engine --stabileptms $stab_ptms \
       ${lab_ptms ? "--labileptms $lab_ptms" : ""} \
       ${non_ptm_mods ? "--mods ${non_ptm_mods}" : ''}
   """
@@ -130,7 +131,7 @@ process createPTMTable {
   # PSM peptide sequences include the PTM site
   cat speclup.sql > ptmlup.sql
   ${has_newptms ? "msstitch concat -i ptms* ${oldptms ?: ''} -o" : "mv ${oldptms}"} concatptmpsms
-  msstitch psmtable -i concatptmpsms --dbfile ptmlup.sql -o ${ptmtable} --spectracol 1
+  msstitch psmtable -i concatptmpsms --dbfile ptmlup.sql -o ${ptmtable}
   msstitch split -i ${ptmtable} --splitcol bioset
   ${setnames.collect() { "test -f '${it}.tsv' || echo 'No PTMs found for set ${it}' >> warnings" }.join(' && ') }
   # No PTMs at all overwrites the per-set messages
@@ -281,6 +282,7 @@ workflow PTMANALYSIS {
   setisobaric
   mzmls
   psms
+  search_engine
   tdb
   unfiltered_psms
   fparams
@@ -304,7 +306,7 @@ workflow PTMANALYSIS {
   nofile = "${baseDir}/assets/NO__FILE"
   
   unfiltered_psms
-  | map { it + [locptms, stab_ptms, get_non_ptms(it[0], setisobaric, othermods), file(msgfmodfile)] }
+  | map { it + [locptms, stab_ptms, get_non_ptms(it[0], setisobaric, othermods), file(msgfmodfile), search_engine] }
   | luciphorPrep
   | join(mzmls)
   | map { it + [fparams.find { x -> x.setname == it[0] }.activation, maxpeplen, maxcharge, minpsms_luci] }
@@ -318,7 +320,7 @@ workflow PTMANALYSIS {
   | join(luciphorPTMLocalizationScoring.out.warnings, remainder: true)
   | map { [it[0], it[1] ?: nofile, it[1] ? it[2] : nofile] }
   | join(psms)
-  | map { it + [ptm_minscore_high, file(msgfmodfile), locptms, stab_ptms, get_non_ptms(it[0], setisobaric, othermods), ]}
+  | map { it + [ptm_minscore_high, file(msgfmodfile), locptms, stab_ptms, get_non_ptms(it[0], setisobaric, othermods), search_engine]}
   | combine(tdb)
   | luciphorParse
 
@@ -326,7 +328,7 @@ workflow PTMANALYSIS {
   | combine(psms)
   | map { [it[1], it[0], it[2]] }
   | combine(tdb)
-  | map { it + [get_non_ptms(it[0], setisobaric, othermods), locptms, file(msgfmodfile)] }
+  | map { it + [get_non_ptms(it[0], setisobaric, othermods), locptms, file(msgfmodfile), search_engine] }
   | stabilePTMPrep
   | concat(luciphorParse.out)
   | toList

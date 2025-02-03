@@ -1,9 +1,10 @@
 #!/usr/bin/env nextflow
 
-include { paramsSummaryMap } from 'plugin/nf-validation'
+include { paramsSummaryMap } from 'plugin/nf-schema'
 
-include { msgf_info_map; listify; stripchars_infile; get_regex_specialchars; read_header } from './modules.nf' 
+include { msgf_info_map; get_complement_field_nr; listify; stripchars_infile; get_regex_specialchars; read_header } from './modules.nf' 
 include { MSGFPERCO } from './workflows/msgf_perco.nf'
+include { SAGEPERCO } from './workflows/sage_perco.nf'
 include { PTMANALYSIS } from './workflows/ptms.nf'
 include { MATCH_SEQUENCES } from './workflows/match_sequences.nf'
 include { REPORTING } from './workflows/reporting.nf'
@@ -241,7 +242,7 @@ process createNewSpectraLookup {
   container params.__containers[tag][workflow.containerEngine]
 
   input:
-  tuple val(setnames), file(mzmlfiles), val(platenames)
+  tuple val(setnames), path(mzmlfiles), val(platenames)
 
   output:
   path('target_db.sqlite')
@@ -318,7 +319,7 @@ process peptidePiAnnotation {
   container params.__containers[tag][workflow.containerEngine]
 
   input:
-  tuple path('psms'), val(strips), path('hirief_training_pep')
+  tuple path('psms'), val(strips), val(search_engine), path('hirief_training_pep')
 
   output:
   path('target_psmtable.txt')
@@ -326,7 +327,9 @@ process peptidePiAnnotation {
   script:
   """
   echo '${groovy.json.JsonOutput.toJson(strips)}' >> strip.json
-  peptide_pi_annotator.py -i hirief_training_pep -p psms --out target_psmtable.txt --stripcolpattern Strip --pepcolpattern Peptide --fraccolpattern Fraction --stripdef strip.json --ignoremods '*'
+  peptide_pi_annotator.py -i hirief_training_pep -p psms --out target_psmtable.txt \
+    --fraccolpattern Fraction --stripdef strip.json --ignoremods '*' --stripcolpattern Strip \
+    --pepcolpattern ${search_engine == 'sage' ? 'peptide' : 'Peptide'}
   """
 }
 
@@ -337,7 +340,7 @@ process splitPSMs {
   container params.__containers[tag][workflow.containerEngine]
 
   input:
-  tuple val(td), path('psms'), val(setnames)
+  tuple val(td), path('psms'), val(setnames), val(remove_channels)
 
   output:
   tuple val(td), path({listify(setnames).collect { "${it}.tsv" }}) optional true
@@ -345,8 +348,17 @@ process splitPSMs {
   script:
   """
   msstitch split -i psms --splitcol bioset
+  ${td == 'target' ?
+    remove_channels.collect {
+      setn, chs -> chs.collect {
+        ch -> "colnum=${get_complement_field_nr("${setn}.tsv", ch)} && \
+        cut -f \$colnum ${setn}.tsv > tmprm && mv tmprm ${setn}.tsv"
+      }.join(' && ')
+    }.join(' && ')
+  : ''}
   """
 }
+
 
 
 process splitTotalProteomePSMs {
@@ -358,11 +370,14 @@ process splitTotalProteomePSMs {
   tuple path('tppsms_in'), val(setnames)
 
   output:
-  path({listify(setnames).collect() { "tppsms/${it}.tsv" }}), emit: totalprotpsms_allsets optional true
+  path({listify(setnames).collect() { "tppsms/${it}.tsv" }}) optional true
 
   script:
   """
   mkdir tppsms && msstitch split -i tppsms_in -d tppsms --splitcol bioset
+  ${listify(setnames).collect { set -> "[ -e 'tppsms/${set}.tsv' ] || (\
+    echo Not all sets in the experiment are in the --totalproteomepsms table, \
+    we need: ${listify(setnames).join(', ')}. The total proteome PSM table contains: \$(ls tppsms) && exit 1)" }.join( '&&')}
   """
 }
 
@@ -448,13 +463,20 @@ process sampleTableCheckClean {
   container params.__containers[tag][workflow.containerEngine]
  
   input:
-  tuple path('sampletable'), val(do_deqms)
+  tuple path('sampletable'), val(do_deqms), val(remove_channels)
 
   output:
   tuple path('clean_sampletable'), path('sampletable_no_special_chars')
   
   script:
   """
+  # Remove empty channels
+  ${remove_channels.collect {
+    setch -> setch[1].collect {
+      ch -> "grep -v '^${ch}\t${setch[0]}' sampletable > tmpst && mv tmpst sampletable"
+      }.join(' && ')
+    }.join(' && ')
+  }
   # First add NO__GROUP marker for no-samplegroups clean sampletable from special chars
   awk -v FS="\\t" -v OFS="\\t" \'{if (NF==3) print \$1,\$2,\$3,"NO__GROUP"; else print}\' sampletable > clean_sampletable
   # Check if there are samplegroups at all
@@ -627,6 +649,23 @@ workflow {
   }.collectEntries() {
     x-> [x[0], x[2..-1]]
   } : [:]
+  // Remove channels from specific sets if those are empty: --remove_channels 'setA:126:127 setB:131'
+  rmch = params.remove_channels ? params.remove_channels.tokenize(' ') : false
+  remove_channels_psmtable = rmch ? rmch.collect { y -> y.tokenize(':')
+  }.collect { x -> [x[0], x[1..-1].collect { ch -> "${setisobaric[x[0]]}_${ch}" } ] } : [:]
+  remove_channels_sampletable = rmch ? rmch.collect { y -> y.tokenize(':')
+  }.collect { x -> [x[0], x[1..-1]] } : [:]
+  rm_ch_err = []
+  remove_channels_psmtable.each { sn, chs -> 
+    if (!(sn in setisobaric)) {
+      rm_ch_err.push("Set ${sn} not in --isobaric.")
+    }
+  }
+  if (rm_ch_err) {
+    exit 1, "Errors in --remove_channels: ${rm_ch_err.join(', ')}, please check your isobaric channel input"
+  }
+  
+
   
   do_ms1 = !params.noquant && !params.noms1quant
   do_normalize = (!params.noquant && (params.mediannormalize || params.deqms) && params.isobaric)
@@ -755,34 +794,63 @@ workflow {
   tdb = Channel.fromPath(params.tdb)
   createTargetDecoyFasta(tdb)
 
+  if (params.sage) {
+    search_engine = 'sage'
+  } else if (params.msgf) {
+    search_engine = 'msgf'
+  } else {
+    exit 1, 'Must specify --sage or --msgf'
+  }
+
   if (!is_rerun) {
     search_mods = [params.mods ? params.mods : false,
       params.ptms ?: false,
       params.locptms ?: false,
       ].findAll { it }
       .join(';')
-    MSGFPERCO(mzml_in,
-      createTargetDecoyFasta.out.concatdb,
-      setisobaric,
-      fractionation,
-      mzmls,
-      params.maxvarmods,
-      params.msgfmods,
-      search_mods,
-      params.psmconflvl,
-      params.pepconflvl,
-      params.locptms,
-      params.maxmiscleav,
-      params.enzyme,
-      params.minpeplen,
-      params.maxpeplen,
-      params.mincharge,
-      params.maxcharge,
-    )
-  
-    MSGFPERCO.out.t_tsv
+    if (params.sage) {
+      SAGEPERCO(mzml_in,
+        createTargetDecoyFasta.out.concatdb,
+        setisobaric,
+        fractionation,
+        mzmls,
+        params.maxvarmods,
+        params.msgfmods,
+        search_mods,
+        params.psmconflvl,
+        params.pepconflvl,
+        params.locptms,
+        params.maxmiscleav,
+        params.enzyme,
+        params.minpeplen,
+        params.maxpeplen,
+        params.mincharge,
+        params.maxcharge,
+      ).set { SEARCH }
+    } else {
+      MSGFPERCO(mzml_in,
+        createTargetDecoyFasta.out.concatdb,
+        setisobaric,
+        fractionation,
+        mzmls,
+        params.maxvarmods,
+        params.msgfmods,
+        search_mods,
+        params.psmconflvl,
+        params.pepconflvl,
+        params.locptms,
+        params.maxmiscleav,
+        params.enzyme,
+        params.minpeplen,
+        params.maxpeplen,
+        params.mincharge,
+        params.maxcharge,
+      ).set { SEARCH }
+    }
+
+    SEARCH.t_tsv
     | ifEmpty(['target', nofile])
-    | concat(MSGFPERCO.out.d_tsv)
+    | concat(SEARCH.d_tsv)
     | groupTuple
     | join(specquant_lookups)
     | combine(createTargetDecoyFasta.out.bothdbs)
@@ -806,7 +874,7 @@ workflow {
     hiriefpep = Channel.fromPath(params.hirief)
     psmtables_ch
     | filter { it[0] == 'target' }
-    | map { [it[1], params.strips]  }
+    | map { [it[1], params.strips, search_engine]  }
     | combine(hiriefpep)
     | peptidePiAnnotation
     | map { ['target', it]}
@@ -819,7 +887,7 @@ workflow {
   psmtables_ch
   | filter { it[0] == 'decoy' }
   | concat(target_psmtable)
-  | map { [it[0], it[1], all_setnames] }
+  | map { [it[0], it[1], all_setnames, remove_channels_psmtable] }
   | splitPSMs
   | map{ it -> [it[0], listify(it[1]).collect() { it.baseName.replaceFirst(/\.tsv$/, "") }, it[1]]} // get setname from {setname}.tsv
   | transpose
@@ -854,8 +922,9 @@ workflow {
       setisobaric,
       mzml_in | map { [it.setname, it.mzmlfile] } | groupTuple,
       splitpsms_ch | filter { it[0] == 'target' } | map { it[1..-1] },
+      search_engine,
       tdb,
-      !is_rerun ? MSGFPERCO.out.unfiltered : Channel.empty(),
+      !is_rerun ? SEARCH.unfiltered : Channel.empty(),
       mzml_list,
       params.maxpeplen,
       params.maxcharge,
@@ -917,7 +986,7 @@ workflow {
 
   if (params.sampletable) {
     Channel.fromPath(params.sampletable)
-    | map { [it, params.deqms] }
+    | map { [it, params.deqms, remove_channels_sampletable] }
     | sampleTableCheckClean
     | set { sampletable_ch }
   } else {
@@ -961,6 +1030,7 @@ workflow {
   REPORTING(
     sorted_mzml_in,
     tdspeclookup.map { it[0] },
+    search_engine,
     oldmzmls,
     fractionation,
     target_psmtable.map { it[1] },
@@ -972,7 +1042,7 @@ workflow {
     all_setnames,
     ptm_ch,
     psmwarnings_ch
-      .concat(!is_rerun ? MSGFPERCO.out.warnings: Channel.empty())
+      .concat(!is_rerun ? SEARCH.warnings: Channel.empty())
       .concat(ptmwarn_ch)
       .toList().toList()
       .filter { it[0] }

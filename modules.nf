@@ -11,6 +11,10 @@ def get_field_nr_multi(fn, fieldnames) {
     return "\$(head -n1 ${fn} | tr '\\t' '\\n' | grep -En '(${fieldnames.join('|')})' | cut -f 1 -d':' | tr '\\n' ',' | sed 's/\\,\$//')"
 }
 
+def get_complement_field_nr(fn, fieldname) {
+    /* return field nrs NOT matching input, comma separated like: 1,2,5,9 */
+    return "\$(head -n1 ${fn} | tr '\\t' '\\n' | grep -vwn '^${fieldname}\$' | cut -f 1 -d':' | tr '\\n' ',' | sed 's/\\,\$//')"
+}
 
 def parse_isotype(isobtype) {
   return ['tmt16plex', 'tmt18plex'].any { it == isobtype } ? 'tmtpro' : isobtype
@@ -97,3 +101,20 @@ def msgf_info_map(info_fn) {
   return samples
 }
 
+
+process createMods {
+
+  tag 'python'
+  container params.__containers[tag][workflow.containerEngine]
+
+  input:
+  tuple val(setname), val(isobtype), val(maxvarmods), val(search_engine), path(msgfmods), val(mods)
+
+  output:
+  tuple val(setname), path('mods.txt')
+
+  script:
+  """
+  create_modfile.py $maxvarmods "${msgfmods}" $search_engine "${mods}${isobtype ? ";${parse_isotype(isobtype)}" : ''}"
+  """
+}

@@ -109,11 +109,17 @@ for plotname, (pfn, textfn) in featplotfns.items():
         featplots[plotname] = False
 
 expplotnames = [
-          ('pca', 'Principal component analysis'),
-          ('scree', 'PCA Scree plot'),
+          ('pcagroup', 'Principal component analysis'),
+          ('screegroup', 'PCA Scree plot'),
           ]
-expplotfns = [('pca', 'pca.html'),
-        ('scree', 'scree.html'),
+pcaplotnames = [
+          ('pcaset', 'Principal component analysis'),
+          ('screeset', 'PCA Scree plot'),
+          ]
+expplotfns = [('pcaset', 'pca_set.html'),
+        ('pcagroup', 'pca_group.html'),
+        ('screeset', 'scree_set.html'),
+        ('screegroup', 'scree_group.html'),
         ]
 expplots = defaultdict(defaultdict)
 for plotname, pfn in expplotfns:
@@ -257,6 +263,27 @@ for _s, fields in summary_table.items():
     summary_fields = [x for x in summary_field_order if x in fields]
     break
 
+# PSM tables
+psmtables = {'ids': [], 'miscleav': []}
+with open('psmids') as fp:
+    head = next(fp).strip().split()
+    plates = defaultdict(defaultdict)
+    for line in fp:
+        lnmap = {head[ix]: x for ix, x in enumerate(line.strip().split('\t'))}
+        if lnmap['name'] == 'MS2 scans':
+            plates[lnmap['plateID']]['scans'] = lnmap['count']
+        elif lnmap['name'] == 'PSMs IDed':
+            plates[lnmap['plateID']].update({'psms': lnmap['count'], 'pc': lnmap['labeltext']})
+psmtables['ids'] = [[p, nms['scans'], nms['psms'], nms['pc']] for p, nms in plates.items()]
+
+with open('miscleav') as fp:
+    head = next(fp).strip().split()
+    plates = defaultdict()
+    for line in fp:
+        lnmap = {head[ix]: x for ix, x in enumerate(line.strip().split('\t'))}
+        print(lnmap)
+        psmtables['miscleav'].append([lnmap['plateID'], lnmap['missed_cleavage'], lnmap['nrpsms'], lnmap['IDed']])
+
 
 # Overlap
 overlap = defaultdict(dict)
@@ -305,9 +332,11 @@ with open('report_groovy_template.html', 'w') as fp:
         plates=args.plates,
         expplots=expplots,
         expplotnames=expplotnames,
+        pcaplotnames=pcaplotnames,
         deqmsplots=deqmsplots,
         deqmscomps=deqmscomps,
         tabletitles=tabletitles,
+        psmtables=psmtables,
         summary_fields=summary_fields,
         summary_table=summary_table,
         overlap=overlap,

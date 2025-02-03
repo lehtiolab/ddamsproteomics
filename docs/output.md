@@ -26,6 +26,7 @@ table is filtered on a PSM and peptide FDR of 0.01.
 * Protein group(s) content (Protein groups have members which can be explained by the representative protein)
 * Total number of matching proteins in group (Those proteins in the group that this PSM matches to)
 * Gene ID, Gene Name, Description (gene identity and protein description information from fasta)
+* Explained ion current ratio (explained ions divided by total current)
 * percolator svm-score
 * PSM q-value and posterior error probability (PEP) (both calculated as TD competition by percolator)
 * peptide q-value and PEP (as PSM q-value but for peptides)
@@ -97,8 +98,13 @@ and processes data using the following steps:
 * [Msstitch](#msstitch) - Post processing, protein inference
 * [DEqMS](#deqms) - Differential expression analysis
 
+
 ## MSGF+
-[MSGF+](https://omics.pnl.gov/software/ms-gf) (aka MSGF+ or MSGFPlus) performs peptide identification by scoring MS/MS spectra against peptides derived from a protein sequence database. [PMID 25358478](https://pubmed.ncbi.nlm.nih.gov/25358478/)
+[MSGF+](https://msgfplus.github.io/)(aka MSGF+ or MSGFPlus) performs peptide identification by scoring MS/MS spectra against peptides derived from a protein sequence database. [PMID 25358478](https://pubmed.ncbi.nlm.nih.gov/25358478/)
+
+
+## Sage
+[Sage](https://sage-docs.vercel.app/) is another search engine to do peptide identification with, and is very fast.
 
 
 ## Percolator

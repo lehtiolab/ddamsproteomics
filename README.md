@@ -18,16 +18,16 @@ The pipeline is built using [Nextflow](https://www.nextflow.io), a workflow tool
 - run pipeline:
 
 ```
-nextflow run lehtiolab/ddamsproteomics --input /path/to/input_definition.txt --tdb /path/to/proteins.fa --mods 'oxidation;carbamidomethylation' -profile standard,docker
+nextflow run lehtiolab/ddamsproteomics --input /path/to/input_definition.txt --sage --tdb /path/to/proteins.fa --mods 'oxidation;carbamidomethylation' -profile standard,docker
 ```
 
 Or for two sample sets of isobaric data you can:
 
 ```
-nextflow run lehtiolab/ddamsproteomics --input /path/to/input_definition.txt --tdb /path/to/proteins.fa --mods 'oxidation;carbamidomethylation --isobaric 'setA:tmt10plex:126 setB:tmt10plex:127N'
+nextflow run lehtiolab/ddamsproteomics --input /path/to/input_definition.txt --sage --tdb /path/to/proteins.fa --mods 'oxidation;carbamidomethylation --isobaric 'setA:tmt10plex:126 setB:tmt10plex:127N'
 ```
 
-For more elaborate examples covering fractionation, PTMs, and more, the lehtiolab/ddamsproteomics pipeline comes with documentation about the pipeline, found in the `docs/` directory:
+For more elaborate examples covering fractionation, MSGF+, PTMs, and more, the lehtiolab/ddamsproteomics pipeline comes with documentation about the pipeline, found in the `docs/` directory:
 
 - [Running the pipeline](docs/usage.md)
 - [Output and how to interpret the results](docs/output.md)

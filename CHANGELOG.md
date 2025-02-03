@@ -1,5 +1,16 @@
 # lehtiolab/ddamsproteomics: Changelog
 
+## Version 3.1 [2025-02-03]
+- Search engine choice of Sage / MSGF
+- QC plots changes in colors, max PSM use in isobaric step, PCA for sets even when sample groups
+- Tables for PSM results in report
+- Possible to remove (e.g. empty) channel for specific set
+- Fixed volcano plots
+- Error early on incorrect totalproteome / remove channel set names
+- Output ExplainedIonCurrentRatio in MSGF PSM table (msstitch to 3.17)
+- OpenMS to 3.2, MSGFPlus to 2024.03.26, Percolator to 3.6.5
+
+
 ## Version 3.0 [2024-09-19]
 - Rewrote in DSL2
 - QC report with plotly

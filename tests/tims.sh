@@ -7,7 +7,7 @@ echo TIMS TMT16, noms1quant
 name=tims_tmt16
 baseresults=test_output/${name}
 cat "${testdir}/tims_mzmls.txt" | envsubst > test_output/mzmldef
-nextflow run -resume -profile test ${repodir}/main.nf --name ${name} --outdir ${baseresults} \
+$NXFCMD --name ${name} --outdir ${baseresults} \
     --sampletable "${testdir}/tmt16_samples.txt" \
     --noms1quant \
     --input test_output/mzmldef \

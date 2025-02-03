@@ -5,7 +5,7 @@ set -eu
 echo Normal labelfree test
 name=lf
 cat ${testdir}/lf_mzmls.txt | envsubst > test_output/mzmldef
-nextflow run -resume -profile test ${repodir}/main.nf --name ${name} \
+$NXFCMD --name ${name} \
     --outdir test_output/${name} \
     --input test_output/mzmldef \
     --genes \
@@ -23,7 +23,7 @@ nextflow run -resume -profile test ${repodir}/main.nf --name ${name} \
 echo Labelfree run with warnings: no decoy in setB, no target in setA
 name=lf_notarget
 cat ${testdir}/lf_mzmls.txt | envsubst > test_output/mzmldef
-nextflow run -resume -profile test ${repodir}/main.nf --name ${name} \
+$NXFCMD --name ${name} \
     --outdir test_output/${name} \
     --input test_output/mzmldef \
     --genes \
@@ -34,7 +34,7 @@ nextflow run -resume -profile test ${repodir}/main.nf --name ${name} \
 echo Labelfree run without fractions, with warnings: no decoy in setB, no target in setA
 name=lf_nofrac_notarget
 cat ${testdir}/lf_mzmls_nofrac.txt | envsubst > test_output/mzmldef
-nextflow run -resume -profile test ${repodir}/main.nf --name ${name} \
+$NXFCMD --name ${name} \
     --outdir test_output/${name} \
     --input test_output/mzmldef \
     --genes \
@@ -46,7 +46,7 @@ nextflow run -resume -profile test ${repodir}/main.nf --name ${name} \
 echo Single file labelfree test
 name=lf_singlefile
 cat <(head -n1 ${testdir}/lf_mzmls.txt) <(grep setA ${testdir}/lf_mzmls.txt) | envsubst > test_output/mzmldef
-nextflow run -resume -profile test ${repodir}/main.nf --name ${name} \
+$NXFCMD --name ${name} \
     --outdir test_output/${name} \
     --input test_output/mzmldef \
     --genes \
