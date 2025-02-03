@@ -5,6 +5,8 @@ on:
   workflow_call:
     inputs:
       SEARCH:
+        required: true
+        type: string
 
 jobs:
     test-tmt16:
