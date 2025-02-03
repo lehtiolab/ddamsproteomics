@@ -41,7 +41,7 @@ NXF_OPTS='-Xms1g -Xmx4g'
 ## Running the pipeline
 The typical command for running the pipeline is as follows:
 ```bash
-nextflow run lehtiolab/ddamsproteomics --input /path/to/input_definition.txt --tdb /path/to/proteins.fa --mods 'oxidation;carbamidomethylation' -profile standard,docker
+nextflow run lehtiolab/ddamsproteomics --input /path/to/input_definition.txt --sage --tdb /path/to/proteins.fa --mods 'oxidation;carbamidomethylation' -profile standard,docker
 ```
 
 This will launch the pipeline with the `docker` configuration profile. See below for more information about profiles.
@@ -94,6 +94,13 @@ Use this parameter to choose a configuration profile. Profiles can give configur
     * Includes links to test data so needs no other parameters
 * `none`
     * No configuration at all. Useful if you want to build your own config from scratch and want to avoid loading in the default `base` config profile (not recommended).
+
+### `--sage`
+Specifies to use the [Sage](https://sage-docs.vercel.app/) search engine in the pipeline
+
+### `--msgf`
+Specifies to use the [MSGF+](https://msgfplus.github.io/)
+) search engine
 
 ### `--input`
 This param passes an mzML definition (txt) file which contains the mzML specifications. This also enables runs with specific fractionation such as HiRIEF or high pH, and the specification of individual instruments per file.
@@ -173,6 +180,10 @@ For normalizing PTM tables, `--normalize` can be used for median-centering. Sinc
 ### Annotation of results
 To annotate peptide/protein/gene results after a search, marking hits in another protein fasta database (e.g. bait proteins, contaminants), you can if needed, supply those external fasta files by `--report_seqmatch 'dbfile1.fa;dbfile2.fa'`. This will generate
 one column for each file in the result files, containing the fasta IDs for the record that a peptide (or any peptide from a protein) matched to.
+
+
+### Removing channels
+In case an experiment contains empty isobaric channels, you can remove those from the run by specifying e.g. `--remove_channels setA:127N:129C setB:126`
 
 
 ### Reusing data
