@@ -350,11 +350,11 @@ process splitPSMs {
   msstitch split -i psms --splitcol bioset
   ${td == 'target' ?
     remove_channels.collect {
-      setch -> setch[1].collect {
-        ch -> "colnum=${get_complement_field_nr("${setch[0]}.tsv", ch)} && \
-          cut -f \$colnum ${setch[0]}.tsv > tmprm && mv tmprm ${setch[0]}.tsv"
-        }.join(' && ')
+      setn, chs -> chs.collect {
+        ch -> "colnum=${get_complement_field_nr("${setn}.tsv", ch)} && \
+        cut -f \$colnum ${setn}.tsv > tmprm && mv tmprm ${setn}.tsv"
       }.join(' && ')
+    }.join(' && ')
   : ''}
   """
 }
@@ -655,6 +655,17 @@ workflow {
   }.collect { x -> [x[0], x[1..-1].collect { ch -> "${setisobaric[x[0]]}_${ch}" } ] } : [:]
   remove_channels_sampletable = rmch ? rmch.collect { y -> y.tokenize(':')
   }.collect { x -> [x[0], x[1..-1]] } : [:]
+  rm_ch_err = []
+  remove_channels_psmtable.each { sn, chs -> 
+    if (!(sn in setisobaric)) {
+      rm_ch_err.push("Set ${sn} not in --isobaric.")
+    }
+  }
+  if (rm_ch_err) {
+    exit 1, "Errors in --remove_channels: ${rm_ch_err.join(', ')}, please check your isobaric channel input"
+  }
+  
+
   
   do_ms1 = !params.noquant && !params.noms1quant
   do_normalize = (!params.noquant && (params.mediannormalize || params.deqms) && params.isobaric)
