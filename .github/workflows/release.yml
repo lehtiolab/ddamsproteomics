@@ -12,13 +12,13 @@ jobs:
 
   run-all-tests-sage:
     needs: create-container
-    env:
+    with:
       SEARCH: sage
     uses: ./.github/workflows/tests_all.yml
 
   run-all-tests-msgf:
     needs: create-container
-    env:
+    with:
       SEARCH: msgf
     uses: ./.github/workflows/tests_all.yml
 

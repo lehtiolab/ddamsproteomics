@@ -3,6 +3,8 @@ run-name: Run all tests
 on:
   workflow_dispatch:
   workflow_call:
+    inputs:
+      SEARCH:
 
 jobs:
     test-tmt16:
@@ -15,7 +17,7 @@ jobs:
             uses: nf-core/setup-nextflow@v2
 
           - name: Run tests
-            run: bash run_tests.sh $SEARCH tmt16
+            run: bash run_tests.sh ${{ inputs.SEARCH }} tmt16
 
     test-tmt18:
         runs-on: ubuntu-latest
@@ -27,7 +29,7 @@ jobs:
             uses: nf-core/setup-nextflow@v2
 
           - name: Run tests
-            run: bash run_tests.sh $SEARCH tmt18
+            run: bash run_tests.sh ${{ inputs.SEARCH }} tmt18
 
     test-labelfree:
         runs-on: ubuntu-latest
@@ -39,7 +41,7 @@ jobs:
             uses: nf-core/setup-nextflow@v2
 
           - name: Run tests
-            run: bash run_tests.sh $SEARCH labelfree
+            run: bash run_tests.sh ${{ inputs.SEARCH }} labelfree
 
     test-lf_phos:
         runs-on: ubuntu-latest
@@ -51,7 +53,7 @@ jobs:
             uses: nf-core/setup-nextflow@v2
 
           - name: Run tests
-            run: bash run_tests.sh $SEARCH labelfree_phos
+            run: bash run_tests.sh ${{ inputs.SEARCH }} labelfree_phos
 
     test-tims:
         runs-on: ubuntu-latest
@@ -63,7 +65,7 @@ jobs:
             uses: nf-core/setup-nextflow@v2
 
           - name: Run tests
-            run: bash run_tests.sh $SEARCH tims
+            run: bash run_tests.sh ${{ inputs.SEARCH }} tims
 
     test-mixed-tmt:
         runs-on: ubuntu-latest
@@ -75,4 +77,4 @@ jobs:
             uses: nf-core/setup-nextflow@v2
 
           - name: Run tests
-            run: bash run_tests.sh $SEARCH tmt16_18
+            run: bash run_tests.sh ${{ inputs.SEARCH }} tmt16_18
