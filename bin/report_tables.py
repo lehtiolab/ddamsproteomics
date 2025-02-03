@@ -263,6 +263,27 @@ for _s, fields in summary_table.items():
     summary_fields = [x for x in summary_field_order if x in fields]
     break
 
+# PSM tables
+psmtables = {'ids': [], 'miscleav': []}
+with open('psmids') as fp:
+    head = next(fp).strip().split()
+    plates = defaultdict(defaultdict)
+    for line in fp:
+        lnmap = {head[ix]: x for ix, x in enumerate(line.strip().split('\t'))}
+        if lnmap['name'] == 'MS2 scans':
+            plates[lnmap['plateID']]['scans'] = lnmap['count']
+        elif lnmap['name'] == 'PSMs IDed':
+            plates[lnmap['plateID']].update({'psms': lnmap['count'], 'pc': lnmap['labeltext']})
+psmtables['ids'] = [[p, nms['scans'], nms['psms'], nms['pc']] for p, nms in plates.items()]
+
+with open('miscleav') as fp:
+    head = next(fp).strip().split()
+    plates = defaultdict()
+    for line in fp:
+        lnmap = {head[ix]: x for ix, x in enumerate(line.strip().split('\t'))}
+        print(lnmap)
+        psmtables['miscleav'].append([lnmap['plateID'], lnmap['missed_cleavage'], lnmap['nrpsms'], lnmap['IDed']])
+
 
 # Overlap
 overlap = defaultdict(dict)
@@ -315,6 +336,7 @@ with open('report_groovy_template.html', 'w') as fp:
         deqmsplots=deqmsplots,
         deqmscomps=deqmscomps,
         tabletitles=tabletitles,
+        psmtables=psmtables,
         summary_fields=summary_fields,
         summary_table=summary_table,
         overlap=overlap,

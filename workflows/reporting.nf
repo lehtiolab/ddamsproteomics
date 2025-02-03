@@ -79,7 +79,7 @@ process PSMQC {
   tuple path('psms'), path('filescans'), path('platescans'), val(mzmls), val(fractionation), val(has_newmzmls), val(has_oldmzmls), val(search_engine)
 
   output:
-  tuple path('platescans'), path('amount_psms_files'), path("psmplothtml"), path('psmtable__summary.txt')
+  tuple path('platescans'), path('amount_psms_files'), path("psmplothtml"), path('psmtable__summary.txt'), path('psms_ids.txt'), path('miscleav.txt')
 
   script:
   """
@@ -151,7 +151,7 @@ process summaryReport {
 
 
   input:
-  tuple path(platescans), path(plotlibs), path('psmplots'), path(psm_summary), path(featplots), path(feat_summaries), path(feat_overlaps), path('ptmplots'), path(ptmfiles), path('warnings*')
+  tuple path(platescans), path(plotlibs), path('psmplots'), path(psm_summary), path('psmids'), path('miscleav'), path(featplots), path(feat_summaries), path(feat_overlaps), path('ptmplots'), path(ptmfiles), path('warnings*')
   
   output:
   tuple path('report_groovy_template.html'), path('libs.js')

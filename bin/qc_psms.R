@@ -116,8 +116,8 @@ p = ggplotly(ggp, width=400, height=vert_height) %>%
         layout(legend = list(orientation = 'h', x = 0, y = 1.1, xanchor='left', yanchor='bottom'))
 # Work around since plotly does not honor above legend.title=element_blank call
 p$x$layout$legend$title$text = ''
-
 htmlwidgets::saveWidget(p, 'amount_psms.html', selfcontained=F)
+write.table(amount_id, 'psms_ids.txt', row.names=F, quote=F, sep='\t')
 
 # Missing isobaric values
 if (length(grep('plex', names(feats)))) {
@@ -145,16 +145,16 @@ if (length(grep('plex', names(feats)))) {
 
 # Missed cleavages
 mcl = aggregate(get(scancol)~get(xcol)+get(miscleavcol), feats, length)
-colnames(mcl) = c(xcol, 'missed_cleavage', 'nrscan')
+colnames(mcl) = c(xcol, 'missed_cleavage', 'nrpsms')
 mcl_am = subset(merge(mcl, amount_psms, by=xcol), missed_cleavage %in% c(0,1,2))
-mcl_am$percent = mcl_am$nrscan / mcl_am$"PSMs IDed" * 100
+mcl_am$percent = mcl_am$nrpsms / mcl_am$"PSMs IDed" * 100
 mc_text_y = max(mcl_am$percent) * 2/6
 mcl_am$missed_cleavage = as.factor(mcl_am$missed_cleavage)
 
 mcplot = ggplot(mcl_am) +
     geom_bar(aes(x=.data[[ xcol ]], y=percent, fill=missed_cleavage, group=missed_cleavage), position='dodge', stat='identity') +
     # 0.9 is the default dodge (90% of 1, 1 used bc all same value) but when not spec -> no dodge at all?
-    geom_text(position=position_dodge(width=0.9), aes(x=.data[[xcol]], y=mc_text_y, group=missed_cleavage, label=glue('{nrscan} PSMs')), colour="black", size=4, inherit.aes=T) +
+    geom_text(position=position_dodge(width=0.9), aes(x=.data[[xcol]], y=mc_text_y, group=missed_cleavage, label=glue('{nrpsms} PSMs')), colour="black", size=4, inherit.aes=T) +
     ylim(c(0, 100)) + ylab('% of PSMs') +
     theme_bw() +
     theme(axis.title.x=element_text(size=15), axis.title.y=element_blank(), axis.text=element_text(size=10), axis.text.y=element_text(angle=90), legend.position="top", legend.text=element_text(size=10), legend.title=element_blank()) +
@@ -163,6 +163,7 @@ p = ggplotly(mcplot, width=400, height=vert_height) %>%
         layout(legend = list(orientation = 'h', x = 0, y = 1.1, xanchor='left', yanchor='bottom'))
 p$x$layout$legend$title$text = ''
 htmlwidgets::saveWidget(p, 'missed_cleavages.html', selfcontained=F)
+write.table(mcl_am, 'miscleav.txt', row.names=F, quote=F, sep='\t')
 
 
 # Now the per-fraction or per-file stats

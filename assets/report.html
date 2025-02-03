@@ -98,6 +98,52 @@
         {% endfor %}
       </div>
 
+      <h4 class="title is-4">PSMs</h4>
+      <div class="columns">
+        <div class="column">
+          <h5 class="title is-5">IDs</h5>
+          <table class="table is-striped is-narrow is-hoverable is-size-7">
+            <thead>
+              <th>Sample/plate</th>
+              <th>Scans</th>
+              <th>PSMs</th>
+              <th>% ID</th>
+            </thead>
+            <tbody>
+              {% for plate, scans, psms, pc in psmtables.ids %}
+              <tr>
+                <td> {{ plate }} </td>
+                <td> {{ scans }} </td>
+                <td> {{ psms }} </td>
+                <td> {{ pc }} </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="column">
+          <h5 class="title is-5">Missed cleavages</h5>
+          <table class="table is-striped is-narrow is-hoverable is-size-7">
+            <thead>
+              <th>Sample/plate</th>
+              <th># missed cleavages</th>
+              <th># PSMs</th>
+              <th>% PSMs</th>
+            </thead>
+            <tbody>
+              {% for plate, mc, psms, pc in psmtables.miscleav %}
+              <tr>
+                <td> {{ plate }} </td>
+                <td> {{ mc }} </td>
+                <td> {{ psms }} </td>
+                <td> {{ pc }} </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       {% if ptmtables.summary %}
       <h4 class="title is-4">PTMs</h4>
       <div class="columns">
