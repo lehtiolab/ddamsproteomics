@@ -266,23 +266,22 @@ for _s, fields in summary_table.items():
 # PSM tables
 psmtables = {'ids': [], 'miscleav': []}
 with open('psmids') as fp:
-    head = next(fp).strip().split()
+    head = next(fp).strip().split('\t')
     plates = defaultdict(defaultdict)
     for line in fp:
         lnmap = {head[ix]: x for ix, x in enumerate(line.strip().split('\t'))}
         if lnmap['name'] == 'MS2 scans':
-            plates[lnmap['plateID']]['scans'] = lnmap['count']
+            plates[lnmap['plate_fn']]['scans'] = lnmap['count']
         elif lnmap['name'] == 'PSMs IDed':
-            plates[lnmap['plateID']].update({'psms': lnmap['count'], 'pc': lnmap['labeltext']})
+            plates[lnmap['plate_fn']].update({'psms': lnmap['count'], 'pc': lnmap['labeltext']})
 psmtables['ids'] = [[p, nms['scans'], nms['psms'], nms['pc']] for p, nms in plates.items()]
 
 with open('miscleav') as fp:
-    head = next(fp).strip().split()
+    head = next(fp).strip().split('\t')
     plates = defaultdict()
     for line in fp:
         lnmap = {head[ix]: x for ix, x in enumerate(line.strip().split('\t'))}
-        print(lnmap)
-        psmtables['miscleav'].append([lnmap['plateID'], lnmap['missed_cleavage'], lnmap['nrpsms'], lnmap['IDed']])
+        psmtables['miscleav'].append([lnmap['plate_fn'], lnmap['missed_cleavage'], lnmap['nrpsms'], lnmap['percent']])
 
 
 # Overlap

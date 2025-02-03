@@ -117,6 +117,7 @@ p = ggplotly(ggp, width=400, height=vert_height) %>%
 # Work around since plotly does not honor above legend.title=element_blank call
 p$x$layout$legend$title$text = ''
 htmlwidgets::saveWidget(p, 'amount_psms.html', selfcontained=F)
+amount_id$plate_fn = amount_id[[xcol]]
 write.table(amount_id, 'psms_ids.txt', row.names=F, quote=F, sep='\t')
 
 # Missing isobaric values
@@ -163,6 +164,7 @@ p = ggplotly(mcplot, width=400, height=vert_height) %>%
         layout(legend = list(orientation = 'h', x = 0, y = 1.1, xanchor='left', yanchor='bottom'))
 p$x$layout$legend$title$text = ''
 htmlwidgets::saveWidget(p, 'missed_cleavages.html', selfcontained=F)
+mcl_am$plate_fn = mcl_am[[xcol]]
 write.table(mcl_am, 'miscleav.txt', row.names=F, quote=F, sep='\t')
 
 
