@@ -43,7 +43,7 @@ process percolator {
   container params.__containers[tag][workflow.containerEngine]
 
   input:
-  tuple val(setname), path(mzids), path(tsvs), val(enzyme)
+  tuple val(setname), path(mzids), val(enzyme)
 
   output:
   tuple val(setname), path('perco.xml')
@@ -128,7 +128,7 @@ workflow MSGFPERCO {
   .set { mzid_tsv_2psm }
 
   mzid_tsv_2psm
-  | map {it + [enzyme] }
+  | map {[it[0], it[1], enzyme] }
   | percolator
   | join(mzid_tsv_2psm)
   | map { it + [psmconflvl, pepconflvl, output_unfilt_psms] }

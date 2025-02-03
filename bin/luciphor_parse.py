@@ -97,7 +97,6 @@ def main():
                     labileptms, stabileptms, args.searchengine)
             if not msgfpsm.has_labileptms():
                 continue
-            print(psm)
             if args.searchengine == 'sage':
                 scan = re.sub('.*scan=', '', psm[fields['SCANNR']])
             else:

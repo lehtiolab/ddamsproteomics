@@ -242,7 +242,7 @@ process createNewSpectraLookup {
   container params.__containers[tag][workflow.containerEngine]
 
   input:
-  tuple val(setnames), file(mzmlfiles), val(platenames)
+  tuple val(setnames), path(mzmlfiles), val(platenames)
 
   output:
   path('target_db.sqlite')

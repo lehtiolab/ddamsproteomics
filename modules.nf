@@ -12,7 +12,7 @@ def get_field_nr_multi(fn, fieldnames) {
 }
 
 def get_complement_field_nr(fn, fieldname) {
-    /* return field nrs comma separated like: 1,2,5,9 */
+    /* return field nrs NOT matching input, comma separated like: 1,2,5,9 */
     return "\$(head -n1 ${fn} | tr '\\t' '\\n' | grep -vwn '^${fieldname}\$' | cut -f 1 -d':' | tr '\\n' ',' | sed 's/\\,\$//')"
 }
 

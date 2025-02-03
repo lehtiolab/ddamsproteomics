@@ -16,7 +16,7 @@
   },
   "openms": {
       "version": "3.3.0",
-      "docker": "quay.io/biocontainers/openms:openms:3.3.0--h0656172_8",
+      "docker": "quay.io/biocontainers/openms:3.3.0--h0656172_8",
       "singularity": "https://depot.galaxyproject.org/singularity/openms:3.3.0--h0656172_8"
   },
   "dinosaur": {

@@ -1,4 +1,4 @@
-include { createMods; listify; get_field_nr; stripchars_infile; parse_isotype } from '../modules.nf'
+include { createMods; listify; stripchars_infile; parse_isotype } from '../modules.nf'
 
 
 process sagePrepare {
