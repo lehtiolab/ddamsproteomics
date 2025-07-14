@@ -1,5 +1,9 @@
 # lehtiolab/ddamsproteomics: Changelog
 
+## Version 3.2 [2025-07-14]
+- Fix overlap reporting in amount pep/prot plots in QC (nrow instead of length)
+- Fix running with multi-DB (`--tdb '*.fa'`)
+
 ## Version 3.1 [2025-02-03]
 - Search engine choice of Sage / MSGF
 - QC plots changes in colors, max PSM use in isobaric step, PCA for sets even when sample groups
