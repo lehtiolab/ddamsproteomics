@@ -6,6 +6,7 @@ echo TMT16 test denom deqms hardklor keepnapsmsquant
 # no hirief, so it can be added in the addsetB test even if not used here
 # Test TMT16, DEqMS w denominator, keepnapsmsquant, implicit normalizing (deqms forces normalize)
 # Warning: no decoys for any set (aka only setA)
+# This also tests multi DB
 name=tmt16denomdeq
 resultsdir=test_output/${name}
 mkdir -p $resultsdir
@@ -14,7 +15,7 @@ $NXFCMD --name ${name} --outdir ${resultsdir} \
     --input ${resultsdir}/mzmldef \
     --sampletable "${testdir}/tmt16_samples.txt" \
     --hardklor --isobaric '0set-A:tmtpro:126:131N' \
-    --tdb "${testdata}/tmt16_fa.fa" \
+    --tdb "${testdata}"'/[ts]*[6q]*[as].fa' \
     --mods 'carbamidomethyl;oxidation;43.005814,*,opt,N-term,Unknown' \
     --maxmiscleav 2 \
     --pepconflvl 0.05 \

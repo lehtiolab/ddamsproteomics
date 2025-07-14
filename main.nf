@@ -791,7 +791,8 @@ workflow {
     | set { specquant_lookups }
   }
 
-  tdb = Channel.fromPath(params.tdb)
+  tdb = Channel.fromPath(params.tdb).toList()
+
   createTargetDecoyFasta(tdb)
 
   if (params.sage) {

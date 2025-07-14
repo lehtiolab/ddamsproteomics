@@ -91,7 +91,7 @@ if (is_isobaric) {
 
 # Amount of features
 overlap = na.exclude(feats[qcols])
-overlap = length(overlap[apply(overlap, 1, function(x) any(x<conflvl)),])
+overlap = nrow(overlap[apply(overlap, 1, function(x) any(x<conflvl)),])
 if (feattype == 'peptides') {
   qvals_long$nrprots = lengths(regmatches(qvals_long$Protein.s., gregexpr(';', qvals_long$Protein.s.))) + 1
 } else {
