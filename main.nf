@@ -686,10 +686,15 @@ workflow {
   // Spec lookup prep if needed
   do_quant = false
   if (is_rerun) {
-    Channel.fromPath(params.targetpsmlookup)
-    | PTMClean 
-    | combine(Channel.fromPath(params.ptmpsms))
-    | set { ptmpsms_lookup_ch }
+    if (params.ptmpsms) {
+      Channel.fromPath(params.targetpsmlookup)
+      | PTMClean 
+      | combine(Channel.fromPath(params.ptmpsms))
+      | set { ptmpsms_lookup_ch }
+    } else {
+      nofile_ch
+      .set { ptmpsms_lookup_ch }
+    }
     // For reporting:
     Channel.fromPath(params.targetpsmlookup)
     .map { [it, null] }
