@@ -57,11 +57,30 @@ $NXFCMD --name ${name} --outdir test_output/${name} \
     --isobaric '0set-A:tmt18plex:131' \
     --tdb "${testdata}/tmt18_fa.fa" \
     --mods 'carbamidomethyl;oxidation' \
+    --noms1quant \
     --locptms Phospho \
+    --ptmpsms "${baseresults}/ptm_psmtable.txt" \
+    --targetpsms "${baseresults}/target_psmtable.txt" \
+    --decoypsms "${baseresults}/decoy_psmtable.txt" \
+    --targetpsmlookup "${baseresults}/target_psmlookup.sql" \
+    --decoypsmlookup "${baseresults}/decoy_psmlookup.sql" \
+    --pepconflvl 0.05 \
+    --oldmzmldef test_output/${name}/oldmzmls
+
+
+echo TMT18 rerun with different settings post PSMs, --noms1quant, but without PTMs
+# Same as above but without PTMs
+name=tmt18phos_rerun
+mkdir -p test_output/${name}
+cat "${testdir}/tmt18_mzmls.txt" | envsubst > test_output/${name}/oldmzmls
+$NXFCMD --name ${name} --outdir test_output/${name} \
+    --sampletable "${testdir}/tmt18_samples.txt" \
+    --isobaric '0set-A:tmt18plex:131' \
+    --tdb "${testdata}/tmt18_fa.fa" \
+    --mods 'carbamidomethyl;oxidation' \
     --noms1quant \
     --targetpsms "${baseresults}/target_psmtable.txt" \
     --decoypsms "${baseresults}/decoy_psmtable.txt" \
-    --ptmpsms "${baseresults}/ptm_psmtable.txt" \
     --targetpsmlookup "${baseresults}/target_psmlookup.sql" \
     --decoypsmlookup "${baseresults}/decoy_psmlookup.sql" \
     --pepconflvl 0.05 \
