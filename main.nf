@@ -67,7 +67,7 @@ process centroidMS1 {
   (is_stripped, parsed_infile) = stripchars_infile(infile)
   """
   ${is_stripped ? "ln -s ${infile} ${parsed_infile}" : ''}
-  wine msconvert ${parsed_infile} --outfile centroidms1.mzML --filter 'peakPicking true 1' ${instr == 'timstof' ? "--filter sortByScanTime" : ''}
+  msconvert ${parsed_infile} --outfile centroidms1.mzML --filter 'peakPicking true 1' ${instr == 'timstof' ? "--filter sortByScanTime" : ''}
   mv centroidms1.mzML ${parsed_infile}
   """
 }

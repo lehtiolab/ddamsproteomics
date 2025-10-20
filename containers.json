@@ -12,7 +12,7 @@
   "proteowizard": {
       "version": "3.0.24172",
       "docker": "proteowizard/pwiz-skyline-i-agree-to-the-vendor-licenses:3.0.24172-63d00b1",
-      "singularity": "docker://proteowizard/pwiz-skyline-i-agree-to-the-vendor-licenses:3.0.24172-63d00b1"
+      "singularity": "file:///cfs/klemming/home/j/jorrit/msconvert_3_0_2995.sif"
   },
   "openms": {
       "version": "3.3.0",
