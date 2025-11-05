@@ -637,38 +637,7 @@ workflow {
   all_setnames = (mzml_list.collect { it.setname } + oldmzml_sets).unique()
 
   // parse inputs that combine to form values or are otherwise more complex.
-  // Isobaric input example: --isobaric 'set1:tmt10plex:127N:128N set2:tmt16plex:sweep set3:itraq8plex:intensity'
-  isop = params.isobaric ? params.isobaric.tokenize(' ') : false
-  setisobaric = isop ? isop.collect() {
-    y -> y.tokenize(':')
-  }.collectEntries() {
-    x-> [x[0], x[1].replaceAll('tmtpro', 'tmt16plex')]
-  } : [:]
-  setdenoms = !params.noquant && isop ? isop.collect() {
-    y -> y.tokenize(':')
-  }.collectEntries() {
-    x-> [x[0], x[2..-1]]
-  } : [:]
-  // Remove channels from specific sets if those are empty: --remove_channels 'setA:126:127 setB:131'
-  rmch = params.remove_channels ? params.remove_channels.tokenize(' ') : false
-  remove_channels_psmtable = rmch ? rmch.collect { y -> y.tokenize(':')
-  }.collect { x -> [x[0], x[1..-1].collect { ch -> "${setisobaric[x[0]]}_${ch}" } ] } : [:]
-  remove_channels_sampletable = rmch ? rmch.collect { y -> y.tokenize(':')
-  }.collect { x -> [x[0], x[1..-1]] } : [:]
-  rm_ch_err = []
-  remove_channels_psmtable.each { sn, chs -> 
-    if (!(sn in setisobaric)) {
-      rm_ch_err.push("Set ${sn} not in --isobaric.")
-    }
-  }
-  if (rm_ch_err) {
-    exit 1, "Errors in --remove_channels: ${rm_ch_err.join(', ')}, please check your isobaric channel input"
-  }
   
-
-  
-  do_ms1 = !params.noquant && !params.noms1quant
-  do_normalize = (!params.noquant && (params.mediannormalize || params.deqms) && params.isobaric)
 
   mzml_in
     // Prepare mzml files (sort, collect) for processes that need all of them
@@ -734,6 +703,9 @@ workflow {
     | flatMap { [['target', it], ['decoy', it]] }
     | set { specquant_lookups }
     createNewSpectraLookup.out
+    | map { [it, it] }
+    | set { tdspeclookup }
+    createNewSpectraLookup.out
     .set { ptmlookup_ch }
 
   } else if (!params.quantlookup) {
@@ -746,6 +718,41 @@ workflow {
     createNewSpectraLookup.out
     .set { ptmlookup_ch }
   }
+
+  do_ms1 = do_quant && !params.noms1quant
+  do_normalize = (do_quant && (params.mediannormalize || params.deqms) && params.isobaric)
+
+  // Isobaric input example: --isobaric 'set1:tmt10plex:127N:128N set2:tmt16plex:sweep set3:itraq8plex:intensity'
+  // have to set isobaric independent of do_quant, because we need it in the 
+  // search params (TMT mods). Denoms can be conditional on do_quant though
+  isop = params.isobaric ? params.isobaric.tokenize(' ') : false
+  setisobaric = isop ? isop.collect() {
+    y -> y.tokenize(':')
+  }.collectEntries() {
+    x-> [x[0], x[1].replaceAll('tmtpro', 'tmt16plex')]
+  } : [:]
+  setdenoms = do_quant && isop ? isop.collect() {
+    y -> y.tokenize(':')
+  }.collectEntries() {
+    x-> [x[0], x[2..-1]]
+  } : [:]
+  // Remove channels from specific sets if those are empty: --remove_channels 'setA:126:127 setB:131'
+  rmch = params.remove_channels ? params.remove_channels.tokenize(' ') : false
+  remove_channels_psmtable = rmch ? rmch.collect { y -> y.tokenize(':')
+  }.collect { x -> [x[0], x[1..-1].collect { ch -> "${setisobaric[x[0]]}_${ch}" } ] } : [:]
+  remove_channels_sampletable = rmch ? rmch.collect { y -> y.tokenize(':')
+  }.collect { x -> [x[0], x[1..-1]] } : [:]
+  rm_ch_err = []
+  remove_channels_psmtable.each { sn, chs -> 
+    if (!(sn in setisobaric)) {
+      rm_ch_err.push("Set ${sn} not in --isobaric.")
+    }
+  }
+  if (rm_ch_err) {
+    exit 1, "Errors in --remove_channels: ${rm_ch_err.join(', ')}, please check your isobaric channel input"
+  }
+  
+
 
   if (do_quant) {
     mzml_in
@@ -856,7 +863,7 @@ workflow {
     | join(specquant_lookups)
     | combine(createTargetDecoyFasta.out.bothdbs)
     | join(complementary_run ? oldpsms_ch : nofile_ch.flatMap { [['target', it], ['decoy', it]] })
-    | map { it + [complementary_run, do_ms1 && it[0] == 'target', params.isobaric && it[0] == 'target', params.onlypeptides]}
+    | map { it + [complementary_run, do_ms1 && it[0] == 'target', do_quant && params.isobaric && it[0] == 'target', params.onlypeptides]}
     | createPSMTable
     createPSMTable.out.psmtable.set { psmtables_ch }
     createPSMTable.out.lookup.set { psmlookups_ch }
@@ -950,7 +957,7 @@ workflow {
   }
 
   splitpsms_ch
-  | map { it + [it[0] == 'target' ? setisobaric[it[1]] : false, setdenoms[it[1]], params.keepnapsmsquant, do_normalize && it[0] == 'target', do_ms1 && it[0] == 'target']}
+  | map { it + [do_quant && it[0] == 'target' ? setisobaric[it[1]] : false, setdenoms[it[1]], params.keepnapsmsquant, do_normalize && it[0] == 'target', do_ms1 && it[0] == 'target']}
   | makePeptides
 
   acctypes = ['proteins']
@@ -981,11 +988,19 @@ workflow {
     | join(tdpeps.d | map { it[1..-2] }) // also strip dpsms from tdpeps.d
     | combine(createTargetDecoyFasta.out.bothdbs)
     | combine(Channel.from(acctypes))
-    | map { it + [do_ms1, setisobaric[it[0]], setdenoms[it[0]], params.keepnapsmsquant, do_normalize]}
+    | map { it + [do_ms1, do_quant ? setisobaric[it[0]] : false, setdenoms[it[0]], params.keepnapsmsquant, do_normalize]}
     | proteinGeneSymbolTableFDR
+    proteinGeneSymbolTableFDR.out.tables
+    | set { protgenefdr_tables }
+    proteinGeneSymbolTableFDR.out.normfacs
+    | set { protgenefdr_normfacs }
+  } else {
+    Channel.empty()
+    .tap { protgenefdr_tables }
+    .set { protgenefdr_normfacs }
   }
 
-  if (params.sampletable) {
+  if (do_quant && params.sampletable) {
     Channel.fromPath(params.sampletable)
     | map { [it, params.deqms, remove_channels_sampletable] }
     | sampleTableCheckClean
@@ -999,14 +1014,14 @@ workflow {
   makePeptides.out.peps
   | filter { it[1] == 'target' }
   | map { [it[0], 'peptides', it[2]] }
-  | concat(proteinGeneSymbolTableFDR.out.tables)
+  | concat(protgenefdr_tables)
   | groupTuple(by: 1)
   | combine(psmlookups_ch.filter { it[0] == 'target' }.map { it[1] })
   | combine(sampletable_ch)
   | map { it + [setdenoms, do_ms1, params.proteinconflvl, !params.onlypeptides, params.deqms] }
   | proteinPeptideSetMerge
 
-  if (params.deqms) {
+  if (do_quant && params.deqms) {
     proteinPeptideSetMerge.out.with_nogroup
     | combine(sampleTableCheckClean.out)
     | DEqMS
@@ -1036,7 +1051,7 @@ workflow {
     fractionation,
     target_psmtable.map { it[1] },
     protpepgene_ch.with_nogroup,
-    makePeptides.out.normfacs.concat(proteinGeneSymbolTableFDR.out.normfacs),
+    makePeptides.out.normfacs.concat(protgenefdr_normfacs),
     sampletable_ch,
     params.pepconflvl,
     params.proteinconflvl,
