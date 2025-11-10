@@ -262,7 +262,7 @@ process quantLookup {
   container params.__containers[tag][workflow.containerEngine]
 
   input:
-  tuple val(mzmlnames), path(isofns), path(ms1fns), path(tlookup)
+  tuple val(mzmlnames), path(isofns), path(ms1fns), path(tlookup), val(do_isoq), val(do_ms1)
 
   output:
   path('target.sqlite')
@@ -272,8 +272,8 @@ process quantLookup {
   # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
   cat $tlookup > target.sqlite
   msstitch storequant --dbfile target.sqlite --spectra ${mzmlnames.collect() { "'${it}'" }.join(' ')}  \
-    ${!params.noms1quant ? "--mztol ${params.ms1qmztol} --mztoltype ppm --rttol ${params.ms1qrttol} ${params.hardklor ? "--kronik ${ms1fns.collect() { "$it" }.join(' ')}" : "--dinosaur ${ms1fns.collect() { "$it" }.join(' ')}"}" : ''} \
-    ${params.isobaric ? "--isobaric ${isofns.collect() { "$it" }.join(' ')}" : ''}
+    ${do_ms1 ? "--mztol ${params.ms1qmztol} --mztoltype ppm --rttol ${params.ms1qrttol} ${params.hardklor ? "--kronik ${ms1fns.collect() { "$it" }.join(' ')}" : "--dinosaur ${ms1fns.collect() { "$it" }.join(' ')}"}" : ''} \
+    ${do_isoq ? "--isobaric ${isofns.collect() { "$it" }.join(' ')}" : ''}
   """
 }
 
@@ -653,8 +653,15 @@ workflow {
     .set { mzmlfiles_all_sort }
 
   // Spec lookup prep if needed
-  do_quant = false
+  do_raw_quant = !(params.noquant || (params.noisoquant && params.noms1quant))
+  // do_ms1, do_isoq is not only for raw quantitation, also for post ID steps
+  do_ms1 = !params.noquant && !params.noms1quant
+  isop = params.isobaric ? params.isobaric.tokenize(' ') : false
+  do_isoq = !params.noquant && !params.noisoquant && isop
+  do_normalize = do_isoq && (params.mediannormalize || params.deqms)
+
   if (is_rerun) {
+    do_raw_quant = false
     Channel.fromPath(params.targetpsmlookup)
     | PTMClean 
     | combine(Channel.fromPath(params.ptmpsms))
@@ -682,10 +689,11 @@ workflow {
     | flatMap { [['target', it[0]], ['decoy', it[1]]] }
     | set { oldpsms_ch }
     
-    do_quant = !params.noquant
 
   } else if (params.quantlookup) {
     // Runs with a premade quant lookup eg from previous search
+    // doing quant (downstream) depend on passed params
+    do_raw_quant = false
     Channel
       .fromPath(params.quantlookup)
       .tap { ptmlookup_ch }
@@ -696,8 +704,8 @@ workflow {
     .map { [it, null] }
     .set { tdspeclookup }
 
-  } else if (params.noquant && !params.quantlookup) {
-    // Noquant, fresh spectra lookup scenario -> spec lookup ready for PSMs, PTMs
+  } else if (!do_raw_quant && !params.quantlookup) {
+    // Noquant or both noisoquant and noms1quant, fresh spectra lookup scenario -> spec lookup ready for PSMs, PTMs
     mzmlfiles_all_sort
     | createNewSpectraLookup
     | flatMap { [['target', it], ['decoy', it]] }
@@ -714,24 +722,19 @@ workflow {
     | createNewSpectraLookup
     | map { [it, it] }
     | set { tdspeclookup }
-    do_quant = true
     createNewSpectraLookup.out
     .set { ptmlookup_ch }
   }
 
-  do_ms1 = do_quant && !params.noms1quant
-  do_normalize = (do_quant && (params.mediannormalize || params.deqms) && params.isobaric)
-
   // Isobaric input example: --isobaric 'set1:tmt10plex:127N:128N set2:tmt16plex:sweep set3:itraq8plex:intensity'
-  // have to set isobaric independent of do_quant, because we need it in the 
+  // have to set isobaric independent of do_quant/do_isoq, because we need it in the 
   // search params (TMT mods). Denoms can be conditional on do_quant though
-  isop = params.isobaric ? params.isobaric.tokenize(' ') : false
   setisobaric = isop ? isop.collect() {
     y -> y.tokenize(':')
   }.collectEntries() {
     x-> [x[0], x[1].replaceAll('tmtpro', 'tmt16plex')]
   } : [:]
-  setdenoms = do_quant && isop ? isop.collect() {
+  setdenoms = do_isoq ? isop.collect() {
     y -> y.tokenize(':')
   }.collectEntries() {
     x-> [x[0], x[2..-1]]
@@ -752,18 +755,22 @@ workflow {
     exit 1, "Errors in --remove_channels: ${rm_ch_err.join(', ')}, please check your isobaric channel input"
   }
   
+  if (do_raw_quant) {
+    // Here we run quantitation of spectra files, both MS1/MS2,
+    // and store them in an SQL db
+    if (do_isoq) {
+      mzml_in
+      | filter { setisobaric[it.setname] }
+      | map { [it.setname, it.mzmlfile, it.instrument] }
+      | centroidMS1
+      | map { it + setisobaric[it[0]] }
+      | isobaricQuant
+      | set { iso_processed }
+    } else {
+      iso_processed = Channel.empty()
+    }
 
-
-  if (do_quant) {
-    mzml_in
-    | filter { setisobaric[it.setname] }
-    | map { [it.setname, it.mzmlfile, it.instrument] }
-    | centroidMS1
-    | map { it + setisobaric[it[0]] }
-    | isobaricQuant
-    | set { iso_processed }
-
-    if (!params.noms1quant) {
+    if (do_ms1) {
       if (params.hardklor) {
         mzml_in
         | map { [it.sample, it.mzmlfile] }
@@ -782,8 +789,9 @@ workflow {
       | map { [stripchars_infile(it.mzmlfile)[1], file(it.sample)] }
       | set { ms1_q }
     }
+
     mzml_in
-    | filter { !setisobaric[it.setname] }
+    | filter { !setdenoms[it.setname] }
     | map { [stripchars_infile(it.mzmlfile)[1], file(it.sample)] }
     | concat(iso_processed)
     | join(ms1_q, remainder: true)
@@ -792,8 +800,14 @@ workflow {
     | transpose
     | toList
     | combine(tdspeclookup.map { it[0] })
+    | map { it + [do_isoq, do_ms1] }
     | quantLookup
     | combine(tdspeclookup.map { it[1] })
+    | flatMap { it -> [['target', it[0]], ['decoy', it[1]]] }
+    | set { specquant_lookups }
+
+  } else if (complementary_run && !is_rerun) {
+    complementSpectraLookupCleanPSMs.out.dbs
     | flatMap { it -> [['target', it[0]], ['decoy', it[1]]] }
     | set { specquant_lookups }
   }
@@ -863,7 +877,7 @@ workflow {
     | join(specquant_lookups)
     | combine(createTargetDecoyFasta.out.bothdbs)
     | join(complementary_run ? oldpsms_ch : nofile_ch.flatMap { [['target', it], ['decoy', it]] })
-    | map { it + [complementary_run, do_ms1 && it[0] == 'target', do_quant && params.isobaric && it[0] == 'target', params.onlypeptides]}
+    | map { it + [complementary_run, do_ms1 && it[0] == 'target', do_isoq && it[0] == 'target', params.onlypeptides]}
     | createPSMTable
     createPSMTable.out.psmtable.set { psmtables_ch }
     createPSMTable.out.lookup.set { psmlookups_ch }
@@ -957,7 +971,12 @@ workflow {
   }
 
   splitpsms_ch
-  | map { it + [do_quant && it[0] == 'target' ? setisobaric[it[1]] : false, setdenoms[it[1]], params.keepnapsmsquant, do_normalize && it[0] == 'target', do_ms1 && it[0] == 'target']}
+  | map { it + [do_isoq && it[0] == 'target' ? setisobaric[it[1]] : false,
+                setdenoms[it[1]],
+                params.keepnapsmsquant,
+                do_normalize && it[0] == 'target',
+                do_ms1 && it[0] == 'target']
+  }
   | makePeptides
 
   acctypes = ['proteins']
@@ -988,7 +1007,7 @@ workflow {
     | join(tdpeps.d | map { it[1..-2] }) // also strip dpsms from tdpeps.d
     | combine(createTargetDecoyFasta.out.bothdbs)
     | combine(Channel.from(acctypes))
-    | map { it + [do_ms1, do_quant ? setisobaric[it[0]] : false, setdenoms[it[0]], params.keepnapsmsquant, do_normalize]}
+    | map { it + [do_ms1, do_isoq ? setisobaric[it[0]] : false, setdenoms[it[0]], params.keepnapsmsquant, do_normalize]}
     | proteinGeneSymbolTableFDR
     proteinGeneSymbolTableFDR.out.tables
     | set { protgenefdr_tables }
@@ -1000,7 +1019,7 @@ workflow {
     .set { protgenefdr_normfacs }
   }
 
-  if (do_quant && params.sampletable) {
+  if (do_isoq && params.sampletable) {
     Channel.fromPath(params.sampletable)
     | map { [it, params.deqms, remove_channels_sampletable] }
     | sampleTableCheckClean
@@ -1021,7 +1040,7 @@ workflow {
   | map { it + [setdenoms, do_ms1, params.proteinconflvl, !params.onlypeptides, params.deqms] }
   | proteinPeptideSetMerge
 
-  if (do_quant && params.deqms) {
+  if (do_isoq && params.deqms) {
     proteinPeptideSetMerge.out.with_nogroup
     | combine(sampleTableCheckClean.out)
     | DEqMS

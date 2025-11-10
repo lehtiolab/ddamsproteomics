@@ -370,7 +370,7 @@ workflow PTMANALYSIS {
   | transpose
   | groupTuple(by: 1) // group by total proteome normalization boolean
   | combine(createPTMTable.out.db)
-  | map { it + [do_ms1, isobtypes] }
+  | map { it + [do_ms1, setdenoms] }
   | mergePTMPeps
   
   if (do_proteingroup) {
