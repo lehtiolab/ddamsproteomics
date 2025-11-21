@@ -10,9 +10,9 @@
     "singularity": "docker://python:3.12"
   },
   "proteowizard": {
-      "version": "3.0.24172",
-      "docker": "proteowizard/pwiz-skyline-i-agree-to-the-vendor-licenses:3.0.24172-63d00b1",
-      "singularity": "file:///cfs/klemming/home/j/jorrit/msconvert_3_0_2995.sif"
+      "version": "3.0.25292",
+      "docker": "quay.io/biocontainers/proteowizard:3_0_25292_c9a6a18--h9948957_0",
+      "singularity": "https://depot.galaxyproject.org/singularity/proteowizard%3A3_0_25292_c9a6a18--h9948957_0"
   },
   "openms": {
       "version": "3.3.0",
