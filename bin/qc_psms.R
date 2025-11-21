@@ -14,6 +14,7 @@ search_engine = args[2]
 # when there is both the factor 02, and the numeric 2 in different tables
 feats = read.table("psms_clean", colClasses=c('Fraction'='factor'), header=T, sep="\t", comment.char = "", quote = "")
 
+deltapicol = 'Delta.pI'
 if (search_engine == 'sage') {
   scancol = 'scannr'
   miscleavcol = 'missed_cleavages'
@@ -183,7 +184,8 @@ ptypes = list(
   precerror=c(precerrcol, 'Precursor error (ppm)'),
   fryield=c(scancol, '# PSMs'),
   score=c(scorecol, scorecol), # Diff score name for diff SE
-  pif=c('Precursor.ion.fraction', 'Precursor/all in window')
+  pif=c('Precursor.ion.fraction', 'Precursor/all in window'),
+  deltapi=c(deltapicol, 'Delta pI')
 )
 
 if (has_fractions) {

@@ -357,6 +357,16 @@
           {% endif %}
         {% endfor %}
       {% endif %}
+
+      {% if plateplots.deltapi %}
+          <h4 class="title is-4">Peptide isoelectric points</h4>
+        {% for p in plates %}
+          {% if plateplots.deltapi[p] %}
+          <h5 class="title is-5">Plate: {{ p }}</h4>
+            {{ plateplots.deltapi[p] }}
+          {% endif %}
+        {% endfor %}
+      {% endif %}
     </div>
 
     <div id="featqcpage" class="mt-5 container">

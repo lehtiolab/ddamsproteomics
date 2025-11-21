@@ -45,7 +45,7 @@ psmplots = {
         'miscleav': 'missed_cleavages.html',
         'isomissvals': 'iso_missing_vals.html',
         }
-plateplotnames = ['fryield', 'score', 'pif', 'retentiontime', 'precerror', 'fwhm', 'ioninjtime']
+plateplotnames = ['fryield', 'score', 'pif', 'retentiontime', 'precerror', 'fwhm', 'ioninjtime', 'deltapi']
 plots = defaultdict(dict)
 
 plateplots = defaultdict(defaultdict)
