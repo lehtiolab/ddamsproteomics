@@ -10,6 +10,7 @@ cat "${testdir}/tims_mzmls.txt" | envsubst > test_output/mzmldef
 $NXFCMD --name ${name} --outdir ${baseresults} \
     --sampletable "${testdir}/tmt16_samples.txt" \
     --noms1quant \
+    --noisoquant \
     --input test_output/mzmldef \
     --genes \
     --isobaric '0set-A:tmtpro:126:131C' \

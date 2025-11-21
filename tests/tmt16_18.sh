@@ -11,5 +11,6 @@ $NXFCMD --name ${name} --outdir ${baseresults} \
     --sampletable "${testdir}/tmt18_setAB_samples.txt" \
     --isobaric '0set-A:tmt16plex:126:131N 20set-A:tmt18plex:131' \
     --tdb "${testdata}/tmt16_fa.fa" \
+    --noisoquant \
     --mods 'carbamidomethyl;oxidation' \
     --psmconflvl 0.4 --pepconflvl 0.4

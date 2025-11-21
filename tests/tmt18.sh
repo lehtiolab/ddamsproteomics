@@ -46,7 +46,7 @@ $NXFCMD --name ${name} --outdir test_output/${name} \
     --deqms --genes
 
 
-echo TMT18 rerun with different settings post PSMs, --noms1quant
+echo TMT18 rerun with different settings post PSMs, --noms1quant, --noisoquant
 # No need for PSM conf lvl bc it is used in percolator before PSM table
 # But pep conf level is used also in QC so needs to be here
 name=tmt18phos_rerun
@@ -65,4 +65,5 @@ $NXFCMD --name ${name} --outdir test_output/${name} \
     --targetpsmlookup "${baseresults}/target_psmlookup.sql" \
     --decoypsmlookup "${baseresults}/decoy_psmlookup.sql" \
     --pepconflvl 0.05 \
+    --noisoquant \
     --oldmzmldef test_output/${name}/oldmzmls

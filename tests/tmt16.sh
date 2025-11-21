@@ -41,6 +41,7 @@ $NXFCMD --name ${name} --outdir test_output/${name} \
 
 ### FIXME add anotehr totalproteome without median norm
 
+
 echo TMT16 add a set, carbamyl, set-coloring PCA
 # Tests set adding, not using DEqMS, using own defined MSGF mod (carbamyl)
 # change name, this mzML is already in  the existing data and spectraIDs will collide
@@ -82,6 +83,23 @@ $NXFCMD --name ${name} --outdir test_output/${name} \
     --hirief https://github.com/nf-core/test-datasets/raw/6defbf8a92a46b0ac48bb05f9ad96b62716b4a5d/testdata/formatted_known_peptides_ENSUniRefseq_TMT_predpi_20150825.txt
 
 
+echo TMT16 frac and non frac mix, now without isoquant
+name=tmt16_mixfrac_lg
+baseresults=${resultsdir}
+resultsdir=test_output/${name}
+mkdir -p $resultsdir
+cat <(head -n1 "${testdir}/tmt16_mzmls.txt") <(grep fr07 ${testdir}/tmt16_mzmls.txt) <(grep fr08 ${testdir}/tmt16_mzmls.txt | cut -f1-3) | envsubst > ${resultsdir}/mzmldef
+$NXFCMD --name ${name} --outdir test_output/${name} \
+    --input ${resultsdir}/mzmldef \
+    --sampletable "${testdir}/tmt16_samples.txt" \
+    --hardklor --isobaric '0set-A:tmtpro:126:131N' \
+    --tdb "${testdata}/tmt16_fa.fa" \
+    --mods 'carbamidomethyl;oxidation' \
+    --deqms --keepnapsmsquant --onlypeptides \
+    --noisoquant \
+    --hirief https://github.com/nf-core/test-datasets/raw/6defbf8a92a46b0ac48bb05f9ad96b62716b4a5d/testdata/formatted_known_peptides_ENSUniRefseq_TMT_predpi_20150825.txt
+
+
 # Test single file so we dont get intro trouble with the treat-single-list-as-string NF behaviour
 echo TMT16 single-file for escaping in listified steps
 name=tmt16_singlefile
@@ -95,5 +113,6 @@ $NXFCMD --name ${name} --outdir test_output/${name} \
     --tdb "${testdata}/tmt16_fa.fa" \
     --mods 'carbamidomethyl;oxidation' \
     --genes \
+    --noisoquant \
     --psmconflvl 0.2 --pepconflvl 0.2 \
     --hirief https://github.com/nf-core/test-datasets/raw/6defbf8a92a46b0ac48bb05f9ad96b62716b4a5d/testdata/formatted_known_peptides_ENSUniRefseq_TMT_predpi_20150825.txt
