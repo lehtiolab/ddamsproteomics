@@ -82,10 +82,13 @@ def annotate_peptable(predicted_peps_fn, peptable, seqcol, frac_col, stripcol,
             sequence = line[seqcol]
             for weight in ignoremods:
                 if weight == '*':
-                    regex = '[+-]\d*\.\d*'
+                    msgf_regex = '[+-]\d*\.\d*'
+                    sage_regex = '\[[+=]\d*\.\d*\]\-?'
                 else:
-                    regex = '[+-]{}'.format(weight)
-                sequence = re.sub(regex, '', sequence)
+                    msgf_regex = f'[+-]{weight}'.format(weight)
+                    sage_regex = f'\[[+=]{weight}\]\-?'
+                sequence = re.sub(sage_regex, '', sequence)
+                sequence = re.sub(msgf_regex, '', sequence)
             try:
                 pred_pi = float(predicted_peps[sequence])
             except KeyError:
