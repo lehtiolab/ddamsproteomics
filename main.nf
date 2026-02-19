@@ -208,6 +208,7 @@ process complementSpectraLookupCleanPSMs {
   script:
   setnames = in_setnames.unique(false)
   ptms = ptmpsms.name != 'NO__FILE'
+  inmem = {params.in_memory_sqlite ? '--in-memory' : ''}
   """
   # If this is an addition to an old lookup, copy it and extract set names
   cp ${tlup} target_db.sqlite
@@ -228,7 +229,7 @@ process complementSpectraLookupCleanPSMs {
   fi
   
   ${mzmlfiles.collect() { stripchars_infile(it, return_oldfile=true) }.findAll{ it[0] }.collect() { "ln -s '${it[2]}' '${it[1]}'" }.join(' && ')}
-  ${mzmlfiles.size() ? "msstitch storespectra --spectra ${mzmlfiles.collect() { "'${it.toString().replaceAll('[&<>\'"]', '_')}'" }.join(' ')} --setnames ${in_setnames.collect() { "'$it'" }.join(' ')} --dbfile target_db.sqlite" : ''}
+  ${mzmlfiles.size() ? "msstitch storespectra --spectra ${mzmlfiles.collect() { "'${it.toString().replaceAll('[&<>\'"]', '_')}'" }.join(' ')} --setnames ${in_setnames.collect() { "'$it'" }.join(' ')} --dbfile target_db.sqlite ${inmem}" : ''}
 
   copy_spectra.py target_db.sqlite decoy_db.sqlite ${setnames.join(' ')}
   cat old_setnames <(echo ${setnames.join('\n')}) | sort -u | grep -v '^\$' > all_setnames
@@ -248,10 +249,11 @@ process createNewSpectraLookup {
   path('target_db.sqlite')
 
   script:
+  inmem = {params.in_memory_sqlite ? '--in-memory' : ''}
   """
   ${mzmlfiles.collect() { stripchars_infile(it, return_oldfile=true) }.findAll{ it[0] }.collect() { "ln -s '${it[2]}' '${it[1]}'" }.join(' && ')}
 
-  msstitch storespectra --spectra ${mzmlfiles.collect() { stripchars_infile(it)[1] }.join(' ')} --setnames ${setnames.collect() { "'$it'" }.join(' ')} -o target_db.sqlite
+  msstitch storespectra ${inmem} --spectra ${mzmlfiles.collect() { stripchars_infile(it)[1] }.join(' ')} --setnames ${setnames.collect() { "'$it'" }.join(' ')} -o target_db.sqlite
   """
 }
 
@@ -268,10 +270,11 @@ process quantLookup {
   path('target.sqlite')
 
   script:
+  inmem = {params.in_memory_sqlite ? '--in-memory' : ''}
   """
   # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
   cat $tlookup > target.sqlite
-  msstitch storequant --dbfile target.sqlite --spectra ${mzmlnames.collect() { "'${it}'" }.join(' ')}  \
+  msstitch storequant --dbfile target.sqlite ${inmem} --spectra ${mzmlnames.collect() { "'${it}'" }.join(' ')}  \
     ${do_ms1 ? "--mztol ${params.ms1qmztol} --mztoltype ppm --rttol ${params.ms1qrttol} ${params.hardklor ? "--kronik ${ms1fns.collect() { "$it" }.join(' ')}" : "--dinosaur ${ms1fns.collect() { "$it" }.join(' ')}"}" : ''} \
     ${do_isoq ? "--isobaric ${isofns.collect() { "$it" }.join(' ')}" : ''}
   """
@@ -296,13 +299,14 @@ process createPSMTable {
   outpsms = "${td}_psmtable.txt"
   no_target = td == 'target' && !psms.find { it.name != 'NO__FILE' }
   no_decoy = td == 'decoy' && !psms.find{ it.name != 'NO__FILE' }
+  inmem = {params.in_memory_sqlite ? '--in-memory' : ''}
   """
   ${no_target ? "echo 'No target PSMs made the combined PSM / peptide FDR cutoff' && exit 1" : ''}
   ${no_decoy ? "echo 'No decoy PSMs in any set at FDR cutoff, will not produce protein/gene tables' > warnings && touch ${outpsms} && touch ${psmlookup} && exit 0" : ''}
   msstitch concat -i ${listify(psms).collect() {"$it"}.join(' ')} -o psms.txt
   # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
   cat lookup > $psmlookup
-  msstitch psmtable -i psms.txt --dbfile $psmlookup -o ${outpsms} \
+  msstitch psmtable -i psms.txt --dbfile $psmlookup ${inmem} -o ${outpsms} \
       ${td == 'target' ? '--addmiscleav' : ''} \
       ${onlypeptides ? '' : "--fasta \"${td == 'target' ? "${tdb}" : "${ddb}"}\" --genes"} \
       ${do_ms1 ? '--ms1quant' : ''} \
@@ -506,11 +510,12 @@ process proteinPeptideSetMerge {
   script:
   sampletable_iso = sampletable_with_special_chars.name != 'NO__FILE' && do_isobaric
   outfile = "${acctype}_table.txt"
+  inmem = {params.in_memory_sqlite ? '--in-memory' : ''}
   """
 
   # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
   cat $lookup > db.sqlite
-  msstitch merge -i ${listify(tables).collect() { "$it" }.join(' ')} --setnames ${setnames.collect() { "'$it'" }.join(' ')} --dbfile db.sqlite -o mergedtable \
+  msstitch merge -i ${listify(tables).collect() { "$it" }.join(' ')} --setnames ${setnames.collect() { "'$it'" }.join(' ')} --dbfile db.sqlite ${inmem} -o mergedtable \
     --fdrcolpattern '^q-value\$' ${acctype != 'peptides' ? "--mergecutoff ${proteinconflvl}" : ''} \
     ${acctype == 'peptides' ? "--pepcolpattern 'peptide PEP'" : ''} \
     ${do_ms1 ? "--ms1quantcolpattern area" : ''} \

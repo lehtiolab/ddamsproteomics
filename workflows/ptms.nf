@@ -126,12 +126,13 @@ process createPTMTable {
   script:
   ptmtable = "ptm_psmtable.txt"
   oldptms = cleaned_oldptms.name != 'NO__FILE' ? cleaned_oldptms : false
+  inmem = {params.in_memory_sqlite ? '--in-memory' : ''}
   """
   # Concat all the PTM PSM tables (labile, stabile, previous) and load into DB
   # PSM peptide sequences include the PTM site
   cat speclup.sql > ptmlup.sql
   ${has_newptms ? "msstitch concat -i ptms* ${oldptms ?: ''} -o" : "mv ${oldptms}"} concatptmpsms
-  msstitch psmtable -i concatptmpsms --dbfile ptmlup.sql -o ${ptmtable}
+  msstitch psmtable -i concatptmpsms --dbfile ptmlup.sql ${inmem} -o ${ptmtable}
   msstitch split -i ${ptmtable} --splitcol bioset
   ${setnames.collect() { "test -f '${it}.tsv' || echo 'No PTMs found for set ${it}' >> warnings" }.join(' && ') }
   # No PTMs at all overwrites the per-set messages
@@ -226,9 +227,10 @@ process mergePTMPeps {
 
   script:
   peptable = tpnormalized ? 'ptm_peptides_total_proteome_adjusted.txt' : 'ptm_peptides_not_adjusted.txt'
+  inmem = {params.in_memory_sqlite ? '--in-memory' : ''}
   """
   cat ptmlup.sql > pepptmlup.sql
-  msstitch merge -i ${listify(peptides).collect() { "$it" }.join(' ')} --setnames ${setnames.collect() { "'$it'" }.join(' ')} --dbfile pepptmlup.sql -o ${peptable} --no-group-annotation \
+  msstitch merge -i ${listify(peptides).collect() { "$it" }.join(' ')} --setnames ${setnames.collect() { "'$it'" }.join(' ')} --dbfile pepptmlup.sql ${inmem} -o ${peptable} --no-group-annotation \
     --fdrcolpattern '^q-value' --pepcolpattern 'peptide PEP' --flrcolpattern 'FLR' \
     ${do_ms1 ? "--ms1quantcolpattern area" : ''} \
     ${do_isobaric ? "--isobquantcolpattern plex" : ''}

@@ -16,8 +16,9 @@ process createTrypticMatchDB {
   script:
   miscleav = maxmiscleav < 0 ? 2 : maxmiscleav
   outfile = sequences.baseName.replaceAll('[^a-zA-Z0-9_-]', '_')
+  inmem = {params.in_memory_sqlite ? '--in-memory' : ''}
   """
-  msstitch storeseq -i ${sequences} -o ${outfile} \
+  msstitch storeseq -i ${sequences} -o ${outfile} ${inmem} \
     --minlen ${minpeplen} --cutproline \
     --nterm-meth-loss --map-accessions \
     ${miscleav ? "--miscleav ${miscleav}" : ''}
@@ -46,12 +47,13 @@ process markPeptidesPresentInDB {
   peptide_table_out = 'peptide_table.txt'
   jointable_out = 'seqmatch_jointable'
   len_seqmatch = listify(seqdbs).size()
+  inmem = {params.in_memory_sqlite ? '--in-memory' : ''}
   """
   # Get bare peptide (works also with -f1)
   echo 'Peptide\tMSGFScore\tEValue' > pepseqs
   cut -f2 ${peptides} |  awk -v FS='\\t' -v OFS='\\t' '{print \$1, "NA", "NA"}' | tail -n+2 >> pepseqs
   for seqdb in ${listify(seqdbs).join(' ')}
-    do msstitch seqmatch -i pepseqs -o tmppeps --dbfile \$seqdb --matchcolname \${seqdb}
+    do msstitch seqmatch -i pepseqs -o tmppeps --dbfile \$seqdb ${inmem} --matchcolname \${seqdb}
     mv tmppeps pepseqs
   done
   paste <(cut -f4-${3+len_seqmatch} pepseqs) ${peptides} > ${jointable_out}

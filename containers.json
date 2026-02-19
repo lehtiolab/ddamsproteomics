@@ -1,8 +1,8 @@
 {
   "msstitch": {
-    "version": "3.17",
-    "singularity": "https://depot.galaxyproject.org/singularity/msstitch:3.17--pyhdfd78af_0",
-    "docker": "quay.io/biocontainers/msstitch:3.17--pyhdfd78af_0"
+    "version": "3.19",
+    "singularity": "https://depot.galaxyproject.org/singularity/msstitch:3.19--pyhdfd78af_0",
+    "docker": "quay.io/biocontainers/msstitch:3.19--pyhdfd78af_0"
   },
   "python": {
     "version": "3.12",
