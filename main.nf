@@ -108,11 +108,10 @@ process dinosaur {
   tuple val(parsed_infile), path("${sample}.features.tsv")
 
   script:
-  threads = task.cpus * params.overbook_cpus_factor
   (is_stripped, parsed_infile) = stripchars_infile(infile)
   """
   ${is_stripped ? "ln -s ${infile} ${parsed_infile}" : ''}
-  dinosaur -Xmx${task.memory.toMega()}M --concurrency=${threads} ${parsed_infile}
+  dinosaur -Xmx${task.memory.toMega()}M --concurrency=${task.cpus} ${parsed_infile}
   """
 }
 

@@ -13,7 +13,6 @@ process msgfPlus {
   
 
   script:
-  threads = task.cpus * params.overbook_cpus_factor
   // protocol 0 is automatic, msgf checks in mod file, TMT/phospho should be run with 1
   // see at https://github.com/MSGFPlus/msgfplus/issues/19
   msgfprotocol = fparams.phospho ? setisobaric[setname][0..4] == 'itraq' ? 3 : 1 : 0
@@ -27,7 +26,7 @@ process msgfPlus {
   """
   ${is_stripped ? "ln -s ${mzml} '${parsed_infile}'" : ''}
   
-  msgf_plus -Xmx${task.memory.toMega()}M -d $db -s '$parsed_infile' -o "${sample}.mzid" -thread ${threads} -mod "mods.txt" -tda 0 -maxMissedCleavages ${maxmiscleav} -t ${fparams.prectol}  -ti ${fparams.iso_err} -m ${fragmeth} -inst ${msgfinstrument} -e ${enzyme} -protocol ${msgfprotocol} -ntt ${ntt} -minLength ${minpeplen} -maxLength ${maxpeplen} -minCharge ${mincharge} -maxCharge ${maxcharge} -n 1 -addFeatures 1
+  msgf_plus -Xmx${task.memory.toMega()}M -d $db -s '$parsed_infile' -o "${sample}.mzid" -thread ${task.cpus} -mod "mods.txt" -tda 0 -maxMissedCleavages ${maxmiscleav} -t ${fparams.prectol}  -ti ${fparams.iso_err} -m ${fragmeth} -inst ${msgfinstrument} -e ${enzyme} -protocol ${msgfprotocol} -ntt ${ntt} -minLength ${minpeplen} -maxLength ${maxpeplen} -minCharge ${mincharge} -maxCharge ${maxcharge} -n 1 -addFeatures 1
   msgf_plus -Xmx3500M edu.ucsd.msjava.ui.MzIDToTsv -i "${sample}.mzid" -o out.tsv
   rm ${db.baseName.replaceFirst(/\.fasta/, "")}.c*
   ${mods.contains('Unknown') ? "sed -i '/unknown modification/s/PSI-MS/UNIMOD/' '${sample}.mzid'" : ''}
