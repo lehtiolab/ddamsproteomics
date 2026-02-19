@@ -152,7 +152,7 @@ may specify it by `--hirief /path/to/table.txt`.
 ### Quantitation
 Isobaric data can be specified as such `--isobaric 'set1:tmt10plex:127N:128N set2:tmtpro:sweep set3:itraq8plex:intensity'`. Here PSMs will be quantified for 3 different isobaric sample sets in a somewhat contrived example with different chemistries. Isobaric quantitation is done using OpenMS IsobaricAnalyzer and will also output the precursor purity (fraction of precursor intensity in the selection window) to the PSM table. A filter can be used to set a minimum purity for PSM isobaric quant to not be set to NA, using e.g. `--minprecursorpurity 0.3`, default is not to filter. The resulting values will be summarized from PSM to peptide/protein/gene by taking median PSM values per feature. Prior to this, they can be log2-transformed and normalized to e.g. an internal standard using denominator channels as above in `set1`, or median sweep (i.e. use median PSM value as denominator for each PSM in `set2`) to generate log2(ratios). A possibility shown in `set3` is also to output non-normalized median PSM intensity per protein. When result tables have been summarized these can be median-centered, which is passed using `--normalize`. By default, PSMs with an NA value in any channel will not be used in summarizing isobaric quantification data. If you want to use these (possibly more noisy) PSMs, e.g. when having empty channels, you can pass `--keepnapsmsquant`.
 
-MS1 quantitation is done using Dinosaur and its features are aligned to PSMs using msstitch, using summed intensity of a feature. To not output any MS1 or isobaric data, use `--noquant`. If Dinosaur for some reason doesn't work, you can use Hardklor/Kronik, by specifying `--hardklor`
+MS1 quantitation is done using Dinosaur and its features are aligned to PSMs using msstitch, using summed intensity of a feature. To not output isobaric quant when running with `--isobaric` (for the modifications), you can use `--noisoquant`. To not output any MS1 or isobaric data, use `--noquant`. If Dinosaur for some reason doesn't work, you can use Hardklor/Kronik, by specifying `--hardklor`
 
 ### Differential expression analysis
 DEqMS is used for DE analysis using `--deqms` and it needs to know your sample group names. For this, you can pass a TSV file with sample names to `--sampletable`, it should contain a line for each channel/set combination with channel, set, sample, sample group e.g.:
@@ -197,6 +197,9 @@ If you have finished a rather large analysis and wish to rerun a part of it or a
 ```
 Now you can run a single sample set and combine the output with the previous run, which if it has an identical set name, will be cleaned first (the set will be removed from old output). Make sure to use the same parameters to get the same result for the old data, which will be regenerated from the PSM table.
 
+### In-memory SQLite
+The pipeline uses msstitch a lot, which relies partly on SQLite. In certain scenarios with slow disks and larger datasets, this will backfire and lead to very long processing times. In those scenarios one could try to use `--in_memory_sqlite`, which will
+load the SQL file in memory, do the processing, and dump the result in a file.
 
 ## Job Resources
 ### Automatic resubmission

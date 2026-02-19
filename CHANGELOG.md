@@ -1,5 +1,13 @@
 # lehtiolab/ddamsproteomics: Changelog
 
+## Version 3.3 [2026-02-19]
+- Enable use of Singularity for centroiding/precursor purity #43
+- Not crashing with --onlypeptides and --noquant
+- Not crashing with reruns without --ptmpsms #40
+- pI annotation for Sage, and pI in QC report
+- Possible to run with --noisoquant
+- Faster peptide/protein/gene table merging and possible in-memory sqlite with msstitch 3.19
+
 ## Version 3.2 [2025-07-14]
 - Fix overlap reporting in amount pep/prot plots in QC (nrow instead of length)
 - Fix running with multi-DB (`--tdb '*.fa'`)
