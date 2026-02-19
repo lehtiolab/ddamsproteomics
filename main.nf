@@ -207,7 +207,7 @@ process complementSpectraLookupCleanPSMs {
   script:
   setnames = in_setnames.unique(false)
   ptms = ptmpsms.name != 'NO__FILE'
-  inmem = {params.in_memory_sqlite ? '--in-memory' : ''}
+  inmem = params.in_memory_sqlite ? '--in-memory' : ''
   """
   # If this is an addition to an old lookup, copy it and extract set names
   cp ${tlup} target_db.sqlite
@@ -248,7 +248,7 @@ process createNewSpectraLookup {
   path('target_db.sqlite')
 
   script:
-  inmem = {params.in_memory_sqlite ? '--in-memory' : ''}
+  inmem = params.in_memory_sqlite ? '--in-memory' : ''
   """
   ${mzmlfiles.collect() { stripchars_infile(it, return_oldfile=true) }.findAll{ it[0] }.collect() { "ln -s '${it[2]}' '${it[1]}'" }.join(' && ')}
 
@@ -269,7 +269,7 @@ process quantLookup {
   path('target.sqlite')
 
   script:
-  inmem = {params.in_memory_sqlite ? '--in-memory' : ''}
+  inmem = params.in_memory_sqlite ? '--in-memory' : ''
   """
   # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
   cat $tlookup > target.sqlite
@@ -298,7 +298,7 @@ process createPSMTable {
   outpsms = "${td}_psmtable.txt"
   no_target = td == 'target' && !psms.find { it.name != 'NO__FILE' }
   no_decoy = td == 'decoy' && !psms.find{ it.name != 'NO__FILE' }
-  inmem = {params.in_memory_sqlite ? '--in-memory' : ''}
+  inmem = params.in_memory_sqlite ? '--in-memory' : ''
   """
   ${no_target ? "echo 'No target PSMs made the combined PSM / peptide FDR cutoff' && exit 1" : ''}
   ${no_decoy ? "echo 'No decoy PSMs in any set at FDR cutoff, will not produce protein/gene tables' > warnings && touch ${outpsms} && touch ${psmlookup} && exit 0" : ''}
@@ -509,7 +509,7 @@ process proteinPeptideSetMerge {
   script:
   sampletable_iso = sampletable_with_special_chars.name != 'NO__FILE' && do_isobaric
   outfile = "${acctype}_table.txt"
-  inmem = {params.in_memory_sqlite ? '--in-memory' : ''}
+  inmem = params.in_memory_sqlite ? '--in-memory' : ''
   """
 
   # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
