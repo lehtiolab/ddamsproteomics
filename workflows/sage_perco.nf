@@ -6,14 +6,16 @@ process sagePrepare {
   container params.__containers[tag][workflow.containerEngine]
  
   input:
-  tuple val(setname), val(id), val(minlen), val(maxlen), val(mincharge), val(maxcharge), val(maxmiscleav), val(maxvarmods), val(fparams), path('sage.json'), path('mods.json')
+  tuple val(setname), val(id), val(minlen), val(maxlen), val(mincharge), val(maxcharge), val(maxmiscleav), val(maxvarmods), 
+val(prectol), val(fragtol),
+path('sage.json'), path('mods.json')
 
   output:
   tuple val(id), path('config.json')
   
   script:
-  prectol_num = fparams.prectol.replaceAll('[^0-9\\.]', '')
-  prectol_unit = fparams.prectol.replaceAll('[0-9\\.]', '')
+  prectol_num = prectol.replaceAll('[^0-9\\.]', '')
+  prectol_unit = prectol.replaceAll('[0-9\\.]', '')
   sage_maxmiscleav = maxmiscleav == -1 ? 20 : maxmiscleav
   """
   cat sage.json | jq --argjson MODS "\$(cat mods.json)" '.database.enzyme.missed_cleavages=${sage_maxmiscleav} | \
@@ -23,7 +25,7 @@ process sagePrepare {
     .precursor_tol={$prectol_unit: [-${prectol_num}, ${prectol_num}]} | \
     .precursor_charge=[${mincharge}, ${maxcharge}]' > config.json
   """
-    //.fragment_tol.ppm=[-${fparams.fragtol}, ${fparams.fragtol}] | \
+    //.fragment_tol.ppm=[-${fragtol}, ${fragtol}] | \
 }
 
 
@@ -32,7 +34,7 @@ process sage {
   container params.__containers[tag][workflow.containerEngine]
 
   input:
-  tuple val(setname), path('config.json'), path(specfile), val(fparams), val(instrumenttype), val(fractionation), path(db)
+  tuple val(setname), path('config.json'), path(specfile), val(plate), val(fraction), val(instrumenttype), val(fractionation), path(db)
 
   output:
   tuple val(setname), path("${specfile.baseName}.pin"), emit: perco
@@ -58,7 +60,7 @@ process sage {
     ${fractionation ? ', "Strip", "Fraction"' : ''}}' \
         <( head -n1 results.sage.tsv) > "${specfile.baseName}.tsv"
   awk -F \$'\\t' '{OFS=FS ; print "${parsed_basename}" \$0, \
-    "$setname" ${fractionation ? ", \"$fparams.plate\", \"$fparams.fraction\"" : ''}}' \
+    "$setname" ${fractionation ? ", \"$plate\", \"$fraction\"" : ''}}' \
         <( tail -n+2 results.sage.tsv) >> "${specfile.baseName}.tsv"
 
   ${remove_scan_index_str ? "sed -i 's/index=//' results.sage.tsv" : ''}
@@ -150,10 +152,10 @@ workflow SAGEPERCO {
   | createMods
 
   mzml_in
-  | map { [it.setname, it.id, minpeplen, maxpeplen, mincharge, maxcharge, maxmiscleav, maxvarmods, fparam_map[it.id], file("$baseDir/assets/sage.json")] }
+  | map { [it.setname, it.id, minpeplen, maxpeplen, mincharge, maxcharge, maxmiscleav, maxvarmods, fparam_map[it.id].prectol, fparam_map[it.id].fragtol, file("$baseDir/assets/sage.json")] }
   | combine(createMods.out, by: 0)
   | sagePrepare
-  | join(mzml_in.map { [it.id, it.setname, it.mzmlfile, fparam_map[it.id], it.instrument == 'timstof' ? 'bruker' : 'thermo', fractionation] })
+  | join(mzml_in.map { [it.id, it.setname, it.mzmlfile, fparam_map[it.id].plate, fparam_map[it.id].fraction, it.instrument == 'timstof' ? 'bruker' : 'thermo', fractionation] })
   | map { [it[2], it[1], it[3..-1]].flatten() } // Set, config, rest
   | combine(concatdb)
   | sage

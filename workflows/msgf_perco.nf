@@ -6,7 +6,7 @@ process msgfPlus {
   container params.__containers[tag][workflow.containerEngine]
 
   input:
-  tuple val(setname), val(sample), path(mzml), val(maxmiscleav), val(fparams), val(mods), val(setisobaric), val(fractionation), val(minpeplen), val(maxpeplen), val(mincharge), val(maxcharge), path(db), path('mods.txt')
+  tuple val(setname), val(sample), path(mzml), val(maxmiscleav), val(enzyme), val(terminicleaved), val(phospho), val(instrument), val(frag), val(prectol), val(iso_err), val(plate), val(fraction), val(mods), val(setisobaric), val(fractionation), val(minpeplen), val(maxpeplen), val(mincharge), val(maxcharge), path(db), path('mods.txt')
 
   output:
   tuple val(setname), path("${sample}.mzid"), path("${sample}.mzid.tsv")
@@ -15,23 +15,23 @@ process msgfPlus {
   script:
   // protocol 0 is automatic, msgf checks in mod file, TMT/phospho should be run with 1
   // see at https://github.com/MSGFPlus/msgfplus/issues/19
-  msgfprotocol = fparams.phospho ? setisobaric[setname][0..4] == 'itraq' ? 3 : 1 : 0
-  fragmeth = [auto:0, cid:1, etd:2, hcd:3, uvpd:4][fparams.frag]
-  msgfinstrument = [lowres:0, velos:1, qe:3, qehf: 3, false:0, qehfx:1, lumos:1, timstof:2][fparams.instrument]
-  enzyme = fparams.enzyme.indexOf('-') > -1 ? fparams.enzyme.replaceAll('-', '') : fparams.enzyme
+  msgfprotocol = phospho ? setisobaric[setname][0..4] == 'itraq' ? 3 : 1 : 0
+  fragmeth = [auto:0, cid:1, etd:2, hcd:3, uvpd:4][frag]
+  msgfinstrument = [lowres:0, velos:1, qe:3, qehf: 3, false:0, qehfx:1, lumos:1, timstof:2][instrument]
+  enzyme = enzyme.indexOf('-') > -1 ? enzyme.replaceAll('-', '') : enzyme
   enzyme = [unspecific:0, trypsin:1, chymotrypsin: 2, lysc: 3, lysn: 4, gluc: 5, argc: 6, aspn:7, no_enzyme:9][enzyme]
-  ntt = [full: 2, semi: 1, non: 0][fparams.terminicleaved]
+  ntt = [full: 2, semi: 1, non: 0][terminicleaved]
 
   (is_stripped, parsed_infile) = stripchars_infile(mzml)
   """
   ${is_stripped ? "ln -s ${mzml} '${parsed_infile}'" : ''}
   
-  msgf_plus -Xmx${task.memory.toMega()}M -d $db -s '$parsed_infile' -o "${sample}.mzid" -thread ${task.cpus} -mod "mods.txt" -tda 0 -maxMissedCleavages ${maxmiscleav} -t ${fparams.prectol}  -ti ${fparams.iso_err} -m ${fragmeth} -inst ${msgfinstrument} -e ${enzyme} -protocol ${msgfprotocol} -ntt ${ntt} -minLength ${minpeplen} -maxLength ${maxpeplen} -minCharge ${mincharge} -maxCharge ${maxcharge} -n 1 -addFeatures 1
+  msgf_plus -Xmx${task.memory.toMega()}M -d $db -s '$parsed_infile' -o "${sample}.mzid" -thread ${task.cpus} -mod "mods.txt" -tda 0 -maxMissedCleavages ${maxmiscleav} -t ${prectol}  -ti ${iso_err} -m ${fragmeth} -inst ${msgfinstrument} -e ${enzyme} -protocol ${msgfprotocol} -ntt ${ntt} -minLength ${minpeplen} -maxLength ${maxpeplen} -minCharge ${mincharge} -maxCharge ${maxcharge} -n 1 -addFeatures 1
   msgf_plus -Xmx3500M edu.ucsd.msjava.ui.MzIDToTsv -i "${sample}.mzid" -o out.tsv
   rm ${db.baseName.replaceFirst(/\.fasta/, "")}.c*
   ${mods.contains('Unknown') ? "sed -i '/unknown modification/s/PSI-MS/UNIMOD/' '${sample}.mzid'" : ''}
   awk -F \$'\\t' '{OFS=FS ; print \$0, "Biological set" ${fractionation ? ', "Strip", "Fraction"' : ''}}' <( head -n1 out.tsv) > "${sample}.mzid.tsv"
-  awk -F \$'\\t' '{OFS=FS ; print \$0, "$setname" ${fractionation ? ", \"$fparams.plate\", \"$fparams.fraction\"" : ''}}' <( tail -n+2 out.tsv) >> "${sample}.mzid.tsv"
+  awk -F \$'\\t' '{OFS=FS ; print \$0, "$setname" ${fractionation ? ", \"$plate\", \"$fraction\"" : ''}}' <( tail -n+2 out.tsv) >> "${sample}.mzid.tsv"
   """
 }
 
@@ -116,7 +116,8 @@ workflow MSGFPERCO {
   | createMods
 
   mzml_in
-  | map { [it.setname, it.sample, it.mzmlfile, maxmiscleav, fparam_map[it.id], mods, setisobaric, fractionation, minpeplen, maxpeplen, mincharge, maxcharge] }
+  | map { [it.setname, it.sample, it.mzmlfile, maxmiscleav, 
+['enzyme', 'terminicleaved', 'phospho', 'instrument', 'frag', 'prectol', 'iso_err', 'plate', 'fraction'].collect { x -> fparam_map[it.id][x]}, mods, setisobaric, fractionation, minpeplen, maxpeplen, mincharge, maxcharge].flatten() }
   | combine(concatdb)
   | combine(createMods.out, by: 0)
   | msgfPlus
