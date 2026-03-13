@@ -34,6 +34,7 @@ $NXFCMD --name ${name} --outdir test_output/${name} \
     --hardklor --isobaric '0set-A:tmtpro:126:131N' \
     --tdb "${testdata}/tmt16_fa.fa" \
     --mods 'carbamidomethyl;oxidation' \
+    --maxmiscleav 2 \
     --locptms Phospho --ptms Acetyl \
     --proteinconflvl 0.03 --psmconflvl 0.5 --pepconflvl 0.5 \
     --genes \

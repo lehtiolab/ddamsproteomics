@@ -6,9 +6,7 @@ process sagePrepare {
   container params.__containers[tag][workflow.containerEngine]
  
   input:
-  tuple val(setname), val(id), val(minlen), val(maxlen), val(mincharge), val(maxcharge), val(maxmiscleav), val(maxvarmods), 
-val(prectol), val(fragtol),
-path('sage.json'), path('mods.json')
+  tuple val(setname), val(id), val(minlen), val(maxlen), val(mincharge), val(maxcharge), val(maxmiscleav), val(maxvarmods), val(prectol), val(fragtol), path('sage.json'), path('mods.json')
 
   output:
   tuple val(id), path('config.json')
