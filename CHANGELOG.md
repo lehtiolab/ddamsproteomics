@@ -1,9 +1,11 @@
 # lehtiolab/ddamsproteomics: Changelog
 
-## Version 3.3 [2026-02-19]
+## Version 3.3 [2026-03-26]
 - Enable use of Singularity for centroiding/precursor purity #43
 - Not crashing with --onlypeptides and --noquant
 - Not crashing with reruns without --ptmpsms #40
+- Bugfix to enable fasta files with escaped characters in filename
+- Resume independent of mzML input order
 - pI annotation for Sage, and pI in QC report
 - Possible to run with --noisoquant
 - Faster peptide/protein/gene table merging and possible in-memory sqlite with msstitch 3.19
