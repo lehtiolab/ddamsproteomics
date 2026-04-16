@@ -11,7 +11,7 @@ name=tmt16denomdeq
 resultsdir=test_output/${name}
 mkdir -p $resultsdir
 cat "${testdir}/tmt16_mzmls.txt" | envsubst > ${resultsdir}/mzmldef
-$NXFCMD --name ${name} --outdir ${resultsdir} \
+$NXFCMD --name ${name} -output-dir ${resultsdir} \
     --input ${resultsdir}/mzmldef \
     --sampletable "${testdir}/tmt16_samples.txt" \
     --hardklor --isobaric '0set-A:tmtpro:126:131N' \

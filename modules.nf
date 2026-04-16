@@ -95,7 +95,7 @@ def create_info_map(info_fn, possible_params) {
 
 
 def msgf_info_map(info_fn) {
-  expected_fields = ["mzmlfile", "setname", "plate", "fraction", "phospho", "activation",
+  def expected_fields = ["mzmlfile", "setname", "plate", "fraction", "phospho", "activation",
         "prectol", "iso_err", "instrument", "enzyme", "frag", "terminicleaved"]
   def samples = create_info_map(info_fn, expected_fields)
   return samples
@@ -105,7 +105,7 @@ def msgf_info_map(info_fn) {
 process createMods {
 
   tag 'python'
-  container params.__containers[tag][workflow.containerEngine]
+  container { params.__containers[task.tag][workflow.containerEngine] }
 
   input:
   tuple val(setname), val(isobtype), val(maxvarmods), val(search_engine), path(msgfmods), val(mods)

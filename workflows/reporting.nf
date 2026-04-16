@@ -4,7 +4,7 @@ include { listify; stripchars_infile; get_regex_specialchars } from '../modules.
 
 process countMS2sPerPlate {
   tag 'python'
-  container params.__containers[tag][workflow.containerEngine]
+  container { params.__containers[task.tag][workflow.containerEngine] }
 
 // FIXME this could possibly go into the PSM QC R code?
 
@@ -73,7 +73,7 @@ process PSMQC {
     */
  
   tag 'ddamsproteomics'
-  container params.__containers[tag][workflow.containerEngine]
+  container { params.__containers[task.tag][workflow.containerEngine] }
 
   input:
   tuple path('psms'), path('filescans'), path('platescans'), val(mzmls), val(fractionation), val(has_newmzmls), val(has_oldmzmls), val(search_engine)
@@ -95,7 +95,7 @@ process PSMQC {
 process featQC {
 
   tag 'ddamsproteomics'
-  container params.__containers[tag][workflow.containerEngine]
+  container { params.__containers[task.tag][workflow.containerEngine] }
 
   input:
   tuple val(acctype), path('feats'), path(normfacs), path(peptable), path('sampletable'), val(setnames), val(has_sampletable), val(conflvl)
@@ -111,7 +111,7 @@ process featQC {
   # Create QC plots and put them base64 into HTML, R also creates summary.txt
   qc_protein.R --sets ${listify(setnames).collect() { "'$it'" }.join(' ')} \
      --feattype ${acctype} --peptable $peptable \
-     ${has_sampletable ? "--sampletable $sampletable" : ''} \
+     ${has_sampletable ? "--sampletable sampletable" : ''} \
      --conflvl $conflvl \
      ${parse_normfactors ? '--normtable allnormfacs' : ''}
 
@@ -126,7 +126,7 @@ process featQC {
 process PTMQC {
   
   tag 'ddamsproteomics'
-  container params.__containers[tag][workflow.containerEngine]
+  container { params.__containers[task.tag][workflow.containerEngine] }
 
   input:
   tuple path(ptmpsms), path(peptable), val(search_engine)
@@ -147,7 +147,7 @@ process PTMQC {
 process summaryReport {
 
   tag 'ddamsproteomics'
-  container params.__containers[tag][workflow.containerEngine]
+  container { params.__containers[task.tag][workflow.containerEngine] }
 
 
   input:

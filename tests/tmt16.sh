@@ -11,7 +11,7 @@ name=tmt16denomdeq
 resultsdir=test_output/${name}
 mkdir -p $resultsdir
 cat "${testdir}/tmt16_mzmls.txt" | envsubst > ${resultsdir}/mzmldef
-$NXFCMD --name ${name} --outdir ${resultsdir} \
+$NXFCMD --name ${name} -output-dir ${resultsdir} \
     --input ${resultsdir}/mzmldef \
     --sampletable "${testdir}/tmt16_samples.txt" \
     --hardklor --isobaric '0set-A:tmtpro:126:131N' \
@@ -28,7 +28,7 @@ baseresults=${resultsdir}
 resultsdir=test_output/${name}
 mkdir -p $resultsdir
 cat <(head -n1 "${testdir}/tmt16_mzmls.txt") <(grep fr07 ${testdir}/tmt16_mzmls.txt) | envsubst > ${resultsdir}/mzmldef
-$NXFCMD --name ${name} --outdir test_output/${name} \
+$NXFCMD --name ${name} -output-dir test_output/${name} \
     --input ${resultsdir}/mzmldef \
     --sampletable "${testdir}/tmt16_samples.txt" \
     --hardklor --isobaric '0set-A:tmtpro:126:131N' \
@@ -48,12 +48,12 @@ echo TMT16 add a set, carbamyl, set-coloring PCA
 # change name, this mzML is already in  the existing data and spectraIDs will collide
 ln -fs "${testdata}/tmt16_fr07>_1000@.mzML" "${testdata}/linked_tmt16_fr07_1000.mzML"
 name=tmt16_addsetB
-baseresults=${resultsdir}
+baseresults=$baseresults
 resultsdir=test_output/${name}
 mkdir -p $resultsdir
 cat "${testdir}/tmt16_mzmls.txt" | envsubst > ${resultsdir}/oldmzmls
 cat "${testdir}/tmt16_setB_mzmls.txt" | envsubst > ${resultsdir}/mzmldef
-$NXFCMD --name ${name} --outdir test_output/${name} \
+$NXFCMD --name ${name} -output-dir test_output/${name} \
     --input ${resultsdir}/mzmldef \
     --sampletable "${testdir}/tmt16_setAB_samples.txt" \
     --isobaric '0set-A:tmtpro:126:131N set-B:tmt16plex:126:131N' \
@@ -74,7 +74,7 @@ baseresults=${resultsdir}
 resultsdir=test_output/${name}
 mkdir -p $resultsdir
 cat <(head -n1 "${testdir}/tmt16_mzmls.txt") <(grep fr07 ${testdir}/tmt16_mzmls.txt) <(grep fr08 ${testdir}/tmt16_mzmls.txt | cut -f1-3) | envsubst > ${resultsdir}/mzmldef
-$NXFCMD --name ${name} --outdir test_output/${name} \
+$NXFCMD --name ${name} -output-dir test_output/${name} \
     --input ${resultsdir}/mzmldef \
     --sampletable "${testdir}/tmt16_samples.txt" \
     --hardklor --isobaric '0set-A:tmtpro:126:131N' \
@@ -90,7 +90,7 @@ baseresults=${resultsdir}
 resultsdir=test_output/${name}
 mkdir -p $resultsdir
 cat <(head -n1 "${testdir}/tmt16_mzmls.txt") <(grep fr07 ${testdir}/tmt16_mzmls.txt) <(grep fr08 ${testdir}/tmt16_mzmls.txt | cut -f1-3) | envsubst > ${resultsdir}/mzmldef
-$NXFCMD --name ${name} --outdir test_output/${name} \
+$NXFCMD --name ${name} -output-dir test_output/${name} \
     --input ${resultsdir}/mzmldef \
     --sampletable "${testdir}/tmt16_samples.txt" \
     --hardklor --isobaric '0set-A:tmtpro:126:131N' \
@@ -107,7 +107,7 @@ name=tmt16_singlefile
 resultsdir=test_output/${name}
 mkdir -p $resultsdir
 cat <(head -n1 ${testdir}/tmt16_mzmls.txt) <(grep fr08 ${testdir}/tmt16_mzmls.txt) | envsubst > ${resultsdir}/mzmldef
-$NXFCMD --name ${name} --outdir test_output/${name} \
+$NXFCMD --name ${name} -output-dir test_output/${name} \
     --input ${resultsdir}/mzmldef \
     --sampletable "${testdir}/tmt16_samples.txt" \
     --hardklor --isobaric '0set-A:tmtpro:126:131N' \

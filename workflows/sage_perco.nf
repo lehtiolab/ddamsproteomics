@@ -3,7 +3,7 @@ include { createMods; listify; stripchars_infile; parse_isotype } from '../modul
 
 process sagePrepare {
   tag 'jq'
-  container params.__containers[tag][workflow.containerEngine]
+  container { params.__containers[task.tag][workflow.containerEngine] }
  
   input:
   tuple val(setname), val(id), val(minlen), val(maxlen), val(mincharge), val(maxcharge), val(maxmiscleav), val(maxvarmods), val(prectol), val(fragtol), path('sage.json'), path('mods.json')
@@ -29,7 +29,7 @@ process sagePrepare {
 
 process sage {
   tag 'sage'
-  container params.__containers[tag][workflow.containerEngine]
+  container { params.__containers[task.tag][workflow.containerEngine] }
 
   input:
   tuple val(setname), path('config.json'), path(specfile), val(plate), val(fraction), val(instrumenttype), val(fractionation), path(db)
@@ -43,7 +43,7 @@ process sage {
   // Bruker from tdf2mzml has index=.. as scannr
   remove_scan_index_str = instrumenttype == 'bruker'
   (is_stripped, parsed_infile) = stripchars_infile(specfile)
-  (_, parsed_basename) = stripchars_infile(file(specfile.baseName))
+  (_tmp, parsed_basename) = stripchars_infile(file(specfile.baseName))
   """
   ${is_stripped ? "ln -s ${specfile} '${parsed_infile}'" : ''}
   export RAYON_NUM_THREADS=${task.cpus}
@@ -72,7 +72,7 @@ process sage {
 
 process percolator {
   tag 'percolator'
-  container params.__containers[tag][workflow.containerEngine]
+  container { params.__containers[task.tag][workflow.containerEngine] }
 
   input:
   tuple val(setname), path(pins)
@@ -92,16 +92,16 @@ process percolator {
 process percolatorToPsms {
 
   tag 'msstitch'
-  container params.__containers[tag][workflow.containerEngine]
+  container { params.__containers[task.tag][workflow.containerEngine] }
 
   input:
   tuple val(setname), path(perco), path(tsvs), val(psmconf), val(pepconf), val(output_unfiltered)
 
   output:
-  tuple val('target'), path("${setname}_target.tsv"), emit: tmzidtsv_perco optional true
-  tuple val('decoy'), path("${setname}_decoy.tsv"), emit: dmzidtsv_perco optional true
-  tuple val(setname), path('allpsms'), emit: unfiltered_psms optional true
-  path('warnings'), emit: percowarnings optional true
+  tuple val('target'), path("${setname}_target.tsv"), emit: tmzidtsv_perco, optional: true
+  tuple val('decoy'), path("${setname}_decoy.tsv"), emit: dmzidtsv_perco, optional: true
+  tuple val(setname), path('allpsms'), emit: unfiltered_psms, optional: true
+  path('warnings'), emit: percowarnings, optional: true
 
   script:
     //--mzids ${listify(mzids).collect(){"${it}"}.join(' ')} \

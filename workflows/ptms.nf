@@ -4,7 +4,7 @@ include { listify; stripchars_infile; get_field_nr; get_field_nr_multi; parse_is
 process luciphorPrep {
 
   tag 'msstitch'
-  container params.__containers[tag][workflow.containerEngine]
+  container { params.__containers[task.tag][workflow.containerEngine] }
 
   input:
   tuple val(setname), path(allpsms), val(locptms), val(stab_ptms), val(all_non_ptm_mods), path(msgfmodfile), val(search_engine)
@@ -28,19 +28,19 @@ process luciphorPrep {
 process luciphorPTMLocalizationScoring {
 
   tag 'luciphor2'
-  container params.__containers[tag][workflow.containerEngine]
+  container { params.__containers[task.tag][workflow.containerEngine] }
 
   input:
   tuple val(setname),  path(template), path('lucipsms'), path(mzmls), val(activation), val(maxpeplen), val(maxcharge), val(minpsms_luciphor)
 
   output:
-  tuple val(setname), path('luciphor.out'), path('all_scores.debug'), emit: ptms optional true
-  tuple val(setname), path('warnings'), emit: warnings optional true
+  tuple val(setname), path('luciphor.out'), path('all_scores.debug'), emit: ptms, optional: true
+  tuple val(setname), path('warnings'), emit: warnings, optional: true
 
   script:
 
   """
-  ${mzmls.collect() { stripchars_infile(it, return_oldfile=true) }.findAll{ it[0] }.collect() { "ln -s '${it[2]}' '${it[1]}'" }.join(' && ')}
+  ${mzmls.collect() { stripchars_infile(it, true) }.findAll{ it[0] }.collect() { "ln -s '${it[2]}' '${it[1]}'" }.join(' && ')}
   export MZML_PATH=\$(pwd)
   export MINPSMS=${minpsms_luciphor}
   export ALGO=${['hcd', 'auto', 'any'].any { it == activation } ? '1' : '0'}
@@ -63,7 +63,7 @@ process luciphorPTMLocalizationScoring {
 process luciphorParse {
 
   tag 'msstitch'
-  container params.__containers[tag][workflow.containerEngine]
+  container { params.__containers[task.tag][workflow.containerEngine] }
 
   // Puts luciphor data back into the PTM PSM table, also adds flanking seqs - if there 
   // is no luciphor data due to errors, it will put NA for luciphor columns
@@ -90,7 +90,7 @@ process luciphorParse {
 process stabilePTMPrep {
 
   tag 'msstitch'
-  container params.__containers[tag][workflow.containerEngine]
+  container { params.__containers[task.tag][workflow.containerEngine] }
 
   input:
   tuple val(setname), val(ptms), path('psms'), path(tdb), val(non_ptm_mods), val(lab_ptms), path(msgfmods), val(search_engine)
@@ -112,7 +112,7 @@ process stabilePTMPrep {
 process createPTMTable {
   
   tag 'msstitch'
-  container params.__containers[tag][workflow.containerEngine]
+  container { params.__containers[task.tag][workflow.containerEngine] }
 
   input:
   tuple val(setnames), path('ptms*'), val(has_newptms), path('speclup.sql'), path(cleaned_oldptms)
@@ -120,8 +120,8 @@ process createPTMTable {
   output:
   path('ptmlup.sql'), emit: db 
   path(ptmtable), emit: allpsms
-  path({setnames.collect() { "${it}.tsv" }}), emit: setptmpsm optional true
-  path('warnings'), emit: warnings optional true
+  path({setnames.collect() { "${it}.tsv" }}), emit: setptmpsm, optional: true
+  path('warnings'), emit: warnings, optional: true
 
   script:
   ptmtable = "ptm_psmtable.txt"
@@ -146,7 +146,7 @@ process createPTMTable {
 process prepTotalProteomeInput {
 
   tag 'msstitch'
-  container params.__containers[tag][workflow.containerEngine]
+  container { params.__containers[task.tag][workflow.containerEngine] }
 
   input:
   tuple val(setname), path(tppsms), val(isobtype), val(denom), val(dividebycol), val(normalize), val(keepnapsms_quant)
@@ -188,7 +188,7 @@ process prepTotalProteomeInput {
 process PTMPeptides {
 
   tag 'msstitch'
-  container params.__containers[tag][workflow.containerEngine]
+  container { params.__containers[task.tag][workflow.containerEngine] }
 
   input:
   tuple val(setname), path('ptms.txt'), path(tp_accessions), path('normalize_factors'),  val(isobtype), val(denom), val(normalize), val(keepnapsms_quant), val(do_ms1)
@@ -217,7 +217,7 @@ process PTMPeptides {
 process mergePTMPeps {
 
   tag 'msstitch'
-  container params.__containers[tag][workflow.containerEngine]
+  container { params.__containers[task.tag][workflow.containerEngine] }
  
   input:
   tuple val(setnames), val(tpnormalized), path(peptides), path('ptmlup.sql'), val(do_ms1), val(do_isobaric)
@@ -242,7 +242,7 @@ process addMasterProteinsGenes {
 
   // Runs no python but that container has the tools needed
   tag 'python'
-  container params.__containers[tag][workflow.containerEngine]
+  container { params.__containers[task.tag][workflow.containerEngine] }
 
   input:
   tuple path(peptides), path('ptmpsms')

@@ -22,7 +22,7 @@ include { REPORTING } from './workflows/reporting.nf'
 process createTargetDecoyFasta {
   
   tag 'msstitch'
-  container params.__containers[tag][workflow.containerEngine]
+  container { params.__containers[task.tag][workflow.containerEngine] }
 
  
   input:
@@ -55,7 +55,7 @@ process createTargetDecoyFasta {
 process centroidMS1 {
 
   tag 'proteowizard'
-  container params.__containers[tag][workflow.containerEngine]
+  container { params.__containers[task.tag][workflow.containerEngine] }
 
   input:
   tuple val(setname), path(infile), val(instr)
@@ -76,7 +76,7 @@ process centroidMS1 {
 process isobaricQuant {
 
   tag 'openms'
-  container params.__containers[tag][workflow.containerEngine]
+  container { params.__containers[task.tag][workflow.containerEngine] }
 
   input:
   tuple val(setname), val(parsed_infile), path(infile), val(instr), val(isobtype)
@@ -99,7 +99,7 @@ process isobaricQuant {
 process dinosaur {
 
   tag 'dinosaur'
-  container params.__containers[tag][workflow.containerEngine]
+  container { params.__containers[task.tag][workflow.containerEngine] }
 
   input:
   tuple val(sample), path(infile)
@@ -119,7 +119,7 @@ process dinosaur {
 process hardklor {
 
   tag 'hardklor'
-  container params.__containers[tag][workflow.containerEngine]
+  container { params.__containers[task.tag][workflow.containerEngine] }
 
   input:
   tuple val(sample), path(infile), path(hkconf)
@@ -140,7 +140,7 @@ process hardklor {
 process kronik {
 
   tag 'kronik'
-  container params.__containers[tag][workflow.containerEngine]
+  container { params.__containers[task.tag][workflow.containerEngine] }
 
   input:
   tuple val(sample), val(parsed_infile), path('hardklor.out')
@@ -157,7 +157,7 @@ process kronik {
 
 process PTMClean {
   tag 'sqlite'
-  container params.__containers[tag][workflow.containerEngine]
+  container { params.__containers[task.tag][workflow.containerEngine] }
   // FIXME can be in PTM wf?
   // In PTMS we need to delete all PSMs since we will rebuild it
 
@@ -194,7 +194,7 @@ process PTMClean {
 
 process complementSpectraLookupCleanPSMs {
   tag 'msstitch'
-  container params.__containers[tag][workflow.containerEngine]
+  container { params.__containers[task.tag][workflow.containerEngine] }
 
   input:
   tuple val(in_setnames), path(mzmlfiles), val(platenames), path(tlup), path(dlup), path(tpsms), path(dpsms), path(ptmpsms)
@@ -202,7 +202,7 @@ process complementSpectraLookupCleanPSMs {
   output:
   tuple path('t_cleaned_psms.txt'), path('d_cleaned_psms.txt'), emit: psms
   tuple path('target_db.sqlite'), path('decoy_db.sqlite'), emit: dbs
-  tuple path('cleaned_ptmpsms.txt'), emit: ptm optional true
+  tuple path('cleaned_ptmpsms.txt'), emit: ptm, optional: true
   
   script:
   setnames = in_setnames.unique(false)
@@ -227,7 +227,7 @@ process complementSpectraLookupCleanPSMs {
       ${ptms ? "mv ${ptmpsms} cleaned_ptmpsms.txt" : ''}
   fi
   
-  ${mzmlfiles.collect() { stripchars_infile(it, return_oldfile=true) }.findAll{ it[0] }.collect() { "ln -s '${it[2]}' '${it[1]}'" }.join(' && ')}
+  ${mzmlfiles.collect() { stripchars_infile(it, true) }.findAll{ it[0] }.collect() { "ln -s '${it[2]}' '${it[1]}'" }.join(' && ')}
   ${mzmlfiles.size() ? "msstitch storespectra --spectra ${mzmlfiles.collect() { "'${it.toString().replaceAll('[&<>\'"]', '_')}'" }.join(' ')} --setnames ${in_setnames.collect() { "'$it'" }.join(' ')} --dbfile target_db.sqlite ${inmem}" : ''}
 
   copy_spectra.py target_db.sqlite decoy_db.sqlite ${setnames.join(' ')}
@@ -239,7 +239,7 @@ process complementSpectraLookupCleanPSMs {
 process createNewSpectraLookup {
 
   tag 'msstitch'
-  container params.__containers[tag][workflow.containerEngine]
+  container { params.__containers[task.tag][workflow.containerEngine] }
 
   input:
   tuple val(setnames), path(mzmlfiles), val(platenames)
@@ -250,7 +250,7 @@ process createNewSpectraLookup {
   script:
   inmem = params.in_memory_sqlite ? '--in-memory' : ''
   """
-  ${mzmlfiles.collect() { stripchars_infile(it, return_oldfile=true) }.findAll{ it[0] }.collect() { "ln -s '${it[2]}' '${it[1]}'" }.join(' && ')}
+  ${mzmlfiles.collect() { stripchars_infile(it, true) }.findAll{ it[0] }.collect() { "ln -s '${it[2]}' '${it[1]}'" }.join(' && ')}
 
   msstitch storespectra ${inmem} --spectra ${mzmlfiles.collect() { stripchars_infile(it)[1] }.join(' ')} --setnames ${setnames.collect() { "'$it'" }.join(' ')} -o target_db.sqlite
   """
@@ -260,7 +260,7 @@ process createNewSpectraLookup {
 process quantLookup {
   
   tag 'msstitch'
-  container params.__containers[tag][workflow.containerEngine]
+  container { params.__containers[task.tag][workflow.containerEngine] }
 
   input:
   tuple val(mzmlnames), path(isofns), path(ms1fns), path(tlookup), val(do_isoq), val(do_ms1)
@@ -283,7 +283,7 @@ process quantLookup {
 process createPSMTable {
 
   tag 'msstitch'
-  container params.__containers[tag][workflow.containerEngine]
+  container { params.__containers[task.tag][workflow.containerEngine] }
 
   input:
   tuple val(td), path(psms), path('lookup'), path(tdb), path(ddb), path('oldpsms'), val(complementary_run), val(do_ms1), val(do_isobaric), val(onlypeptides)
@@ -291,7 +291,7 @@ process createPSMTable {
   output:
   tuple val(td), path("${outpsms}"), emit: psmtable
   tuple val(td), path("${psmlookup}"), emit: lookup
-  path('warnings'), emit: warnings optional true
+  path('warnings'), emit: warnings, optional: true
 
   script:
   psmlookup = "${td}_psmlookup.sql"
@@ -319,7 +319,7 @@ process createPSMTable {
 process peptidePiAnnotation {
 
   tag 'python'
-  container params.__containers[tag][workflow.containerEngine]
+  container { params.__containers[task.tag][workflow.containerEngine] }
 
   input:
   tuple path('psms'), val(strips), val(search_engine), path('hirief_training_pep')
@@ -340,13 +340,13 @@ process peptidePiAnnotation {
 process splitPSMs {
 
   tag 'msstitch'
-  container params.__containers[tag][workflow.containerEngine]
+  container { params.__containers[task.tag][workflow.containerEngine] }
 
   input:
   tuple val(td), path('psms'), val(setnames), val(remove_channels)
 
   output:
-  tuple val(td), path({listify(setnames).collect { "${it}.tsv" }}) optional true
+  tuple val(td), path({listify(setnames).collect { "${it}.tsv" }}), optional: true
 
   script:
   """
@@ -367,13 +367,13 @@ process splitPSMs {
 process splitTotalProteomePSMs {
 
   tag 'msstitch'
-  container params.__containers[tag][workflow.containerEngine]
+  container { params.__containers[task.tag][workflow.containerEngine] }
 
   input:
   tuple path('tppsms_in'), val(setnames)
 
   output:
-  path({listify(setnames).collect() { "tppsms/${it}.tsv" }}) optional true
+  path({listify(setnames).collect() { "tppsms/${it}.tsv" }}), optional: true
 
   script:
   """
@@ -388,14 +388,14 @@ process splitTotalProteomePSMs {
 process makePeptides {
 
   tag 'msstitch'
-  container params.__containers[tag][workflow.containerEngine]
+  container { params.__containers[task.tag][workflow.containerEngine] }
 
   input:
   tuple val(td), val(setname), path('psms'), val(setisobaric), val(denoms), val(keepnapsms_quant), val(normalize_isob), val(do_ms1)
   
   output:
   tuple val(setname), val(td), path("${setname}_peptides"), emit: peps
-  tuple val('peptides'), path(normfactors), emit: normfacs optional true
+  tuple val('peptides'), path(normfactors), emit: normfacs, optional: true
 
   script:
   specialdenom = denoms && (denoms[0] == 'sweep' || denoms[0] == 'intensity')
@@ -418,15 +418,15 @@ process makePeptides {
 process proteinGeneSymbolTableFDR {
  
   tag 'msstitch'
-  container params.__containers[tag][workflow.containerEngine]
+  container { params.__containers[task.tag][workflow.containerEngine] }
  
   input:
   tuple val(setname), path('tpeptides'), path('tpsms'), path('dpeptides'), path(tfasta), path(dfasta), val(acctype), val(do_ms1), val(isobaric), val(denom), val(keepnapsms_quant), val(normalize)
 
   output:
   tuple val(setname), val(acctype), path("${setname}_protfdr"), emit: tables
-  tuple val(acctype), path(normfactors), emit: normfacs optional true
-  path('warnings'), emit: warnings optional true
+  tuple val(acctype), path(normfactors), emit: normfacs, optional: true
+  path('warnings'), emit: warnings, optional: true
 
   script:
   scorecolpat = acctype == 'proteins' ? '^q-value$' : 'linear model'
@@ -463,7 +463,7 @@ process sampleTableCheckClean {
 
   // Runs no python but that container has the tools needed
   tag 'python'
-  container params.__containers[tag][workflow.containerEngine]
+  container { params.__containers[task.tag][workflow.containerEngine] }
  
   input:
   tuple path('sampletable'), val(do_deqms), val(remove_channels)
@@ -478,8 +478,7 @@ process sampleTableCheckClean {
     setch -> setch[1].collect {
       ch -> "grep -v '^${ch}\t${setch[0]}' sampletable > tmpst && mv tmpst sampletable"
       }.join(' && ')
-    }.join(' && ')
-  }
+    }.join(' && ') }
   # First add NO__GROUP marker for no-samplegroups clean sampletable from special chars
   awk -v FS="\\t" -v OFS="\\t" \'{if (NF==3) print \$1,\$2,\$3,"NO__GROUP"; else print}\' sampletable > clean_sampletable
   # Check if there are samplegroups at all
@@ -497,7 +496,7 @@ process sampleTableCheckClean {
 process proteinPeptideSetMerge {
 
   tag 'msstitch'
-  container params.__containers[tag][workflow.containerEngine]
+  container { params.__containers[task.tag][workflow.containerEngine] }
 
   input:
   tuple val(setnames), val(acctype), path(tables), path(lookup), path(sampletable_with_special_chars), path('sampletable_no_special_chars'), val(do_isobaric), val(do_ms1), val(proteinconflvl), val(do_pgroup), val(do_deqms)
@@ -539,7 +538,7 @@ process proteinPeptideSetMerge {
 process DEqMS {
 
   tag 'deqms'
-  container params.__containers[tag][workflow.containerEngine]
+  container { params.__containers[task.tag][workflow.containerEngine] }
 
   input:
   tuple val(acctype), path('grouptable'), path('sampletable')
@@ -560,10 +559,11 @@ process DEqMS {
 }
 
 
-def mzml_list = []
-def header = []
-
 workflow {
+
+  main:
+  def mzml_list = []
+  def header = []
 
   // Validate and set file inputs
   
@@ -1100,13 +1100,14 @@ workflow {
   .concat(ptm_ch.flatten())
   .concat(feattables_out_ch)
   .concat(REPORTING.out.flatten())
-  .subscribe { it.copyTo("${params.outdir}/${it.baseName}.${it.extension}") }
-}
+  .set { all_out_ch }
 
+  publish:
+  outputs = all_out_ch
 
-workflow.onComplete {
+onComplete:
   if (workflow.success) {
-    def libfile = file("${params.outdir}/libs.js")
+    def libfile = file("${workflow.outputDir}/libs.js")
     def libs = libfile.readLines()
     def bulma = file("${baseDir}/assets/bulma.js").readLines()
     def psmap = paramsSummaryMap(workflow)
@@ -1122,7 +1123,7 @@ workflow.onComplete {
     }
 
     // Get processes tags used from trace to output the software versions used in pipeline
-    def sw_versions = file("${params.outdir}/pipeline_info/execution_trace.txt").readLines()[1..-1]
+    def sw_versions = file("execution_trace.txt").readLines()[1..-1]
       .collect { it.tokenize('\t')[4] } // get process tag
       .unique()
       .collect { [it, params.__containers[it].version, params.__containers[it][workflow.containerEngine]] }
@@ -1142,13 +1143,18 @@ workflow.onComplete {
         params: psmap['Other parameters'],
         infiles: infiles,
         libs: libs, bulma: bulma]
-    def rf = new File("${params.outdir}/report_groovy_template.html")
+    def rf = new File("${workflow.outputDir}/report_groovy_template.html")
     def temp_engine = new groovy.text.StreamingTemplateEngine()
     def report_template = temp_engine.createTemplate(rf).make(fields)
     def report_html = report_template.toString()
-    def output_rf = new File( params.outdir, "report.html" )
+    def output_rf = new File( "${workflow.outputDir}/report.html" )
     output_rf.withWriter { w -> w << report_html }
     rf.delete()
     libfile.delete()
   }
 }
+
+output {
+  outputs {}
+}
+

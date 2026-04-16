@@ -3,7 +3,7 @@ include { createMods; listify; stripchars_infile; parse_isotype } from '../modul
 process msgfPlus {
 
   tag 'msgfplus'
-  container params.__containers[tag][workflow.containerEngine]
+  container { params.__containers[task.tag][workflow.containerEngine] }
 
   input:
   tuple val(setname), val(sample), path(mzml), val(maxmiscleav), val(enzyme), val(terminicleaved), val(phospho), val(instrument), val(frag), val(prectol), val(iso_err), val(plate), val(fraction), val(mods), val(setisobaric), val(fractionation), val(minpeplen), val(maxpeplen), val(mincharge), val(maxcharge), path(db), path('mods.txt')
@@ -39,7 +39,7 @@ process msgfPlus {
 process percolator {
 
   tag 'percolator'
-  container params.__containers[tag][workflow.containerEngine]
+  container { params.__containers[task.tag][workflow.containerEngine] }
 
   input:
   tuple val(setname), path(mzids), val(enzyme)
@@ -59,16 +59,16 @@ process percolator {
 process percolatorToPsms {
 
   tag 'msstitch'
-  container params.__containers[tag][workflow.containerEngine]
+  container { params.__containers[task.tag][workflow.containerEngine] }
 
   input:
   tuple val(setname), path(perco), path(mzids), path(tsvs), val(psmconf), val(pepconf), val(output_unfiltered)
 
   output:
-  tuple val('target'), path("${setname}_target.tsv"), emit: tmzidtsv_perco optional true
-  tuple val('decoy'), path("${setname}_decoy.tsv"), emit: dmzidtsv_perco optional true
-  tuple val(setname), path('allpsms'), emit: unfiltered_psms optional true
-  path('warnings'), emit: percowarnings optional true
+  tuple val('target'), path("${setname}_target.tsv"), emit: tmzidtsv_perco, optional: true
+  tuple val('decoy'), path("${setname}_decoy.tsv"), emit: dmzidtsv_perco, optional: true
+  tuple val(setname), path('allpsms'), emit: unfiltered_psms, optional: true
+  path('warnings'), emit: percowarnings, optional: true
 
   script:
   """

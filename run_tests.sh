@@ -5,7 +5,8 @@ green=$(tput setaf 2)
 reset=$(tput sgr0)
 
 
-export NXF_VER=24.04.4
+export NXF_VER=25.10.4
+export NXF_SYNTAX_PARSER=v2
 
 rundir=$(pwd)
 export repodir=$(dirname "$(realpath -s "$0")")

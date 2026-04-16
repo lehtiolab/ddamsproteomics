@@ -5,7 +5,7 @@ process createTrypticMatchDB {
   PSM tables and percolator */
 
   tag 'msstitch'
-  container params.__containers[tag][workflow.containerEngine]
+  container { params.__containers[task.tag][workflow.containerEngine] }
 
   input:
   tuple path(sequences), val(maxmiscleav), val(minpeplen)
@@ -29,7 +29,7 @@ process createTrypticMatchDB {
 process markPeptidesPresentInDB {
 
   tag 'msstitch'
-  container params.__containers[tag][workflow.containerEngine]
+  container { params.__containers[task.tag][workflow.containerEngine] }
 
   /* Match peptide sequences to user-provided sequences in a storeseq SQLite DB.
   Mark peptides that match with a 1, else 0 in a new column.
@@ -65,7 +65,7 @@ process markPeptidesPresentInDB {
 process joinAnnotatedSeqmatchPeptides {
 
   tag 'sqlite'
-  container params.__containers[tag][workflow.containerEngine]
+  container { params.__containers[task.tag][workflow.containerEngine] }
 
   input:
   tuple val(acctype), path('feats'), path('peptides'), path(seqdbs)
