@@ -569,7 +569,6 @@ workflow {
   
   // Files which are not standard can be checked here
   if (params.hirief && !file(params.hirief).exists()) exit 1, "Peptide pI data file not found: ${params.hirief}"
-  if (params.hirief && !params.input) exit 1, "Cannot run HiRIEF delta pI calculation without fraction-annotated mzML definition file"
   if (params.sampletable) {
     // create value channel with first()
     sampletable = Channel.fromPath(params.sampletable).first()
@@ -583,6 +582,7 @@ workflow {
   // Checking rerun status, if any
   complementary_run = params.targetpsmlookup && params.decoypsmlookup && params.targetpsms && params.decoypsms
   is_rerun = complementary_run && !params.input
+  if (params.hirief && !params.input && !is_rerun && !params.oldmzmldef) exit 1, "Cannot run HiRIEF delta pI calculation without fraction-annotated mzML definition file"
   if (is_rerun) {
     fractionation_in = false
     mzml_in = Channel.empty()

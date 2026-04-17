@@ -43,6 +43,28 @@ $NXFCMD --name ${name} -output-dir test_output/${name} \
 ### FIXME add anotehr totalproteome without median norm
 
 
+echo TMT16 rerun, with hirief, diff denom
+# Tests set adding, not using DEqMS, using own defined MSGF mod (carbamyl)
+# change name, this mzML is already in  the existing data and spectraIDs will collide
+ln -fs "${testdata}/tmt16_fr07>_1000@.mzML" "${testdata}/linked_tmt16_fr07_1000.mzML"
+name=tmt16_rerun_hirief
+baseresults=${resultsdir}
+resultsdir=test_output/${name}
+mkdir -p $resultsdir
+cat "${testdir}/tmt16_mzmls.txt" | envsubst > ${resultsdir}/oldmzmls
+cat "${testdir}/tmt16_setB_mzmls.txt" | envsubst > ${resultsdir}/mzmldef
+$NXFCMD --name ${name} -output-dir test_output/${name} \
+    --sampletable "${testdir}/tmt16_samples.txt" \
+    --isobaric '0set-A:tmtpro:126' \
+    --tdb "${testdata}/tmt16_fa.fa" \
+    --psmconflvl 0.2 --pepconflvl 0.2 \
+    --targetpsms "${baseresults}/target_psmtable.txt" \
+    --decoypsms "${baseresults}/decoy_psmtable.txt" \
+    --targetpsmlookup "${baseresults}/target_psmlookup.sql" \
+    --decoypsmlookup "${baseresults}/decoy_psmlookup.sql" \
+    --oldmzmldef test_output/${name}/oldmzmls \
+    --hirief https://github.com/nf-core/test-datasets/raw/6defbf8a92a46b0ac48bb05f9ad96b62716b4a5d/testdata/formatted_known_peptides_ENSUniRefseq_TMT_predpi_20150825.txt
+
 echo TMT16 add a set, carbamyl, set-coloring PCA
 # Tests set adding, not using DEqMS, using own defined MSGF mod (carbamyl)
 # change name, this mzML is already in  the existing data and spectraIDs will collide
