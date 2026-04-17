@@ -332,7 +332,7 @@ workflow PTMANALYSIS {
   | combine(tdb)
   | map { it + [get_non_ptms(it[0], setisobaric, othermods), locptms, file(msgfmodfile), search_engine] }
   | stabilePTMPrep
-  | concat(luciphorParse.out)
+  | mix(luciphorParse.out)
   | toList
   | map { it.sort( {a, b -> a[0] <=> b[0]}) } // sort on setname
   | transpose
@@ -356,7 +356,7 @@ workflow PTMANALYSIS {
   
   setptmpsm_ch
   | map { [it[0], null, null] }
-  | concat(prepTotalProteomeInput.out)
+  | mix(prepTotalProteomeInput.out)
   | set { totalprot_and_nofile }
   
   setptmpsm_ch
@@ -385,7 +385,7 @@ workflow PTMANALYSIS {
   ptms = createPTMTable.out.allpsms
   | combine(do_proteingroup ? addMasterProteinsGenes.out : mergePTMPeps.out)
   warnings = luciphorPTMLocalizationScoring.out.warnings.map { it[1] }
-  | concat(createPTMTable.out.warnings)
+  | mix(createPTMTable.out.warnings)
 
 }
   

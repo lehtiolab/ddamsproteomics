@@ -205,7 +205,7 @@ workflow REPORTING {
 
   oldmzmls_sorted
   .map { [it.fn_normalized_chars, it.setname, it.plate, it.fraction] }
-  .concat(new_mzmls_for_psmqc)
+  .mix(new_mzmls_for_psmqc)
   .transpose()
   .toList()
   .toList()

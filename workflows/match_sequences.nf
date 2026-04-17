@@ -120,7 +120,7 @@ workflow MATCH_SEQUENCES {
   | combine(markPeptidesPresentInDB.out.jointable)
   | combine(sequence_fa_ch.toList().toList())
   | joinAnnotatedSeqmatchPeptides
-  | concat(markPeptidesPresentInDB.out.peptides)
+  | mix(markPeptidesPresentInDB.out.peptides)
   | set { matched_out }
 
   emit:

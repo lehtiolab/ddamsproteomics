@@ -803,7 +803,7 @@ workflow {
     mzml_in
     | filter { !setdenoms[it.setname] }
     | map { [stripchars_infile(it.mzmlfile)[1], file(it.sample)] }
-    | concat(iso_processed)
+    | mix(iso_processed)
     | join(ms1_q, remainder: true)
     | toList
     | map { it.sort({a, b -> a[0] <=> b[0]}) }
@@ -882,7 +882,7 @@ workflow {
 
     SEARCH.t_tsv
     | ifEmpty(['target', nofile])
-    | concat(SEARCH.d_tsv)
+    | mix(SEARCH.d_tsv)
     | groupTuple
     | join(specquant_lookups)
     | combine(createTargetDecoyFasta.out.bothdbs)
@@ -918,7 +918,7 @@ workflow {
   }
   psmtables_ch
   | filter { it[0] == 'decoy' }
-  | concat(target_psmtable)
+  | mix(target_psmtable)
   | map { [it[0], it[1], all_setnames, remove_channels_psmtable] }
   | splitPSMs
   | map{ it -> [it[0], listify(it[1]).collect() { it.baseName.replaceFirst(/\.tsv$/, "") }, it[1]]} // get setname from {setname}.tsv
@@ -1043,7 +1043,7 @@ workflow {
   makePeptides.out.peps
   | filter { it[1] == 'target' }
   | map { [it[0], 'peptides', it[2]] }
-  | concat(protgenefdr_tables)
+  | mix(protgenefdr_tables)
   | groupTuple(by: 1)
   | combine(psmlookups_ch.filter { it[0] == 'target' }.map { it[1] })
   | combine(sampletable_ch)
@@ -1080,26 +1080,26 @@ workflow {
     fractionation,
     target_psmtable.map { it[1] },
     protpepgene_ch.with_nogroup,
-    makePeptides.out.normfacs.concat(protgenefdr_normfacs),
+    makePeptides.out.normfacs.mix(protgenefdr_normfacs),
     sampletable_ch,
     params.pepconflvl,
     params.proteinconflvl,
     all_setnames,
     ptm_ch,
     psmwarnings_ch
-      .concat(!is_rerun ? SEARCH.warnings: Channel.empty())
-      .concat(ptmwarn_ch)
+      .mix(!is_rerun ? SEARCH.warnings: Channel.empty())
+      .mix(ptmwarn_ch)
       .toList().toList()
       .filter { it[0] }
       .ifEmpty(nofile),
   )
 
   target_psmtable.map { it[1] }
-  .concat(psmtables_ch | filter { it[0] == 'decoy' } | map { it[1] })
-  .concat(psmlookups_ch | map { it[1] })
-  .concat(ptm_ch.flatten())
-  .concat(feattables_out_ch)
-  .concat(REPORTING.out.flatten())
+  .mix(psmtables_ch | filter { it[0] == 'decoy' } | map { it[1] })
+  .mix(psmlookups_ch | map { it[1] })
+  .mix(ptm_ch.flatten())
+  .mix(feattables_out_ch)
+  .mix(REPORTING.out.flatten())
   .set { all_out_ch }
 
   publish:
