@@ -1,4 +1,4 @@
-include { createMods; listify; stripchars_infile; parse_isotype } from '../modules.nf'
+include { createMods; stripchars_infile; parse_isotype } from '../modules.nf'
 
 process msgfPlus {
 
@@ -36,20 +36,20 @@ process msgfPlus {
 }
 
 
-process percolator {
+process percolatorForMsgf {
 
   tag 'percolator'
   container { params.__containers[task.tag][workflow.containerEngine] }
 
   input:
-  tuple val(setname), path(mzids), val(enzyme)
+  tuple val(setname), path(mzids, arity: '1..*'), val(enzyme)
 
   output:
   tuple val(setname), path('perco.xml')
 
   script:
   """
-  ${listify(mzids).collect() { "echo $it >> metafile" }.join(' && ')}
+  ${mzids.collect() { "echo $it >> metafile" }.join(' && ')}
   msgf2pin -o percoin.tsv -e ${enzyme} -P "decoy_" metafile
   percolator -j percoin.tsv -X perco.xml -N 500000 --decoy-xml-output -Y --num-threads ${task.cpus}
   """
@@ -62,7 +62,7 @@ process percolatorToPsms {
   container { params.__containers[task.tag][workflow.containerEngine] }
 
   input:
-  tuple val(setname), path(perco), path(mzids), path(tsvs), val(psmconf), val(pepconf), val(output_unfiltered)
+  tuple val(setname), path(perco), path(mzids, arity: '1..*'), path(tsvs, arity: '1..*'), val(psmconf), val(pepconf), val(output_unfiltered)
 
   output:
   tuple val('target'), path("${setname}_target.tsv"), emit: tmzidtsv_perco, optional: true
@@ -74,8 +74,8 @@ process percolatorToPsms {
   """
   mkdir outtables
   msstitch perco2psm --perco perco.xml -d outtables \
-    -i ${listify(tsvs).collect(){"${it}"}.join(' ')} \
-    --mzids ${listify(mzids).collect(){"${it}"}.join(' ')} \
+    -i ${tsvs.collect(){"${it}"}.join(' ')} \
+    --mzids ${mzids.collect(){"${it}"}.join(' ')} \
     ${!output_unfiltered ? "--filtpsm ${psmconf} --filtpep ${pepconf}" : ''}
   msstitch concat -i outtables/* -o allpsms
   ${output_unfiltered ?
@@ -129,7 +129,7 @@ workflow MSGFPERCO {
 
   mzid_tsv_2psm
   | map {[it[0], it[1], enzyme] }
-  | percolator
+  | percolatorForMsgf
   | join(mzid_tsv_2psm)
   | map { it + [psmconflvl, pepconflvl, output_unfilt_psms] }
   | percolatorToPsms

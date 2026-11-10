@@ -78,7 +78,7 @@ featplotnames = [('nrfeats', 'Identifications'),
           ('nrpsms', '# PSMs used for isobaric quantitation per identification'),
           ('nrpsmsoverlapping', '# PSMs used for isobaric quantitation per identification for only complete overlapping set'),
           ('percentage_onepsm', 'Percentage of identifications with >1 quantifying PSM in the complete overlapping set'),
-          ('ms1nrpeps', '# peptides with MS1 quant per protein (top 3 used)'),
+          ('ms1nrpeps', '# peptides per protein (top 3 used)'),
           ('coverage', 'Overall protein coverage'),
           ]
 

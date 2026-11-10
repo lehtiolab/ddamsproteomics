@@ -2,7 +2,7 @@
 
 include { paramsSummaryMap } from 'plugin/nf-schema'
 
-include { msgf_info_map; get_complement_field_nr; listify; stripchars_infile; get_regex_specialchars; read_header } from './modules.nf' 
+include { msgf_info_map; listify; get_complement_field_nr; stripchars_infile; get_regex_specialchars; read_header } from './modules.nf' 
 include { MSGFPERCO } from './workflows/msgf_perco.nf'
 include { SAGEPERCO } from './workflows/sage_perco.nf'
 include { PTMANALYSIS } from './workflows/ptms.nf'
@@ -26,7 +26,7 @@ process createTargetDecoyFasta {
 
  
   input:
-  path(tdb)
+  path(tdb, arity: '1..*')
 
   output:
   path('db.fa'), emit: concatdb
@@ -34,7 +34,7 @@ process createTargetDecoyFasta {
 
   script:
   """
-  ${listify(tdb).size() > 1 ? "cat ${tdb.collect() { "\"${it}\"" }.join(' ')} > tdb" : "mv $tdb tdb"}
+  ${tdb.size() > 1 ? "cat ${tdb.collect() { "\"${it}\"" }.join(' ')} > tdb" : "mv $tdb tdb"}
   check_fasta.py tdb
   msstitch makedecoy -i tdb -o decoy.fa --scramble tryp_rev --ignore-target-hits
   cat tdb decoy.fa > db.fa
@@ -202,7 +202,7 @@ process complementSpectraLookupCleanPSMs {
   output:
   tuple path('t_cleaned_psms.txt'), path('d_cleaned_psms.txt'), emit: psms
   tuple path('target_db.sqlite'), path('decoy_db.sqlite'), emit: dbs
-  tuple path('cleaned_ptmpsms.txt'), emit: ptm, optional: true
+  path('cleaned_ptmpsms.txt'), emit: ptm, optional: true
   
   script:
   setnames = in_setnames.unique(false)
@@ -286,7 +286,7 @@ process createPSMTable {
   container { params.__containers[task.tag][workflow.containerEngine] }
 
   input:
-  tuple val(td), path(psms), path('lookup'), path(tdb), path(ddb), path('oldpsms'), val(complementary_run), val(do_ms1), val(do_isobaric), val(onlypeptides)
+  tuple val(td), path(psms, arity: '1..*'), path('lookup'), path(tdb), path(ddb), path('oldpsms'), val(complementary_run), val(do_ms1), val(do_isobaric), val(onlypeptides)
 
   output:
   tuple val(td), path("${outpsms}"), emit: psmtable
@@ -302,7 +302,7 @@ process createPSMTable {
   """
   ${no_target ? "echo 'No target PSMs made the combined PSM / peptide FDR cutoff' && exit 1" : ''}
   ${no_decoy ? "echo 'No decoy PSMs in any set at FDR cutoff, will not produce protein/gene tables' > warnings && touch ${outpsms} && touch ${psmlookup} && exit 0" : ''}
-  msstitch concat -i ${listify(psms).collect() {"$it"}.join(' ')} -o psms.txt
+  msstitch concat -i ${psms.collect() {"$it"}.join(' ')} -o psms.txt
   # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
   cat lookup > $psmlookup
   msstitch psmtable -i psms.txt --dbfile $psmlookup ${inmem} -o ${outpsms} \
@@ -373,7 +373,7 @@ process splitTotalProteomePSMs {
   tuple path('tppsms_in'), val(setnames)
 
   output:
-  path({listify(setnames).collect() { "tppsms/${it}.tsv" }}), optional: true
+  path(listify(setnames).collect() { "tppsms/${it}.tsv" }), optional: true
 
   script:
   """
@@ -499,7 +499,7 @@ process proteinPeptideSetMerge {
   container { params.__containers[task.tag][workflow.containerEngine] }
 
   input:
-  tuple val(setnames), val(acctype), path(tables), path(lookup), path(sampletable_with_special_chars), path('sampletable_no_special_chars'), val(do_isobaric), val(do_ms1), val(proteinconflvl), val(do_pgroup), val(do_deqms)
+  tuple val(setnames), val(acctype), path(tables, arity: '1..*'), path(lookup), path(sampletable_with_special_chars), path('sampletable_no_special_chars'), val(do_isobaric), val(do_ms1), val(proteinconflvl), val(do_pgroup), val(do_deqms)
   
   output:
   tuple val(acctype), path('grouptable'), emit: with_nogroup
@@ -513,7 +513,7 @@ process proteinPeptideSetMerge {
 
   # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
   cat $lookup > db.sqlite
-  msstitch merge -i ${listify(tables).collect() { "$it" }.join(' ')} --setnames ${setnames.collect() { "'$it'" }.join(' ')} --dbfile db.sqlite ${inmem} -o mergedtable \
+  msstitch merge -i ${tables.collect() { "$it" }.join(' ')} --setnames ${setnames.collect() { "'$it'" }.join(' ')} --dbfile db.sqlite ${inmem} -o mergedtable \
     --fdrcolpattern '^q-value\$' ${acctype != 'peptides' ? "--mergecutoff ${proteinconflvl}" : ''} \
     ${acctype == 'peptides' ? "--pepcolpattern 'peptide PEP'" : ''} \
     ${do_ms1 ? "--ms1quantcolpattern area" : ''} \
@@ -1052,7 +1052,7 @@ workflow {
 
   if (do_isoq && params.deqms) {
     proteinPeptideSetMerge.out.with_nogroup
-    | combine(sampleTableCheckClean.out)
+    | combine(sampleTableCheckClean.out.map{ it[1] })
     | DEqMS
     | set { protpepgene_ch }
   } else {

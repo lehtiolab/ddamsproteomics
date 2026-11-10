@@ -5,7 +5,7 @@ green=$(tput setaf 2)
 reset=$(tput sgr0)
 
 
-export NXF_VER=25.10.4
+export NXF_VER=26.04.1
 export NXF_SYNTAX_PARSER=v2
 
 rundir=$(pwd)

@@ -1,6 +1,6 @@
 /* Reporting workflow for DDA pipeline */
 
-include { listify; stripchars_infile; get_regex_specialchars } from '../modules.nf' 
+include { listify; stripchars_infile } from '../modules.nf' 
 
 process countMS2sPerPlate {
   tag 'python'

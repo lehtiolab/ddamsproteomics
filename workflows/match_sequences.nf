@@ -1,4 +1,4 @@
-include { get_field_nr; listify; get_regex_specialchars} from '../modules.nf' 
+include { get_field_nr; get_regex_specialchars} from '../modules.nf' 
 
 process createTrypticMatchDB {
   /* Create a sequence match SQLite database to be used for filtering
@@ -37,22 +37,22 @@ process markPeptidesPresentInDB {
   */
 
   input:
-  tuple path(peptides), path(seqdbs)
+  tuple path(peptides), path(seqdbs, arity: '1..*')
 
   output:
   tuple val('peptides'), path(peptide_table_out), emit: peptides
-  tuple path(jointable_out), emit: jointable
+  path(jointable_out), emit: jointable
 
   script:
   peptide_table_out = 'peptide_table.txt'
   jointable_out = 'seqmatch_jointable'
-  len_seqmatch = listify(seqdbs).size()
+  len_seqmatch = seqdbs.size()
   inmem = params.in_memory_sqlite ? '--in-memory' : ''
   """
   # Get bare peptide (works also with -f1)
   echo 'Peptide\tMSGFScore\tEValue' > pepseqs
   cut -f2 ${peptides} |  awk -v FS='\\t' -v OFS='\\t' '{print \$1, "NA", "NA"}' | tail -n+2 >> pepseqs
-  for seqdb in ${listify(seqdbs).join(' ')}
+  for seqdb in ${seqdbs.join(' ')}
     do msstitch seqmatch -i pepseqs -o tmppeps --dbfile \$seqdb ${inmem} --matchcolname \${seqdb}
     mv tmppeps pepseqs
   done
@@ -68,7 +68,7 @@ process joinAnnotatedSeqmatchPeptides {
   container { params.__containers[task.tag][workflow.containerEngine] }
 
   input:
-  tuple val(acctype), path('feats'), path('peptides'), path(seqdbs)
+  tuple val(acctype), path('feats'), path('peptides'), path(seqdbs, arity: '1..*')
 
   output:
   tuple val(acctype), path(outfile)
@@ -76,7 +76,7 @@ process joinAnnotatedSeqmatchPeptides {
   script:
   headfield = [proteins: "Protein(s)", ensg: "Gene ID(s)", genes: "Gene name(s)"][acctype]
   featfield = [proteins: "Protein ID", ensg: "Gene ID", genes: "Gene Name"][acctype]
-  len_seqmatch = listify(seqdbs).size()
+  len_seqmatch = seqdbs.size()
   seqdbs_clean = seqdbs.collect() { it.baseName.replaceAll('[^A-Za-z0-9_-]', '_') }
   outfile = "${acctype}_table.txt"
   """
@@ -88,9 +88,9 @@ process joinAnnotatedSeqmatchPeptides {
 .import seqmatches seqmatch
 .import feats feats
 
-SELECT feats.*, ${listify(seqdbs_clean).collect() {"sqm_group.${it}"}.join(',')} FROM feats
+SELECT feats.*, ${seqdbs_clean.collect() {"sqm_group.${it}"}.join(',')} FROM feats
 JOIN (
-  SELECT "${headfield}", ${listify(seqdbs_clean).collect() {"GROUP_CONCAT(DISTINCT $it) AS $it"}.join(',')}
+  SELECT "${headfield}", ${seqdbs_clean.collect() {"GROUP_CONCAT(DISTINCT $it) AS $it"}.join(',')}
   FROM seqmatch GROUP BY "${headfield}") AS sqm_group
 ON sqm_group."${headfield}"=feats."${featfield}"
 END_COMMANDS

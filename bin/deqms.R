@@ -5,10 +5,10 @@ library(reshape2)
 library(matrixStats)
 
 sampletable = read.table('sampletable', header=F, sep='\t', comment.char='', quote='', colClasses=c('character'))
-# Add an X to sample groups that start with a number because R does that to header fields of input feats
 colnames(sampletable) = c('ch', 'set', 'sample', 'group')
-sampletable$group = sub('[^a-zA-Z0-9_]', '_', sampletable$group)
+# Add an X to sample groups that start with a number because R does that to header fields of input feats
 sampletable$group = sub('^([0-9])', 'X\\1', sampletable$group)
+# Order TMT channels (N before C)
 sampletable = sampletable[order(sapply(sampletable$ch, function(x) sub('N', 'A', x))),]
 
 lookup = sampletable$group
