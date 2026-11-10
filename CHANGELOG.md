@@ -1,5 +1,9 @@
 # lehtiolab/ddamsproteomics: Changelog
 
+## Version 3.4 [2026-11-10]
+- Move to v2 strict nextflow syntax and 26.04
+- Fix delta Pi annotation bug where it errors when doing a rerun without inputdef with --hirief
+
 ## Version 3.3 [2026-03-26]
 - Enable use of Singularity for centroiding/precursor purity #43
 - Not crashing with --onlypeptides and --noquant
