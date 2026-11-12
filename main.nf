@@ -242,7 +242,7 @@ process createNewSpectraLookup {
   container { params.__containers[task.tag][workflow.containerEngine] }
 
   input:
-  tuple val(setnames), path(mzmlfiles), val(platenames)
+  tuple val(setnames), path(mzmlfiles, arity: '1..*'), val(platenames)
 
   output:
   path('target_db.sqlite')
@@ -263,7 +263,7 @@ process quantLookup {
   container { params.__containers[task.tag][workflow.containerEngine] }
 
   input:
-  tuple val(mzmlnames), path(isofns), path(ms1fns), path(tlookup), val(do_isoq), val(do_ms1)
+  tuple val(mzmlnames), path(isofns, arity: '1..*'), path(ms1fns, arity: '1..*'), path(tlookup), val(do_isoq), val(do_ms1)
 
   output:
   path('target.sqlite')
@@ -273,7 +273,7 @@ process quantLookup {
   """
   # SQLite lookup needs copying to not modify the input file which would mess up a rerun with -resume
   cat $tlookup > target.sqlite
-  msstitch storequant --dbfile target.sqlite ${inmem} --spectra ${mzmlnames.collect() { "'${it}'" }.join(' ')}  \
+  msstitch storequant --dbfile target.sqlite ${inmem} --spectra ${listify(mzmlnames).collect() { "'${it}'" }.join(' ')}  \
     ${do_ms1 ? "--mztol ${params.ms1qmztol} --mztoltype ppm --rttol ${params.ms1qrttol} ${params.hardklor ? "--kronik ${ms1fns.collect() { "$it" }.join(' ')}" : "--dinosaur ${ms1fns.collect() { "$it" }.join(' ')}"}" : ''} \
     ${do_isoq ? "--isobaric ${isofns.collect() { "$it" }.join(' ')}" : ''}
   """
@@ -502,8 +502,8 @@ process proteinPeptideSetMerge {
   tuple val(setnames), val(acctype), path(tables, arity: '1..*'), path(lookup), path(sampletable_with_special_chars), path('sampletable_no_special_chars'), val(do_isobaric), val(do_ms1), val(proteinconflvl), val(do_pgroup), val(do_deqms)
   
   output:
-  tuple val(acctype), path('grouptable'), emit: with_nogroup
-  tuple val(acctype), path(outfile), emit: nogroup_rm
+  tuple val(acctype), path('grouptable'), emit: with_nogroup, optional: true
+  tuple val(acctype), path(outfile), emit: nogroup_rm, optional: true
 
   script:
   sampletable_iso = sampletable_with_special_chars.name != 'NO__FILE' && do_isobaric
@@ -520,6 +520,11 @@ process proteinPeptideSetMerge {
     ${do_isobaric ? "--isobquantcolpattern plex" : ''} \
     ${!do_pgroup ? "--no-group-annotation" : ''}
    
+  # Downstream featQC crashes when we have zero features output here,
+  # bc of #e.g. too harsh FDR cutoff
+  tail -n+2 mergedtable | head -n1 | grep '' > testlines || echo "No target $acctype were found"
+  [ -s testlines ] || exit 0
+  
   # Put annotation on header, use normal setname for finding, replace with clean name
   # "sed '0,/{RE}//{substitute}/..."  for only first line (0,/{RE} = read from 0 until RE,
   # then the empty // means use the previous RE (you could specify a new RE)
@@ -1044,7 +1049,10 @@ workflow {
   | filter { it[1] == 'target' }
   | map { [it[0], 'peptides', it[2]] }
   | mix(protgenefdr_tables)
+  //, size: all_setnames.size()) -> does not work here since sometimes we get missing sets when not making an FDR cutoff
   | groupTuple(by: 1)
+  | map { [listify(it[0]).sort().collect { x -> it[0].indexOf(x)}] + it } // get sort indices!
+  | map { [it[1][it[0]], it[2], it[3][it[0]] ] }
   | combine(psmlookups_ch.filter { it[0] == 'target' }.map { it[1] })
   | combine(sampletable_ch)
   | map { it + [setdenoms, do_ms1, params.proteinconflvl, !params.onlypeptides, params.deqms] }
